@@ -48,6 +48,7 @@ impl FileSystemIdentityRepository {
         let state_dir: PathBuf = state_dir.into();
 
         if !state_dir.exists() {
+            // sink: identity:identity-store
             fs::create_dir_all(&state_dir)
                 .await
                 .map_err(|e| IdentityError::Internal(format!("create state dir: {e}")))?;
@@ -86,11 +87,13 @@ impl IdentityRepository for FileSystemIdentityRepository {
             .map_err(|e| IdentityError::Internal(format!("serialize claim: {e}")))?;
 
         // Write to temp file — the original is intact if we fail here.
+        // sink: identity:identity-store
         fs::write(&temp, json)
             .await
             .map_err(|e| IdentityError::Internal(format!("write temp record: {e}")))?;
 
         // Atomic rename (on POSIX, rename(2) is atomic).
+        // sink: identity:identity-store
         fs::rename(&temp, &path)
             .await
             .map_err(|e| IdentityError::Internal(format!("rename record: {e}")))?;
@@ -119,6 +122,7 @@ impl IdentityRepository for FileSystemIdentityRepository {
         let path = self.record_path(execution_id);
 
         // Idempotent — removing a missing record is a no-op success.
+        // sink: identity:identity-store
         match fs::remove_file(&path).await {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),

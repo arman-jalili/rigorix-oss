@@ -30,6 +30,7 @@ impl LocalAuditEnvelopeRepository {
     ///
     /// Creates the base directory if it doesn't exist.
     pub fn new(base_path: PathBuf) -> Self {
+        // sink: audit:local-chain
         std::fs::create_dir_all(&base_path).ok();
         Self { base_path }
     }
@@ -42,9 +43,11 @@ impl LocalAuditEnvelopeRepository {
     /// Atomically write content to a file using write-rename pattern.
     fn atomic_write(path: &Path, content: &str) -> Result<(), AuditError> {
         let temp_path = path.with_extension("tmp");
+        // sink: audit:local-chain
         std::fs::write(&temp_path, content).map_err(|e| AuditError::Internal {
             detail: format!("Failed to write temp file: {e}"),
         })?;
+        // sink: audit:local-chain
         std::fs::rename(&temp_path, path).map_err(|e| AuditError::Internal {
             detail: format!("Failed to rename temp file: {e}"),
         })?;
@@ -157,6 +160,7 @@ impl AuditEnvelopeRepository for LocalAuditEnvelopeRepository {
     async fn delete(&self, execution_id: &uuid::Uuid) -> Result<(), AuditError> {
         let path = self.envelope_path(execution_id);
         if path.exists() {
+            // sink: audit:local-chain
             tokio::fs::remove_file(&path)
                 .await
                 .map_err(|e| AuditError::Internal {
@@ -200,6 +204,7 @@ impl AuditEnvelopeRepository for LocalAuditEnvelopeRepository {
                 if let Ok(envelope) = serde_json::from_str::<AuditEnvelope>(&content)
                     && envelope.timestamp < older_than
                 {
+                    // sink: audit:local-chain
                     tokio::fs::remove_file(&path).await.unwrap_or_default();
                     deleted += 1;
                 }

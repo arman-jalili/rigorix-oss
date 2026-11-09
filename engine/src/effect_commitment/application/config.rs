@@ -215,6 +215,7 @@ fn read_token(
     what: &str,
 ) -> Result<Option<String>, EffectCommitmentSetupError> {
     match env_var {
+        // sink: effect-commitment:header-token
         Some(var) => match std::env::var(&var) {
             Ok(value) if !value.is_empty() => Ok(Some(value)),
             _ => Err(invalid(format!(

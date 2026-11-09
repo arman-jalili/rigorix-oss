@@ -103,6 +103,7 @@ impl RetentionCoupledSequencePolicyRepository {
 
     /// Wrap `inner`, reading [`AUDIT_RETENTION_ENV`] once at composition.
     pub fn from_env(inner: Box<dyn SequencePolicyRepository>) -> Self {
+        // sink: sequence-policy:retention
         let retention = AuditRetention::parse(std::env::var(AUDIT_RETENTION_ENV).ok().as_deref());
         match &retention {
             AuditRetention::Secs(secs) => tracing::info!(

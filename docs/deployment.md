@@ -206,3 +206,22 @@ The engine computes it (#1480); since #1491 both surfaces show it:
 
 `not_requested` is always stated, never omitted: an absent field cannot be told apart from
 a client that does not know the field, which is how the original defect stayed invisible.
+
+## The boundary is enumerated, and the register says what each control is not (#1496)
+
+`engine/.pi/architecture/decisions/ADR-023-sink-boundary.md` is the rationale for every
+crossing out of the engine's types; `engine/.pi/architecture/sink-register.tsv` is the
+enumeration, one row per call site. Three things an operator should take from it:
+
+- **`RIGORIX_SANDBOX` is a declaration, not a proof.** The engine refuses a `run_command` step
+  with no declaration and records which regime it was told it runs under. It does not inspect
+  the namespace it is in. If you declare `container` and run without one, the audit record says
+  `container` and the truth is otherwise.
+- **`.rigorix/` protection is a resolved-path decision.** A write that lands inside it is
+  refused, including through an alias (a symlinked directory). It does not make the directory
+  unwritable: an operator who widens its mode, or a status quo where the agent's user owns the
+  repository, still has a hook boundary in name only.
+- **Spawned programs are resolved to a path and executed by path.** The evidence names the
+  binary (`.resolved_executable`, or the `engine:exec-git` row); a writer in that directory can
+  still swap the file between resolution and exec. The row states this rather than the comment
+  claiming otherwise.

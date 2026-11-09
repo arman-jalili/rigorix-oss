@@ -168,19 +168,23 @@ impl AnchorRuntime {
     ///
     /// Anchored iff **both** are set and non-empty; otherwise `local_unanchored`.
     pub fn from_env() -> Arc<Self> {
+        // sink: audit:anchor-credentials
         let url = std::env::var(ANCHOR_URL_ENV)
             .ok()
             .filter(|v| !v.trim().is_empty());
+        // sink: audit:anchor-credentials
         let key = std::env::var(ANCHOR_PUBLIC_KEY_ENV)
             .ok()
             .filter(|v| !v.trim().is_empty());
         let (Some(url), Some(key)) = (url, key) else {
             return Self::disabled();
         };
+        // sink: audit:anchor-credentials
         let scope = std::env::var(ANCHOR_SCOPE_ENV)
             .ok()
             .filter(|v| !v.trim().is_empty())
             .unwrap_or_else(|| "default".into());
+        // sink: audit:anchor-credentials
         let token = std::env::var(ANCHOR_TOKEN_ENV)
             .ok()
             .filter(|v| !v.trim().is_empty());

@@ -120,6 +120,7 @@ impl ScoringBackend for LocalBackend {
             .map_err(|e| ScoredEvaluationError::InvalidRubric(e.to_string()))?;
 
         // Execute the script
+        // sink: scored-evaluation:scorer-script
         let output = tokio::process::Command::new(&self.script_path)
             .env("RIGORIX_ARTIFACT", &artifact_str)
             .env("RIGORIX_RUBRIC", &rubric_str)

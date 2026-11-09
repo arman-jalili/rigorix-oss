@@ -17,6 +17,28 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+### Security
+
+- **`.rigorix/` protection is decided on the resolved path (#1493).** The write path was
+  checked as a *string* (`.rigorix` as a path segment) and then resolved through the
+  filesystem, so `ln -s .rigorix tmp` followed by a write to `tmp/hooks.toml` installed a
+  `PreToolUse` hook that the next host start runs with the engine's privileges. Protection now
+  applies to the effective path, and absolute writes are resolved by walking every component
+  from a trusted base with `O_NOFOLLOW`. Sibling control files (`sequence-policy.toml`,
+  `approvals.json`, `effect-commitment.toml`) are covered by the same rule.
+- **The dispatcher's `file_append`, `file_patch` and `edit_file` steps mutate through the
+  validated handle (#1494).** They were raw path writes: append wrote *through* a symlink
+  leaf, and `fs::write` truncated in place so a concurrent reader could see a partial file.
+- **The dispatcher's `git` steps no longer inherit the engine environment (#1494).** Five
+  `git` spawns inherited `RIGORIX_HMAC_KEY` — the key that signs the audit envelopes meant to
+  constrain them — and resolved `git` through the inherited `PATH`. They now use a fixed
+  program resolved in the engine's `PATH`, argv rather than a string, and the standard child
+  environment allowlist. **This can break a deployment** whose git operations authenticate
+  through an ssh-agent or a `GIT_*` variable: those are no longer visible to the child.
+- **`.rigorix` writes are refused for a relative path judged against the process directory
+  (#1493).** `is_within_workspace` canonicalized a relative path against the process's working
+  directory instead of the workspace root it is relative to.
+
 ### Changed (breaking)
 
 - **`run_command` steps require `RIGORIX_SANDBOX`.** The step dispatcher that runs a plan's
@@ -38,6 +60,17 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **ADR-023 — the sink boundary (#1496).** Twenty-two ADRs described how the engine decides
+  things; none described where it stops deciding and the operating system starts. ADR-023
+  records the mitigation kinds and what each actually guarantees, why filtering is never
+  recorded as isolation, that a register row is written about a *call site* rather than a
+  module, and the three residuals this design accepts with reasons (the `sh -c` grain in the
+  dispatcher, path-versus-inode for spawned programs, and the trusted base). ADR-006 gains an
+  amendment extending the handle rule to caller-supplied trees; ADR-017 gains an amendment that
+  keeps its default caveat verbatim and adds the dispatcher's new fail-closed default.
+- **Every production sink names its register row (#1494).** `// sink: <id>` on or above each
+  boundary crossing, enforced by guard rule 5: a call site with no claim fails, and an anchor
+  naming another module's row fails. 94 sites.
 - **`rigorix-server` joins the train and is published for the first time.** The OSS reference execution host — `POST /rpc` over the frozen `rigorix.*` catalog, plus SSE, with the same host composition the stdio MCP binary uses — was written and tested (63 tests) but carried `publish = false`, so the only way to run a host was to build it from a checkout. A host that nobody can install is a claim nobody can point a client at, and every language SDK's protocol client needs one. Its first published version is `1.14.2`, the same number as the train it now rides: `rigorix-actions` set that precedent when it joined at 1.11.0.
 
 

@@ -135,6 +135,7 @@ impl ProviderClient for HttpProviderClient {
         // Credential value: read the operator-held secret from the environment
         // named by `credential_ref`. It is never logged and never returned.
         let credential = match &spec.credential_ref {
+            // sink: precondition:provider-auth
             Some(name) => match std::env::var(name) {
                 Ok(value) if !value.is_empty() => Some(value),
                 _ => {

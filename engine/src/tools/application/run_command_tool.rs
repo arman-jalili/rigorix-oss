@@ -269,6 +269,7 @@ impl Tool for RunCommandTool {
         // anchor credentials stay in the engine process. The declaration this
         // sink relies on is held on the tool (`self.sandbox`): filtering alone is
         // not isolation, and the deployment stated the boundary at construction.
+        // sink: tools:run-command-spawn
         let mut cmd = tokio::process::Command::new(&resolved);
         cmd.args(arguments);
         // #1488: the child enters the validated inode, not a re-resolved path.

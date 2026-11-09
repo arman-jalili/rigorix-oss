@@ -98,6 +98,7 @@ impl ConfigRepository for FilesystemConfigRepository {
     }
 
     async fn read_env_var(&self, name: &str) -> Option<String> {
+        // sink: configuration:config-overrides
         std::env::var(name).ok()
     }
 }

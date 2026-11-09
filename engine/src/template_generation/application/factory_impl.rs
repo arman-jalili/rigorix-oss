@@ -23,6 +23,7 @@ impl TemplateGenerationFactory for TemplateGenerationFactoryImpl {
         // provider that ignores the header it turned a configuration mistake into a
         // call with someone else's identity.
         let api_key =
+            // sink: template-generation:api-key
             std::env::var("CLAUDE_API_KEY").map_err(|_| GeneratorError::MissingApiKey {
                 variable: "CLAUDE_API_KEY".to_string(),
             })?;

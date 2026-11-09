@@ -69,6 +69,7 @@ impl Tool for GitCommitTool {
 
         // Optionally stage all tracked files
         if auto_stage {
+            // sink: tools:git-commit-fixed-argv
             let add_output = tokio::process::Command::new("git")
                 .args(["add", "-u"])
                 .current_dir(&self.repo_root)
@@ -88,6 +89,7 @@ impl Tool for GitCommitTool {
         }
 
         // Create the commit
+        // sink: tools:git-commit-fixed-argv
         let output = tokio::process::Command::new("git")
             .args(["commit", "-m", &message])
             .current_dir(&self.repo_root)

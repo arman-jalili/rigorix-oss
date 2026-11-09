@@ -257,6 +257,7 @@ pub fn parse(text: &str) -> Result<CapacityLedgerConfig, CapacitySetupError> {
                 // The token is read from the environment at construction time and
                 // never written to the config file or to a log line.
                 let auth_token = match b.auth_token_env {
+                    // sink: capacity-ledger:auth-token-env
                     Some(var) => match std::env::var(&var) {
                         Ok(v) if !v.is_empty() => Some(v),
                         _ => {

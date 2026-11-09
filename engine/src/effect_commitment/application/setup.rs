@@ -358,6 +358,7 @@ async fn validate_backend_reachable(
             })?;
     let probe_timeout = std::time::Duration::from_millis((*timeout_ms).min(5_000));
 
+    // sink: effect-commitment:probe-tcp
     match tokio::time::timeout(probe_timeout, tokio::net::TcpStream::connect((host, port))).await {
         Ok(Ok(_)) => Ok(()),
         Ok(Err(error)) => Err(EffectCommitmentSetupError::Unavailable {

@@ -40,6 +40,7 @@ pub const HISTORY_POLICY_ALLOW_UNANCHORED: &str = "allow_unanchored";
 /// Resolve the local chain producer id (`RIGORIX_AUDIT_PRODUCER_ID`,
 /// default `local`). Shared with the sequence-policy composition root.
 pub fn resolve_producer_id() -> String {
+    // sink: audit:producer-and-history
     std::env::var(AUDIT_PRODUCER_ID_ENV)
         .ok()
         .map(|v| v.trim().to_string())
@@ -53,6 +54,7 @@ pub fn resolve_producer_id() -> String {
 /// composition root so the guard's behavior and the recorded envelope field
 /// cannot diverge.
 pub fn resolve_history_policy() -> Option<HistoryPolicy> {
+    // sink: audit:producer-and-history
     match std::env::var(HISTORY_POLICY_ENV) {
         Ok(v)
             if v.trim()

@@ -139,6 +139,7 @@ impl Tool for GitReadTool {
 
         // The child inherits only the explicit allowlist, so a git command
         // cannot read `RIGORIX_HMAC_KEY` or anchor credentials (#1068).
+        // sink: tools:git-read-fixed-argv
         let mut cmd = tokio::process::Command::new("git");
         cmd.args(&args).current_dir(&self.repo_root);
         apply_child_env(&mut cmd, &[]);
