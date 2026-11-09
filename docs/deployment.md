@@ -219,9 +219,10 @@ enumeration, one row per call site. Three things an operator should take from it
   it is in. If you declare `container` and run without one, the audit record says `container`
   and the truth is otherwise. `git_read` additionally runs only read subcommands, refuses the forms that
   name a program (`-c` before the subcommand, `--exec-path`, `ext::`, …) and the forms that
-  write (`--output`, `-d`/`-D`, `--set-upstream-to`, …), but a git alias or hook
-  defined in the repository (`.git/config`, `.git/hooks`) is still code the agent can write —
-  the declaration is the boundary for that, not the allowlist.
+  write (`--output`, `-d`/`-D`, `--set-upstream-to`, …), but **the repository still names programs git
+  runs for ordinary reads** — `core.fsmonitor` on `git status`, `diff.external` on `git diff`,
+  textconv drivers, aliases, hooks. `.git` is inside the workspace the agent can write, so the
+  declaration is the boundary for that, not the allowlist.
 - **`.rigorix/` protection is a resolved-path decision.** A write that lands inside it is
   refused, including through an alias (a symlinked directory). It does not make the directory
   unwritable: an operator who widens its mode, or a status quo where the agent's user owns the

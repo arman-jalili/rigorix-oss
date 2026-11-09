@@ -35,6 +35,23 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   program resolved in the engine's `PATH`, argv rather than a string, and the standard child
   environment allowlist. **This can break a deployment** whose git operations authenticate
   through an ssh-agent or a `GIT_*` variable: those are no longer visible to the child.
+- **`git_read` is a read that cannot write, and `-c` is judged by its position (#1500, #1501,
+  #1502).** The allowlist answered "can this execute?" and not "can this write?": measured on
+  2.50.1, `git symbolic-ref HEAD refs/heads/extra` moved HEAD, `git tag -d v1` deleted the tag,
+  `git branch newb` created one, and `git log --output=<path>` wrote a file anywhere the engine's
+  uid can write — all through a step whose name is `git_read`. Write flags are now refused by
+  name (`--output`, `--ext-diff`, `-d`/`-D`, `--set-upstream-to`, …), short write flags are
+  refused only for the ref subcommands that write (`-c`, `-C`, `-m` are read flags for `log`,
+  `diff` and `grep`), and `branch`/`tag` must name their read form (`--list`, `--contains`, …).
+  `-c` before the subcommand is the config form and is refused; after it, it is the
+  subcommand's own flag — the previous scan refused `git grep -c` and told the author they had
+  tried to set a config value. **Breaking:** a `git_read` step using `--output`, a ref-deleting
+  flag, a bare `branch <name>`, or `branch`/`tag` without a read selector is now refused.
+- **The record says what contains a repository-named program (#1500, #1502).** It named "an
+  alias in `.git/config`", which reads as *"only if the step names an alias"*; the measured
+  trigger is an ordinary read subcommand — `git config core.fsmonitor <script>` then
+  `git status`, `git config diff.external <script>` then `git diff` — both executed. The row and
+  ADR-023 §6.4 now name the class with the measured commands.
 - **`git_read` can no longer name a program, and every step that can execute now needs a
   declared boundary (#1498).** `git -c alias.pwn='!touch /tmp/x' pwn` created the file: git's
   argv can name a program, a `!`-prefixed alias runs through a shell, and the step was exempt
