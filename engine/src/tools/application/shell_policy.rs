@@ -1288,4 +1288,280 @@ mod tests {
         crate::tools::application::shell_policy::validate_git_read_args(&["grep", "-c", "TODO"])
             .expect("`git grep -c` counts matches; it is not the config form");
     }
+
+    // ── #1500: the filter has a subject ──────────────────────────────────────
+
+    /// Every refused form, with the expected set owned **by this test** and compared to the
+    /// tables in both directions.
+    ///
+    /// Iterating the table and asserting each row is refused is vacuous for the defect that
+    /// matters: delete a row and its case disappears with it, so the test stays green. Measured
+    /// on the first version of this test — removing `--paginate` left it passing. So the lists
+    /// below are the expectation, the tables are the implementation, and the comparison is set
+    /// equality: a removed row leaves a case that is no longer refused, and an added row fails
+    /// until the test is edited deliberately.
+    #[test]
+    fn every_refused_form_is_refused_and_named() {
+        use crate::tools::application::shell_policy as policy;
+
+        let global = [
+            "-c",
+            "--config",
+            "--config-env",
+            "--exec-path",
+            "--upload-pack",
+            "--receive-pack",
+            "--paginate",
+            "--open-files-in-pager",
+            "--git-dir",
+            "--work-tree",
+            "--namespace",
+            "-C",
+            "ext::",
+        ];
+        let read_flags = [
+            "--output",
+            "--ext-diff",
+            "--delete",
+            "--move",
+            "--copy",
+            "--force",
+            "--set-upstream-to",
+            "--unset-upstream",
+            "--edit-description",
+            "--create-reflog",
+            "--sign",
+            "--local-user",
+            "--cleanup",
+        ];
+        let ref_flags = [
+            "-d", "-D", "-m", "-M", "-c", "-C", "-f", "-u", "-s", "-F", "-e",
+        ];
+
+        let table = |rows: &[(&'static str, &'static str)]| -> Vec<&'static str> {
+            rows.iter().map(|(form, _)| *form).collect()
+        };
+        for (label, expected, actual) in [
+            ("global", global.to_vec(), table(policy::REFUSED_GIT_FORMS)),
+            (
+                "read flags",
+                read_flags.to_vec(),
+                table(policy::REFUSED_GIT_READ_FLAGS),
+            ),
+            (
+                "ref write flags",
+                ref_flags.to_vec(),
+                table(policy::REFUSED_REF_WRITE_FLAGS),
+            ),
+        ] {
+            let mut expected = expected;
+            let mut actual = actual;
+            expected.sort_unstable();
+            actual.sort_unstable();
+            assert_eq!(
+                expected, actual,
+                "the {label} refusal table and the expectation this test owns must be the same \
+                 set: a removed row is a form nobody refuses any more, and an added row is a \
+                 form nobody has written a case for (#1500)"
+            );
+        }
+
+        // Behaviour, driven by the expectation rather than by the table.
+        for form in global {
+            if form == "ext::" {
+                continue; // a transport is a value, not a leading option; covered below
+            }
+            let err = policy::validate_git_read_args(&[form, "status"])
+                .expect_err(&format!("{form} must be refused"));
+            assert!(
+                err.contains(form) || err.contains("leading option"),
+                "{form} must be named in its own refusal, got: {err}"
+            );
+        }
+        for form in read_flags {
+            let err = policy::validate_git_read_args(&["log", form, "x"])
+                .expect_err(&format!("{form} must be refused"));
+            assert!(err.contains(form), "the refusal must name {form}: {err}");
+        }
+        for form in ref_flags {
+            let err = policy::validate_git_read_args(&["branch", form, "name"])
+                .expect_err(&format!("{form} must be refused for a ref subcommand"));
+            assert!(err.contains(form), "the refusal must name {form}: {err}");
+        }
+    }
+
+    /// Every allowlisted subcommand has a **case the test owns**: an argv that was run against
+    /// git 2.50.1 and exited 0. The comparison is set equality in both directions, which is what
+    /// makes the list deliberate:
+    ///
+    /// * a subcommand added to the allowlist with no case here fails (it is a new read surface,
+    ///   and someone has to say what it reads);
+    /// * a case whose subcommand left the allowlist fails (the case is now dead);
+    /// * deleting a case fails.
+    ///
+    /// A `vec![subcommand]` per entry would pass trivially — the weak version of this test was
+    /// written first, and seeding `"pwn"` into the allowlist left it green (#1500).
+    #[test]
+    fn every_allowed_subcommand_has_a_case_the_test_owns() {
+        use crate::tools::application::shell_policy as policy;
+
+        let cases: &[(&str, &[&str])] = &[
+            ("blame", &["blame", "f"]),
+            ("branch", &["branch", "--list"]),
+            ("cat-file", &["cat-file", "-p", "HEAD"]),
+            ("describe", &["describe", "--tags"]),
+            ("diff", &["diff"]),
+            ("for-each-ref", &["for-each-ref", "refs/tags"]),
+            ("grep", &["grep", "TODO"]),
+            ("log", &["log", "--oneline", "-5"]),
+            ("ls-files", &["ls-files"]),
+            ("ls-tree", &["ls-tree", "HEAD"]),
+            ("merge-base", &["merge-base", "HEAD", "HEAD"]),
+            ("name-rev", &["name-rev", "HEAD"]),
+            ("rev-list", &["rev-list", "HEAD"]),
+            ("rev-parse", &["rev-parse", "HEAD"]),
+            ("shortlog", &["shortlog", "HEAD"]),
+            ("show", &["show", "HEAD"]),
+            ("show-ref", &["show-ref"]),
+            ("status", &["status", "--porcelain"]),
+            ("symbolic-ref", &["symbolic-ref", "HEAD"]),
+            ("tag", &["tag", "--list"]),
+            ("whatchanged", &["whatchanged", "-1"]),
+        ];
+
+        let mut missing = Vec::new();
+        for subcommand in policy::GIT_READ_SUBCOMMANDS {
+            if !cases.iter().any(|(name, _)| name == subcommand) {
+                missing.push(*subcommand);
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "{missing:?} allowlisted with no case in this test: a new read surface must state \
+             what it reads (#1500)"
+        );
+
+        for (name, argv) in cases {
+            assert!(
+                policy::GIT_READ_SUBCOMMANDS.contains(name),
+                "{name:?} has a case but is not allowlisted"
+            );
+            policy::validate_git_read_args(argv).unwrap_or_else(|err| {
+                panic!("{name} is allowlisted and its own case must pass: {err}")
+            });
+        }
+    }
+
+    /// The two rules that are not rows of a table: the attached `-c` form, and `ext::`
+    /// anywhere in the argv.
+    #[test]
+    fn the_attached_and_transport_forms_are_refused() {
+        use crate::tools::application::shell_policy as policy;
+
+        for args in [
+            vec!["-calias.pwn=!touch", "pwn"],
+            vec!["log", "ext::sh", "-c", "id"],
+            // The whole leading-option class is closed, not only the enumerated ones: an
+            // option nobody listed is refused because the first word must be a subcommand
+            // (#1500 measured this against `-C /tmp/other status`).
+            vec!["--no-pager", "status"],
+            vec!["-C", "/tmp/other", "status"],
+        ] {
+            policy::validate_git_read_args(&args).expect_err(&format!("{args:?} must be refused"));
+        }
+    }
+
+    /// A read flag borrowed from one subcommand's family must not be refused for another:
+    /// the letters `-c`, `-C` and `-m` are writes for `branch` and reads for `log`/`diff`.
+    /// Refusing them globally is what #1502 measured, and this is the property that keeps the
+    /// fix from regressing into it.
+    #[test]
+    fn short_flags_are_judged_in_their_subcommand_family() {
+        use crate::tools::application::shell_policy as policy;
+
+        // writes for the ref subcommands
+        for args in [
+            vec!["branch", "-c", "a", "b"],
+            vec!["branch", "-m", "a", "b"],
+            vec!["tag", "-m", "msg", "v1"],
+        ] {
+            policy::validate_git_read_args(&args).expect_err("a ref write must be refused");
+        }
+        // reads elsewhere, with the very same words
+        for args in [
+            vec!["diff", "-c"],
+            vec!["log", "-m", "--oneline", "-1"],
+            vec!["grep", "-c", "TODO"],
+        ] {
+            policy::validate_git_read_args(&args)
+                .unwrap_or_else(|err| panic!("{args:?} is a read: {err}"));
+        }
+    }
+
+    /// The property that actually contains a repository-named program cannot be the filter —
+    /// it is the declared isolation (#1498). This test states what the filter does **not** do:
+    /// a repository can name a program for an ordinary read subcommand, and the argv is
+    /// perfectly ordinary.
+    ///
+    /// Measured on git 2.50.1 before it was written down:
+    /// `git config core.fsmonitor <script>` then `git status` runs the script;
+    /// `git config diff.external <script>` then `git diff` (with a change) runs it. Both argv
+    /// lists below pass the validator, and that is the finding, not a defect in the test —
+    /// which is why every spawning step kind requires a declaration (`EXECUTING_STEP_KINDS`).
+    #[test]
+    fn the_filter_does_not_see_a_program_the_repository_names() {
+        use crate::tools::application::shell_policy as policy;
+
+        for args in [vec!["status", "--porcelain"], vec!["diff"]] {
+            policy::validate_git_read_args(&args).unwrap_or_else(|err| {
+                panic!(
+                    "{args:?} is accepted by design: the program comes from `.git/config`, and \
+                     the containment is the declared isolation, not this filter (#1500): {err}"
+                )
+            });
+        }
+
+        // The measured vectors, end to end, in a throwaway repository: the script really runs.
+        let dir = std::env::temp_dir().join(format!("rigorix-git-vec-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@t")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@t")
+                .output()
+                .expect("git runs")
+        };
+        git(&["init", "-q", "."]);
+        std::fs::write(dir.join("f"), "one\n").expect("write");
+        git(&["add", "f"]);
+        git(&["commit", "-qm", "init"]);
+
+        let marker = dir.join("FSMONITOR_RAN");
+        let script = dir.join("fsm.sh");
+        std::fs::write(
+            &script,
+            format!("#!/bin/sh\necho ran >> {}\necho /\n", marker.display()),
+        )
+        .expect("write script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        git(&["config", "core.fsmonitor", &script.display().to_string()]);
+        git(&["status", "--porcelain"]);
+        assert!(
+            marker.exists(),
+            "`core.fsmonitor` must run on `git status` — this is the residual #1500 records: \
+             the filter accepts the argv, the repository names the program, and only a declared \
+             isolation contains it"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
