@@ -278,9 +278,14 @@ operator opts into; they do not change the default.
 > **What changed in the default, and why it is not a weakening:** a `run_command`
 > step with no declared isolation is now **refused before any spawn**
 > (`sandbox_undeclared`, #1487), and an unrecognized `RIGORIX_PERMISSION_MODE` is a
-> startup error rather than a silent `WorkspaceWrite`. So the default is no longer
-> "an agent that can run code unless you configure otherwise"; it is "an agent that
-> cannot run a `run_command` step until the deployment states its boundary".
+> startup error rather than a silent `WorkspaceWrite`. Since #1498 the same gate
+> covers **every step kind that can start a process** — `run_command`, `git_read`,
+> `git_stage`, `git_commit` — because a `git_read` step runs git and git runs
+> repository hooks and aliases (`git -c alias.pwn='!touch …' pwn` was measured to
+> create the file). The rule is the capability, not the step's name. So the default
+> is no longer "an agent that can run code unless you configure otherwise"; it is
+> "an agent that cannot run a step that spawns until the deployment states its
+> boundary".
 >
 > **What the caveat still means, verbatim:** declaring `RIGORIX_SANDBOX=container`
 > is a **declaration, not a proof**. The engine does not inspect the namespace it

@@ -104,8 +104,37 @@ be named here with the reason it was accepted — as §6 does.
 3. **The trusted base is trusted.** `fs_at::resolve_under` canonicalizes its base once, because
    an `O_NOFOLLOW` walk from `/` is impossible on macOS (`/var`, `/tmp` are links). A base a
    caller can name must not be passed to it; the two functions document the difference.
-4. **`git_read`'s argument string is not parsed.** `git -c core.pager=…` runs a program, and
-   `split_whitespace` is not a parser. The row says so; the argv is the caller's.
+4. **A git step runs git, and git runs programs — the boundary is the declaration.**
+   `git`'s argv can name a program. Measured on `d834cc41`, with the argv the dispatcher built
+   from `args: "-c alias.pwn=!touch pwn /tmp/x"`:
+
+   ```
+   $ git -c alias.pwn='!touch /tmp/x/PWNED' pwn      → file created: YES
+   ```
+
+   A `!`-prefixed alias runs through a shell, and `split_whitespace` is not a constraint on it
+   (`!curl` plus ordinary arguments is a download; `!sh` takes one argument). So a `git_read`
+   step was a general code-execution surface **and was exempt from the declaration
+   `run_command` requires** (#1498) — the sentence "the default install contains an agent that
+   cannot execute a `run_command` step" was true and materially misleading.
+
+   Fixed in two parts, and the residual is what remains after both:
+
+   * **Filtering** (the `git_read` argument allowlist): the subcommand must be a *read*, and the
+     forms that name a program are refused **by name** — `-c`/`--config`/`--config-env`,
+     `--exec-path`, `--upload-pack`, `--receive-pack`, `--paginate`, `--open-files-in-pager`,
+     `--git-dir`, `--work-tree`, `ext::`. A read step needs none of them.
+   * **The declaration**: every step kind that can start a process needs `RIGORIX_SANDBOX`
+     (`EXECUTING_STEP_KINDS`: `run_command`, `git_read`, `git_stage`, `git_commit`), gated on
+     the capability rather than on the name, with a structural test that a new spawning handler
+     cannot be added without being in the list.
+
+   **What remains** (accepted, with the reason): an alias or a hook defined in the **repository's
+   own git config or `.git/hooks`** runs a program, and those live inside the agent-writable
+   workspace — `.git` is not `.rigorix`, so the resolved-path protection does not cover it. The
+   boundary there is the declared isolation, exactly as for `run_command`; the row's `does_not`
+   states it. Refusing `git` entirely would be the only way to remove it, and then there is no
+   git step.
 
 ### 7. What does not need an ADR
 

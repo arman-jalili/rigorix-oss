@@ -156,6 +156,20 @@ impl ParallelExecutionServiceImpl {
         }
 
         // ── Execute the tool ──
+        // #1498: the gate is on the capability, not on the step's name. A `git_read`
+        // step starts git, and git runs repository hooks and aliases; before this
+        // check it was exempt from the declaration `run_command` requires, so the
+        // ADR's "cannot execute a `run_command` step" was true and materially
+        // misleading. One list, both dispatch routes.
+        if Self::EXECUTING_STEP_KINDS.contains(&tool_name) && self.sandbox.is_none() {
+            return Self::undeclared_step_refusal(
+                tool_name,
+                tool_intent,
+                node_id,
+                &node.name,
+                start,
+            );
+        }
         // #1165: the provider must receive the intent-derived key, or the
         // receipt reader's idempotency-key lookup can only miss.
         let effect_key = self
@@ -225,6 +239,78 @@ impl ParallelExecutionServiceImpl {
         field_from_intent(intent, field).into_owned()
     }
 
+    /// Step kinds that can start a process, and therefore need a declared boundary.
+    ///
+    /// The rule is **"can this step execute a program"**, not "is its name
+    /// `run_command`". `git_read` runs `git`, and `git` runs repository hooks and
+    /// aliases — an alias can be a shell command (#1498). Writing the check as a name
+    /// comparison is how the gate has to be remembered again every time a step kind
+    /// is added; writing it as a list plus the structural test
+    /// `every_spawning_step_kind_is_gated` is how it is not.
+    pub(super) const EXECUTING_STEP_KINDS: &'static [&'static str] =
+        &["run_command", "git_read", "git_stage", "git_commit"];
+
+    /// Does this step kind start a process?
+    ///
+    /// The single question both dispatch routes ask, so the gate cannot be right on
+    /// one route and forgotten on the other.
+    pub(super) fn step_kind_spawns(kind: &str) -> bool {
+        Self::EXECUTING_STEP_KINDS.contains(&kind)
+    }
+
+    /// What a kind's child can do, in one clause — used by the refusal.
+    fn spawn_reach(kind: &str) -> &'static str {
+        match kind {
+            "run_command" => "a shell, as the engine's user, with the engine's filesystem access",
+            "git_read" => {
+                "git, which runs repository hooks and aliases, and an alias can be a shell command"
+            }
+            "git_stage" => "git, which stages whatever its argv names",
+            "git_commit" => {
+                "git, which runs `.git/hooks` — code inside the agent-writable workspace"
+            }
+            _ => "a process",
+        }
+    }
+
+    /// The refusal for an executing step in a deployment that declared no boundary.
+    ///
+    /// One function for every kind and both dispatch routes, so the same refusal
+    /// cannot be described two ways. The failure type is `sandbox_undeclared`; the
+    /// message names the step kind, what its child can reach, and the remedy.
+    pub(super) fn undeclared_step_refusal(
+        kind: &str,
+        intent: &str,
+        node_id: Uuid,
+        node_name: &str,
+        start: std::time::Instant,
+    ) -> TaskResult {
+        let duration_ms = start.elapsed().as_millis() as u64;
+        let detail = if kind == "run_command" {
+            format!("The command was: {}", command_from_intent(intent))
+        } else {
+            format!(
+                "The step's arguments were: {}",
+                Self::resolve_json_field(intent, "args")
+            )
+        };
+        TaskResult::failure(
+            node_id,
+            node_name,
+            format!(
+                "{}\n\nThe step was not run. A '{kind}' step starts {}. {detail}\n\nThe \
+                 deployment has to declare the boundary it runs under: set \
+                 RIGORIX_SANDBOX=container (or vm). Filtering cannot be the boundary — the \
+                 executable's arguments are unconstrained ({SINK_GRAIN}).",
+                crate::tools::application::shell_policy::SandboxDeclarationError::Missing,
+                Self::spawn_reach(kind),
+            ),
+            "sandbox_undeclared".to_string(),
+            duration_ms,
+            0,
+        )
+    }
+
     /// The single-node route. Both routes answer the same question the same way.
     pub(super) async fn exec_run_command(
         &self,
@@ -237,37 +323,12 @@ impl ParallelExecutionServiceImpl {
         if self.sandbox.is_some() {
             Self::exec_run_command_declared(intent, node_id, node_name, start, effect_key).await
         } else {
-            Self::exec_run_command_undeclared(intent, node_id, node_name, start)
+            // #1487: the refusal happens before anything else is looked at — no
+            // operator scan, no spawn, no timeout. #1498 moved it into one function
+            // shared with every other executing kind, so the four cannot describe the
+            // same refusal differently.
+            Self::undeclared_step_refusal("run_command", intent, node_id, node_name, start)
         }
-    }
-
-    /// #1487: what a `run_command` step is when the deployment declared no boundary.
-    ///
-    /// The refusal happens before anything else is looked at: no operator scan, no
-    /// spawn, no timeout. The test asserts the marker file was never created, not
-    /// that the failure type is right — a failure type alone proves nothing about
-    /// what ran.
-    pub(super) fn exec_run_command_undeclared(
-        intent: &str,
-        node_id: Uuid,
-        node_name: &str,
-        start: std::time::Instant,
-    ) -> TaskResult {
-        let duration_ms = start.elapsed().as_millis() as u64;
-        TaskResult::failure(
-            node_id,
-            node_name,
-            format!(
-                "{}\n\nThe step was not run (intent: {}). This is the step dispatcher, not the \
-                 run-command tool: it executes a shell string, so filtering cannot be the boundary \
-                 ({SINK_GRAIN}).",
-                crate::tools::application::shell_policy::SandboxDeclarationError::Missing,
-                command_from_intent(intent)
-            ),
-            "sandbox_undeclared".to_string(),
-            duration_ms,
-            0,
-        )
     }
 
     /// The parallel route: the caller already holds the declaration (it clones the
@@ -830,6 +891,22 @@ impl ParallelExecutionServiceImpl {
     ) -> TaskResult {
         let args_str = Self::resolve_json_field(intent, "args");
         let args: Vec<&str> = args_str.split_whitespace().collect();
+        // #1498: `git`'s argv can name a program (`-c alias.pwn=!curl …`), so the
+        // argument list is validated before git is started, and the subcommand must be
+        // a read. This is filtering, and filtering is not isolation: the declaration
+        // requirement below is the other half.
+        if let Err(reason) = crate::tools::application::shell_policy::validate_git_read_args(&args)
+        {
+            let duration_ms = start.elapsed().as_millis() as u64;
+            return TaskResult::failure(
+                node_id,
+                node_name,
+                reason,
+                "git_args_refused".to_string(),
+                duration_ms,
+                0,
+            );
+        }
         let output = Self::git_output(&args).await;
         let duration_ms = start.elapsed().as_millis() as u64;
         match output {
@@ -869,7 +946,10 @@ impl ParallelExecutionServiceImpl {
         start: std::time::Instant,
     ) -> TaskResult {
         let path = Self::resolve_json_field(intent, "path");
-        let output = Self::git_output(&["add", path.as_str()]).await;
+        // `--` first: a path that begins with `-` is a path, not an option. It is one
+        // argv element either way, so this is about git reading it as `add`'s
+        // argument rather than as a flag (#1498's sibling question, one line).
+        let output = Self::git_output(&["add", "--", path.as_str()]).await;
         let duration_ms = start.elapsed().as_millis() as u64;
         match output {
             Ok(out) => {
@@ -1178,7 +1258,8 @@ mod tests {
         let marker = marker_path("undeclared");
         let intent = format!("touch {}", marker.display());
 
-        let result = ParallelExecutionServiceImpl::exec_run_command_undeclared(
+        let result = ParallelExecutionServiceImpl::undeclared_step_refusal(
+            "run_command",
             &intent,
             Uuid::now_v7(),
             "step",
@@ -1393,5 +1474,232 @@ mod tests {
             !child_env.contains(key),
             "the git child must not carry RIGORIX_HMAC_KEY: {child_env}"
         );
+    }
+    // -----------------------------------------------------------------------
+    // #1498 (SINK-11): git_read is a read, not a code-execution surface
+    // -----------------------------------------------------------------------
+
+    /// A throwaway repository for the git steps.
+    fn git_repo(tag: &str) -> tempfile::TempDir {
+        let dir = tempfile::TempDir::new().expect("temp repo");
+        let ok = std::process::Command::new("git")
+            .args(["init", "-q", "."])
+            .current_dir(dir.path())
+            .status()
+            .expect("git init");
+        assert!(ok.success());
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.email", "t@example.com"])
+            .current_dir(dir.path())
+            .status();
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.name", tag])
+            .current_dir(dir.path())
+            .status();
+        dir
+    }
+
+    /// Criteria 1 and 2: the alias form and the download form are refused by name,
+    /// before any spawn, and nothing is created.
+    ///
+    /// The measured defect: `git -c alias.pwn=!touch pwn /tmp/x` created the file,
+    /// because `!`-prefixed aliases run through a shell and `split_whitespace` is not
+    /// a constraint on what the alias can do.
+    #[tokio::test]
+    async fn a_git_read_step_cannot_name_a_program() {
+        let repo = git_repo("sink-11");
+        let marker = repo.path().join("PWNED");
+
+        for (label, args) in [
+            (
+                "the alias form",
+                format!("-c alias.pwn=!touch pwn {}", marker.display()),
+            ),
+            (
+                "the attached config form",
+                format!("-calias.pwn=!touch pwn {}", marker.display()),
+            ),
+            ("the exec-path form", "--exec-path=/tmp pwn".to_string()),
+            ("the ext transport", "log ext::sh -c id".to_string()),
+        ] {
+            let result = ParallelExecutionServiceImpl::exec_git_read(
+                &format!(r#"{{"args": "{args}"}}"#),
+                Uuid::now_v7(),
+                "git_read",
+                Instant::now(),
+            )
+            .await;
+            assert!(
+                !result.success,
+                "{label} must be refused, got {:?}",
+                result.output
+            );
+            assert_eq!(
+                result.failure_type.as_deref(),
+                Some("git_args_refused"),
+                "{label} must be refused as an argument problem: {:?}",
+                result.error
+            );
+            let error = result.error.unwrap_or_default();
+            assert!(
+                error.contains("refused"),
+                "{label}: the refusal must say it refused something: {error}"
+            );
+            assert!(
+                !marker.exists(),
+                "{label} created the marker — a program ran"
+            );
+        }
+    }
+
+    /// Criterion 3: an ordinary read still works.
+    #[tokio::test]
+    async fn an_ordinary_git_read_step_still_runs() {
+        let repo = git_repo("sink-11-ok");
+        std::fs::write(repo.path().join("a.txt"), "hello").unwrap();
+        let result = ParallelExecutionServiceImpl::exec_git_read(
+            &format!(
+                r#"{{"args": "--git-dir={}/.git --work-tree={} log --oneline -5"}}"#,
+                repo.path().display(),
+                repo.path().display()
+            ),
+            Uuid::now_v7(),
+            "git_read",
+            Instant::now(),
+        )
+        .await;
+        // `--git-dir` is refused by design (it retargets the invocation), so the
+        // control case runs in the workspace instead: the point is that a read
+        // *subcommand* is not refused.
+        assert!(
+            !result.success,
+            "retargeting the repository is refused, and that is deliberate"
+        );
+        assert_eq!(result.failure_type.as_deref(), Some("git_args_refused"));
+
+        let plain = ParallelExecutionServiceImpl::exec_git_read(
+            r#"{"args": "status --short"}"#,
+            Uuid::now_v7(),
+            "git_read",
+            Instant::now(),
+        )
+        .await;
+        assert!(
+            plain.success || plain.failure_type.as_deref() != Some("git_args_refused"),
+            "an allowlisted read subcommand must reach git: {:?}",
+            plain.error
+        );
+    }
+
+    /// Criterion 4: a git step declares its boundary, exactly like `run_command`.
+    ///
+    /// The asymmetry is the finding: `git_read` starts git, git runs repository
+    /// hooks and aliases, and it needed no declaration while `run_command` did.
+    #[tokio::test]
+    async fn a_git_step_without_a_declaration_is_refused_before_any_spawn() {
+        let marker = marker_path("git-undeclared");
+        for kind in ["git_read", "git_stage", "git_commit"] {
+            let result = ParallelExecutionServiceImpl::undeclared_step_refusal(
+                kind,
+                &format!(r#"{{"args": "log", "path": "{}"}}"#, marker.display()),
+                Uuid::now_v7(),
+                kind,
+                Instant::now(),
+            );
+            assert_eq!(
+                result.failure_type.as_deref(),
+                Some("sandbox_undeclared"),
+                "{kind}"
+            );
+            let error = result.error.unwrap_or_default();
+            assert!(
+                error.contains("RIGORIX_SANDBOX"),
+                "{kind}: the refusal must name the remedy: {error}"
+            );
+            assert!(
+                error.contains(kind),
+                "{kind}: the refusal must name which step kind it refused: {error}"
+            );
+            assert!(!marker.exists(), "{kind} spawned a child");
+        }
+    }
+
+    /// The structural half of criterion 4: the gate is on the capability, and the
+    /// list cannot fall behind the code.
+    ///
+    /// Every function that calls the spawn helper must be an `exec_<kind>` whose kind
+    /// is in `EXECUTING_STEP_KINDS`. Adding a git-spawning step kind without gating
+    /// it fails here, which is the difference between a rule and a habit.
+    #[test]
+    fn every_spawning_step_kind_is_gated() {
+        let source = include_str!("tools.rs");
+        let production = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production section");
+        let lines: Vec<&str> = production.lines().collect();
+
+        let enclosing_fn = |lineno: usize| -> Option<String> {
+            for line in lines[..lineno].iter().rev() {
+                let trimmed = line.trim_start();
+                if let Some(rest) = trimmed
+                    .strip_prefix("pub(super) async fn ")
+                    .or_else(|| trimmed.strip_prefix("async fn "))
+                    .or_else(|| trimmed.strip_prefix("pub(super) fn "))
+                    .or_else(|| trimmed.strip_prefix("fn "))
+                {
+                    return Some(rest.split(['(', ' ']).next().unwrap_or("").to_string());
+                }
+            }
+            None
+        };
+
+        let mut spawning_fns = Vec::new();
+        for (i, line) in lines.iter().enumerate() {
+            // Comments name the mechanism too (`git_output`'s doc says
+            // `Command::new("git")`); the scan is about code.
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            if (line.contains("Self::git_output(") || line.contains("Command::new("))
+                && let Some(f) = enclosing_fn(i)
+            {
+                spawning_fns.push(f);
+            }
+        }
+        spawning_fns.sort();
+        spawning_fns.dedup();
+        assert!(
+            !spawning_fns.is_empty(),
+            "the scan found no spawn site — the patterns are stale"
+        );
+
+        for f in spawning_fns {
+            // The two places a spawn lives: the shared helpers, and the one shell
+            // branch. Everything else must be an `exec_<kind>` that is gated.
+            if f == "git_output" || f == "undeclared_step_refusal" {
+                continue;
+            }
+            // `exec_run_command_declared` / `_undeclared` are the two arms of one
+            // kind: the gate is on `run_command`, and the suffix names which arm.
+            let base = f
+                .strip_suffix("_declared")
+                .or_else(|| f.strip_suffix("_undeclared"))
+                .unwrap_or(&f);
+            let kind = base
+                .strip_prefix("exec_")
+                .map(|rest| rest.to_string())
+                .unwrap_or_else(|| {
+                    panic!(
+                        "`{f}` spawns a process but is not an `exec_<kind>` step handler, so \
+                         `EXECUTING_STEP_KINDS` cannot name it (#1498)"
+                    )
+                });
+            assert!(
+                ParallelExecutionServiceImpl::EXECUTING_STEP_KINDS.contains(&kind.as_str()),
+                "`{f}` spawns, and `{kind}` is not in EXECUTING_STEP_KINDS — the declaration \
+                 gate would let it run without one (#1498)"
+            );
+        }
     }
 }

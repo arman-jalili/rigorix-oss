@@ -370,10 +370,30 @@ async fn spawn_concurrent_node(
         // Tool execution — dispatch to the appropriate exec_* static method
         // All exec_* methods are on ParallelExecutionServiceImpl (same module) and take
         // (intent: &str, node_id: Uuid, node_name: &str, start: Instant) -> TaskResult
+        //
+        // #1498: the declaration gate covers every step kind that can spawn, before
+        // the match — the same list the single-node route uses (#1487 did this for
+        // `run_command` only, which is how the git steps stayed exempt).
+        if ParallelExecutionServiceImpl::step_kind_spawns(&node_tool) && sandbox.is_none() {
+            let (node_id, result) = (
+                node_id,
+                ParallelExecutionServiceImpl::undeclared_step_refusal(
+                    &node_tool,
+                    &node_intent,
+                    node_id,
+                    &node_name,
+                    start,
+                ),
+            );
+            return (node_id, result);
+        }
         let result = match node_tool.as_str() {
             "run_command" => {
                 // #1487: the parallel path is the same sink as the single-node
-                // path, so it answers the same way — no declaration, no spawn.
+                // path, so it answers the same way — no spawn without a declaration.
+                // The `None` arm is unreachable through this route now (the gate
+                // above refuses first); it is kept explicit so the type, not the
+                // comment, states what an absent declaration means.
                 match sandbox.as_ref() {
                     Some(_declaration) => {
                         ParallelExecutionServiceImpl::exec_run_command_declared(
@@ -385,7 +405,8 @@ async fn spawn_concurrent_node(
                         )
                         .await
                     }
-                    None => ParallelExecutionServiceImpl::exec_run_command_undeclared(
+                    None => ParallelExecutionServiceImpl::undeclared_step_refusal(
+                        "run_command",
                         &node_intent,
                         node_id,
                         &node_name,
