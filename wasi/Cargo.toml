@@ -1,6 +1,6 @@
 [package]
 name = "rigorix-gate-wasi"
-version = "1.14.2"
+version = "1.14.3"
 edition = "2024"
 description = "The Rigorix gate as a WASI artifact: one JSON entry, six prologue imports that no decision reads, no host glue"
 license = "MIT OR Apache-2.0"
@@ -30,7 +30,7 @@ crate-type = ["rlib", "cdylib"]
 # is `no_mangle` exports, so linking it would drag `__wbindgen_*` imports into the module.
 # What is left is six std prologue functions, recorded in `wasi/ci/imports.txt` — the claim is
 # that no decision reads any of them, not that they are absent (#1467).
-rigorix-gate-wasm = { path = "../wasm", version = "1.14.2", default-features = false, features = ["engine"] }
+rigorix-gate-wasm = { path = "../wasm", version = "1.14.3", default-features = false, features = ["engine"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
