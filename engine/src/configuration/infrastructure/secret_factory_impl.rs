@@ -30,6 +30,7 @@ impl Default for SecretFactoryImpl {
 impl SecretFactory for SecretFactoryImpl {
     #[tracing::instrument(skip_all)]
     async fn load_from_env(&self, env_var: &str, fallback: Option<String>) -> Option<Secret> {
+        // sink: configuration:secret-resolution
         match std::env::var(env_var) {
             Ok(value) => {
                 if value.is_empty() {

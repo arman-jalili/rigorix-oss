@@ -94,6 +94,7 @@ impl BundleSequencePolicyRepository {
     /// ([`BUNDLE_INLINE_ENV`]) wins over a path ([`BUNDLE_PATH_ENV`]). Neither
     /// set (or empty) → [`Self::absent`].
     pub fn from_env() -> Self {
+        // sink: sequence-policy:bundle-source
         match std::env::var(BUNDLE_INLINE_ENV) {
             Ok(inline) if !inline.trim().is_empty() => {
                 match serde_json::from_str::<Value>(inline.trim()) {
@@ -105,6 +106,7 @@ impl BundleSequencePolicyRepository {
                     },
                 }
             }
+            // sink: sequence-policy:bundle-source
             _ => match std::env::var(BUNDLE_PATH_ENV) {
                 Ok(path) if !path.trim().is_empty() => Self::from_file(path.trim().to_string()),
                 _ => Self::absent(),

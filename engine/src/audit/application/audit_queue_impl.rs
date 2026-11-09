@@ -83,6 +83,7 @@ impl AuditQueueImpl {
     /// would destroy the only copy of evidence we failed to read.
     pub fn durable(dir: impl Into<PathBuf>, capacity: u32) -> Result<Self, AuditError> {
         let dir = dir.into();
+        // sink: audit:retry-queue
         std::fs::create_dir_all(&dir).map_err(|e| AuditError::Internal {
             detail: format!(
                 "cannot create audit queue directory '{}': {e}",
@@ -176,9 +177,11 @@ impl AuditQueueImpl {
             file.write_all(&body)?;
             file.sync_all()?;
             drop(file);
+            // sink: audit:retry-queue
             std::fs::rename(&temp, &path)
         };
         write().map_err(|e| {
+            // sink: audit:retry-queue
             if let Err(cleanup) = std::fs::remove_file(&temp) {
                 tracing::debug!(
                     path = %temp.display(),
@@ -202,6 +205,7 @@ impl AuditQueueImpl {
     /// not a lost one) — worth a line, not a failure.
     fn remove_file(path: Option<&Path>) {
         if let Some(path) = path
+            // sink: audit:retry-queue
             && let Err(error) = std::fs::remove_file(path)
         {
             tracing::warn!(

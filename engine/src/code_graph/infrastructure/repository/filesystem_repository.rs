@@ -74,6 +74,7 @@ impl FilesystemCodeGraphRepository {
 
     /// Ensure the storage directory exists.
     async fn ensure_directory(&self) -> Result<(), CodeGraphError> {
+        // sink: code-graph:symbol-cache
         fs::create_dir_all(&self.storage_dir)
             .await
             .map_err(|e| CodeGraphError::IoError {
@@ -144,6 +145,7 @@ impl CodeGraphRepository for FilesystemCodeGraphRepository {
             })?;
 
         // Rename temp file to final path (atomic on most filesystems)
+        // sink: code-graph:symbol-cache
         fs::rename(&temp_path, &path)
             .await
             .map_err(|e| CodeGraphError::IoError {
@@ -201,6 +203,7 @@ impl CodeGraphRepository for FilesystemCodeGraphRepository {
         let path = self.graph_path(graph_id);
 
         // Remove file (ignore if not found)
+        // sink: code-graph:symbol-cache
         let _ = fs::remove_file(&path).await;
 
         // Update index

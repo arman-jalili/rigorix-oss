@@ -171,6 +171,7 @@ impl RecoverySetup {
     /// unset — leaves recovery off, which is the documented default.
     pub fn from_env()
     -> Option<Arc<dyn crate::recovery_recipes::application::service::RecoveryService>> {
+        // sink: engine:approval-binding
         let requested = std::env::var(Self::ENV)
             .map(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
             .unwrap_or(false);
@@ -393,8 +394,11 @@ impl ApprovalBindingSetup {
         repo_root: &std::path::Path,
         signing_key: Option<&str>,
     ) -> Result<Option<Self>, ApprovalBindingError> {
+        // sink: engine:approval-binding
         let enabled = std::env::var("RIGORIX_APPROVAL_BINDING").ok();
+        // sink: engine:approval-binding
         let run_key = std::env::var("RIGORIX_HMAC_KEY").ok();
+        // sink: engine:approval-binding
         let ttl = std::env::var("RIGORIX_APPROVAL_TTL_SECONDS").ok();
         Self::from_env_key_values(
             enabled.as_deref(),
@@ -458,16 +462,19 @@ impl ApprovalBindingSetup {
         Option<crate::approval::infrastructure::repository::LedgerMigration>,
         ApprovalBindingError,
     > {
+        // sink: engine:approval-binding
         let run_key = std::env::var("RIGORIX_HMAC_KEY").ok();
         let Some(key) = Self::resolve_run_key(None, run_key.as_deref(), signing_key)? else {
             return Ok(None);
         };
         let store_path = resolve_store_path(
             repo_root,
+            // sink: engine:approval-binding
             std::env::var("RIGORIX_APPROVAL_STORE").ok().as_deref(),
         );
         let ledger_path = resolve_consumption_ledger(
             repo_root,
+            // sink: engine:approval-binding
             std::env::var("RIGORIX_APPROVAL_CONSUMPTION_LEDGER")
                 .ok()
                 .as_deref(),
@@ -500,14 +507,21 @@ impl ApprovalBindingSetup {
         let ttl_seconds = ttl_seconds
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(3600);
+        // sink: engine:approval-binding
         let configured_store = std::env::var("RIGORIX_APPROVAL_STORE").ok();
         let store_path = resolve_store_path(repo_root, configured_store.as_deref());
+        // sink: engine:approval-binding
         let configured_ledger = std::env::var("RIGORIX_APPROVAL_CONSUMPTION_LEDGER").ok();
         let consumption_ledger_path =
             resolve_consumption_ledger(repo_root, configured_ledger.as_deref(), key.as_bytes());
         // #1490: the directory creation is authoritative. Discarding this failure
         // used to move the error to the first write, where it read as "store
         // unavailable" instead of "this path cannot be created".
+        // #1493: the store path is operator *configuration* (`RIGORIX_APPROVAL_STORE`
+        // may point outside the repository precisely so the agent cannot edit the
+        // records that constrain it), so it is resolved against its own base. A path
+        // a *caller* can name goes through `resolve_under` instead; the distinction is
+        // documented on both functions.
         crate::tools::infrastructure::fs_at::resolve_absolute_for_write(&store_path).map_err(
             |e| ApprovalBindingError::StoreUnavailable {
                 detail: format!("{}: {e}", store_path.display()),

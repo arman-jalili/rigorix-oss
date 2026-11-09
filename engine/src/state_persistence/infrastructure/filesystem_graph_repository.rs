@@ -37,6 +37,7 @@ impl FileSystemGraphRepository {
         let graph_dir: PathBuf = graph_dir.into();
 
         if !graph_dir.exists() {
+            // sink: state-persistence:graph-store
             fs::create_dir_all(&graph_dir)
                 .await
                 .map_err(|e| StateError::DirectoryError {
@@ -78,6 +79,7 @@ impl GraphRepository for FileSystemGraphRepository {
             })?;
 
         // Write to temp
+        // sink: state-persistence:graph-store
         fs::write(&temp, &json)
             .await
             .map_err(|e| StateError::IoError {
@@ -85,6 +87,7 @@ impl GraphRepository for FileSystemGraphRepository {
             })?;
 
         // Atomic rename
+        // sink: state-persistence:graph-store
         fs::rename(&temp, &path)
             .await
             .map_err(|e| StateError::IoError {
@@ -160,10 +163,12 @@ impl GraphRepository for FileSystemGraphRepository {
             if let Ok(graph) = self.load_graph(graph_id).await {
                 let idx_path = self.execution_index_path(graph.execution_id);
                 if idx_path.exists() {
+                    // sink: state-persistence:graph-store
                     let _ = fs::remove_file(&idx_path).await;
                 }
             }
 
+            // sink: state-persistence:graph-store
             fs::remove_file(&path)
                 .await
                 .map_err(|e| StateError::IoError {
@@ -173,6 +178,7 @@ impl GraphRepository for FileSystemGraphRepository {
 
         // Clean up temp file
         if temp.exists() {
+            // sink: state-persistence:graph-store
             let _ = fs::remove_file(&temp).await;
         }
 

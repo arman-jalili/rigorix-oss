@@ -388,6 +388,7 @@ impl SandboxDeclaration {
 
     /// Read the declaration from the deployment (`RIGORIX_SANDBOX`).
     pub fn from_env() -> Result<Self, SandboxDeclarationError> {
+        // sink: tools:shell-policy
         match std::env::var(SANDBOX_ENV) {
             Ok(value) => Self::from_value(&value),
             Err(std::env::VarError::NotPresent) => Err(SandboxDeclarationError::Missing),
@@ -664,6 +665,7 @@ pub fn argv_from_simple(command: &str) -> Result<Vec<String>, SimpleCommandError
 pub fn apply_child_env(cmd: &mut tokio::process::Command, overrides: &[(String, String)]) {
     cmd.env_clear();
     for key in INHERITED_ENV_ALLOWLIST {
+        // sink: tools:shell-policy-env
         if let Ok(value) = std::env::var(key) {
             cmd.env(key, value);
         }

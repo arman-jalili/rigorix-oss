@@ -312,37 +312,50 @@ mod imp {
         Ok(())
     }
 
-    /// Resolve a workspace-relative path to an opened parent directory handle.
+    /// Resolve the trusted base once, creating it if configuration named a
+    /// directory that does not exist yet.
     ///
-    /// Every component is opened with `O_NOFOLLOW`, so a symlinked component is
-    /// refused with its name rather than followed. A missing component is created
-    /// and then opened the same way — creation and traversal use the same handle
-    /// chain, so a component cannot be swapped between them.
-    pub fn resolve_for_write(
-        workspace_root: &str,
-        path_str: &str,
-    ) -> Result<ValidatedWritePath, ToolError> {
-        let root = Path::new(workspace_root);
-        let root = root.canonicalize().map_err(|e| {
+    /// Creating the base is the one place a link is followed, and it is deliberate:
+    /// the base came from configuration (the workspace root, the repository root),
+    /// not from the caller whose path is being resolved. Everything *below* the base
+    /// is walked with `O_NOFOLLOW`, which is where the caller's string lives. A base
+    /// that a caller can name must not be passed here — see
+    /// [`resolve_absolute_for_write`].
+    fn canonical_base(base: &Path) -> Result<PathBuf, ToolError> {
+        if let Ok(resolved) = base.canonicalize() {
+            return Ok(resolved);
+        }
+        // sink: tools:fs-at-handle
+        std::fs::create_dir_all(base)
+            .map_err(|e| os_error("Cannot create the trusted base", base, e))?;
+        base.canonicalize().map_err(|e| {
             ToolError::ExecutionFailed(format!(
-                "Cannot resolve workspace root '{}': {e}",
-                workspace_root
+                "Cannot resolve the trusted base '{}': {e}",
+                base.display()
             ))
-        })?;
-        let components = relative_components(path_str)?;
+        })
+    }
 
-        let mut dir = std::fs::File::open(&root)
-            .map_err(|e| os_error("Cannot open workspace root", &root, e))?;
-
+    /// Walk `components` from an opened `root`, creating missing directories, and
+    /// pin the parent of the final name.
+    ///
+    /// The single walk for every resolver in this module: creation and traversal
+    /// share the handle chain, so a component cannot be swapped between the
+    /// `mkdirat` that creates it and the `openat` that enters it.
+    fn walk_to_parent(
+        root: &Path,
+        components: Vec<OsString>,
+        requested: &str,
+    ) -> Result<ValidatedWritePath, ToolError> {
         let Some((name, parents)) = components.split_last() else {
             return Err(ToolError::InvalidInput(format!(
-                "Path '{}' names no file",
-                path_str
+                "Path '{requested}' names no file"
             )));
         };
+        let mut dir = std::fs::File::open(root).map_err(|e| os_error("Cannot open", root, e))?;
         // `child_display` is built forward from the root, component by component, so
         // the message and the handle always describe the same directory.
-        let mut child_display = root.clone();
+        let mut child_display = root.to_path_buf();
         for component in parents {
             child_display.push(component);
             match open_dir_at(&dir, component, &child_display) {
@@ -378,6 +391,91 @@ mod imp {
         })
     }
 
+    /// Resolve a workspace-relative path to an opened parent directory handle.
+    ///
+    /// Every component is opened with `O_NOFOLLOW`, so a symlinked component is
+    /// refused with its name rather than followed. A missing component is created
+    /// and then opened the same way — creation and traversal use the same handle
+    /// chain, so a component cannot be swapped between them.
+    pub fn resolve_for_write(
+        workspace_root: &str,
+        path_str: &str,
+    ) -> Result<ValidatedWritePath, ToolError> {
+        let root = canonical_base(Path::new(workspace_root))?;
+        let components = relative_components(path_str)?;
+        walk_to_parent(&root, components, path_str)
+    }
+
+    /// Resolve `path` under a trusted `base`, walking every remaining component
+    /// from an opened handle (#1493, SINK-9).
+    ///
+    /// # Why a base and not just a path
+    ///
+    /// `resolve_absolute_for_write` used to `create_dir_all(parent)` and then
+    /// `parent.canonicalize()` — which **follows symlinks**. Judging the requested
+    /// string and then resolving it through the filesystem is the SINK-2 shape one
+    /// layer up: `ln -s .rigorix tmp` passes a `.rigorix` string test and every
+    /// later step lands inside `.rigorix`.
+    ///
+    /// A base is what makes the walk possible at all. An `O_NOFOLLOW` walk from `/`
+    /// is not an option: on macOS `/var → /private/var` and `/tmp → /private/tmp`,
+    /// so every temporary path in the test suite would be refused. The base is the
+    /// operator's configured root — it came from configuration, not from the caller
+    /// — so canonicalizing *it* once is the operator's decision, and canonicalizing
+    /// the caller's path is the defect. Everything below the base is walked, and a
+    /// symlinked component there is refused by name.
+    ///
+    /// An absolute path is accepted only when it is already under the base; that is
+    /// the caller's policy, stated as a refusal rather than resolved away.
+    pub fn resolve_under(base: &Path, path: &Path) -> Result<ValidatedWritePath, ToolError> {
+        // Both forms: the base may itself be named through an alias the operator's
+        // configuration used (`/var` vs `/private/var` on macOS), and a path built by
+        // joining that name must still strip.
+        let given = base;
+        let base = canonical_base(given)?;
+        let relative = if path.is_absolute() {
+            let canonical_given = given.canonicalize().unwrap_or_else(|_| base.clone());
+            match path
+                .strip_prefix(&base)
+                .or_else(|_| path.strip_prefix(given))
+                .or_else(|_| path.strip_prefix(&canonical_given))
+            {
+                Ok(rest) => rest.to_path_buf(),
+                Err(_) => {
+                    return Err(ToolError::PathDenied(format!(
+                        "'{}' is outside the trusted base '{}'; an absolute write path is opened                          only when the caller's own base contains it, never resolved into place",
+                        path.display(),
+                        base.display()
+                    )));
+                }
+            }
+        } else {
+            path.to_path_buf()
+        };
+        let mut components = Vec::new();
+        for component in relative.components() {
+            match component {
+                std::path::Component::Normal(part) => components.push(part.to_os_string()),
+                std::path::Component::CurDir => {}
+                std::path::Component::ParentDir => {
+                    return Err(ToolError::PathDenied(format!(
+                        "'{}' contains '..' and could leave the trusted base '{}'",
+                        path.display(),
+                        base.display()
+                    )));
+                }
+                std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+                    return Err(ToolError::PathDenied(format!(
+                        "'{}' is not inside the trusted base '{}'",
+                        path.display(),
+                        base.display()
+                    )));
+                }
+            }
+        }
+        walk_to_parent(&base, components, &path.display().to_string())
+    }
+
     /// Read the target, through the same pinned directory handle as the write.
     ///
     /// Separate `fs::read_to_string(path)` then `fs::write(path)` is the SINK-2
@@ -411,34 +509,31 @@ mod imp {
         Ok(bytes)
     }
 
-    /// Resolve an absolute store path to a pinned parent directory (#1490).
+    /// Resolve an engine-owned store path to a pinned parent directory (#1490).
     ///
-    /// Engine-owned stores (policy config, symbol cache) choose their own absolute
-    /// path; they still benefit from the handle discipline, because "write the
-    /// path, then rename the path" is the same shape wherever it appears. The
-    /// parent is created (the old code did), canonicalized once, and opened; the
-    /// final component stays a name inside that handle. `..` in the parent is
-    /// resolved by `canonicalize`, which is correct here: the path came from the
-    /// engine's configuration, not from a caller.
+    /// Engine-owned stores (policy config, symbol cache, hook config) choose their
+    /// own path from configuration; they still benefit from the handle discipline,
+    /// because "write the path, then rename the path" is the same shape wherever it
+    /// appears.
+    ///
+    /// The trusted base is the store's own parent directory, so the walk covers one
+    /// component and the file lands where configuration said. **Use
+    /// [`resolve_under`] for a path a caller can influence.** The distinction is not
+    /// cosmetic: `path.parent()` is derived from the same string that is about to be
+    /// written, so this function cannot refuse an alias inside that parent — a
+    /// caller-supplied path must be resolved against a base the caller does not
+    /// choose (#1493, SINK-9).
     pub fn resolve_absolute_for_write(path: &Path) -> Result<ValidatedWritePath, ToolError> {
-        let parent = path.parent().ok_or_else(|| {
-            ToolError::InvalidInput(format!("'{}' has no parent directory", path.display()))
-        })?;
-        std::fs::create_dir_all(parent)
-            .map_err(|e| os_error("Cannot create directory", parent, e))?;
-        let parent = parent
-            .canonicalize()
-            .map_err(|e| os_error("Cannot resolve directory", parent, e))?;
-        let name = path.file_name().ok_or_else(|| {
-            ToolError::InvalidInput(format!("'{}' names no file", path.display()))
-        })?;
-        let dir = std::fs::File::open(&parent)
-            .map_err(|e| os_error("Cannot open directory", &parent, e))?;
-        Ok(ValidatedWritePath {
-            dir,
-            name: name.to_os_string(),
-            display: parent.join(name),
-        })
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .ok_or_else(|| {
+                ToolError::InvalidInput(format!(
+                    "'{}' has no parent directory; a relative store path has no configured base",
+                    path.display()
+                ))
+            })?;
+        resolve_under(parent, path)
     }
 
     fn create_temp(target: &ValidatedWritePath) -> Result<(OsString, std::fs::File), ToolError> {
@@ -528,17 +623,48 @@ mod imp {
     /// `O_NOFOLLOW` means an existing symlink at the final component is refused
     /// instead of written through.
     pub fn append_to_file(target: &ValidatedWritePath, content: &[u8]) -> Result<(), ToolError> {
+        append_with(target, content, false)
+    }
+
+    /// Append `content`, creating the file when it does not exist (#1494).
+    ///
+    /// The dispatcher's `file_append` step created the file (`OpenOptions::create`),
+    /// and it did so **through a path**, so a symlink leaf was followed. `O_CREAT`
+    /// with `O_NOFOLLOW` keeps the creation contract and refuses the link: the kernel
+    /// fails the open rather than opening the target. `FileAppendTool` keeps
+    /// [`append_to_file`], whose contract is "existing file"; the two differ in one
+    /// flag and are named for the difference.
+    pub fn append_or_create(target: &ValidatedWritePath, content: &[u8]) -> Result<(), ToolError> {
+        append_with(target, content, true)
+    }
+
+    fn append_with(
+        target: &ValidatedWritePath,
+        content: &[u8],
+        create: bool,
+    ) -> Result<(), ToolError> {
         use std::io::Write;
 
         let c_name = cstring(&target.name)?;
-        let flags = libc::O_WRONLY | libc::O_APPEND | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+        let flags = libc::O_WRONLY
+            | libc::O_APPEND
+            | libc::O_NOFOLLOW
+            | libc::O_CLOEXEC
+            | if create { libc::O_CREAT } else { 0 };
         // SAFETY: live directory descriptor, valid C string, owned result.
-        let fd = unsafe { libc::openat(target.dir.as_raw_fd(), c_name.as_ptr(), flags) };
+        let fd = unsafe { libc::openat(target.dir.as_raw_fd(), c_name.as_ptr(), flags, 0o644) };
         if fd < 0 {
             let error = io::Error::last_os_error();
-            return Err(if error.kind() == io::ErrorKind::NotFound {
+            return Err(if error.kind() == io::ErrorKind::NotFound && !create {
                 ToolError::ExecutionFailed(format!(
                     "Failed to append to '{}': file does not exist",
+                    target.display.display()
+                ))
+            } else if error.raw_os_error() == Some(libc::ELOOP)
+                || error.raw_os_error() == Some(libc::EMLINK)
+            {
+                ToolError::PathDenied(format!(
+                    "'{}' is a symlink; an append refuses to follow it",
                     target.display.display()
                 ))
             } else {
@@ -614,7 +740,17 @@ mod imp {
     }
 
     /// Always refuses on this target.
+    pub fn resolve_under(_: &Path, _: &Path) -> Result<ValidatedWritePath, ToolError> {
+        unsupported()
+    }
+
+    /// Always refuses on this target.
     pub fn append_to_file(_: &ValidatedWritePath, _: &[u8]) -> Result<(), ToolError> {
+        unsupported()
+    }
+
+    /// Always refuses on this target.
+    pub fn append_or_create(_: &ValidatedWritePath, _: &[u8]) -> Result<(), ToolError> {
         unsupported()
     }
 
@@ -644,8 +780,9 @@ mod imp {
 }
 
 pub use imp::{
-    ValidatedChildDir, ValidatedWritePath, append_to_file, read_file, resolve_absolute_for_write,
-    resolve_dir_for_child, resolve_for_write, write_atomic,
+    ValidatedChildDir, ValidatedWritePath, append_or_create, append_to_file, read_file,
+    resolve_absolute_for_write, resolve_dir_for_child, resolve_for_write, resolve_under,
+    write_atomic,
 };
 
 #[cfg(all(test, unix))]
@@ -726,11 +863,41 @@ mod tests {
 
         let target = resolve_for_write(root.path().to_str().unwrap(), "link.txt").unwrap();
         let error = append_to_file(&target, b" appended").unwrap_err();
-        assert!(matches!(error, ToolError::ExecutionFailed(_)), "{error:?}");
+        // #1494: the refusal names the link. It was `ExecutionFailed` from the raw
+        // `ELOOP`, which reads as a transient I/O problem rather than "this is a
+        // symlink and an append will not follow it".
+        assert!(matches!(error, ToolError::PathDenied(_)), "{error:?}");
+        assert!(error.to_string().contains("symlink"), "{error}");
         assert_eq!(
             std::fs::read_to_string(&victim).unwrap(),
             "original",
             "the symlink target must not be modified"
+        );
+    }
+
+    /// #1494 acceptance 2: the dispatcher's `file_append` creates a missing file the
+    /// way it always did, and still refuses a symlink leaf.
+    #[test]
+    fn append_or_create_creates_the_file_and_refuses_a_link() {
+        let root = temp_root();
+        let target = resolve_for_write(root.path().to_str().unwrap(), "new.txt").unwrap();
+        append_or_create(&target, b"first\n").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("new.txt")).unwrap(),
+            "first\n"
+        );
+
+        let outside = temp_root();
+        let victim = outside.path().join("victim.txt");
+        std::fs::write(&victim, "ORIGINAL\n").unwrap();
+        symlink(&victim, root.path().join("link.txt")).unwrap();
+        let link = resolve_for_write(root.path().to_str().unwrap(), "link.txt").unwrap();
+        let error = append_or_create(&link, b"INJECTED\n").unwrap_err();
+        assert!(matches!(error, ToolError::PathDenied(_)), "{error:?}");
+        assert_eq!(
+            std::fs::read_to_string(&victim).unwrap(),
+            "ORIGINAL\n",
+            "the append step must not write through the link (#1494)"
         );
     }
 

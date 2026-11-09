@@ -43,6 +43,7 @@ impl FileSystemStateRepository {
         let state_dir: PathBuf = state_dir.into();
 
         if !state_dir.exists() {
+            // sink: state-persistence:state-store
             fs::create_dir_all(&state_dir)
                 .await
                 .map_err(|e| StateError::DirectoryError {
@@ -84,6 +85,7 @@ impl StateRepository for FileSystemStateRepository {
             })?;
 
         // Write to temp file (atomic if we fail here, original is intact)
+        // sink: state-persistence:state-store
         fs::write(&temp, &json)
             .await
             .map_err(|e| StateError::IoError {
@@ -91,6 +93,7 @@ impl StateRepository for FileSystemStateRepository {
             })?;
 
         // Atomic rename (on POSIX, rename(2) is atomic)
+        // sink: state-persistence:state-store
         fs::rename(&temp, &path)
             .await
             .map_err(|e| StateError::IoError {
@@ -133,6 +136,7 @@ impl StateRepository for FileSystemStateRepository {
         let path = self.state_path(execution_id);
 
         if path.exists() {
+            // sink: state-persistence:state-store
             fs::remove_file(&path)
                 .await
                 .map_err(|e| StateError::IoError {
@@ -143,6 +147,7 @@ impl StateRepository for FileSystemStateRepository {
         // Also clean up any leftover temp file
         let temp = self.temp_path(execution_id);
         if temp.exists() {
+            // sink: state-persistence:state-store
             let _ = fs::remove_file(&temp).await;
         }
 

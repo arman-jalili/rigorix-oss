@@ -27,6 +27,13 @@
 #   3. No evidence result is dropped. A bare `let _ =` under audit/,
 #      orchestrator/ or precondition/ fails unless the line carries
 #      `// sink: <id>` and that id is a registered row.
+#   5. Every call site names the row that governs it (`// sink: <id>` on or
+#      above the line). A row is written about a call site, and one row cannot
+#      describe five call sites with three different guarantees — that is how
+#      four raw writes stayed unregistered under one `atomic` row (#1494).
+#      Requiring it everywhere, rather than only when a module already has
+#      two, is what makes a *new* sink in a registered file fail: the row it
+#      would inherit was written about the site that was there.
 #
 # Usage:
 #   bash engine/.pi/scripts/validate-sink-register.sh             # check
@@ -188,9 +195,34 @@ def scan(src_dir):
                     continue
                 for kind, pattern in PATTERNS:
                     if pattern.search(line):
-                        hits.append((rel, i, kind, stripped[:120]))
+                        # The anchor may be on the same line or the two above it: the
+                        # comment explains the line, so it is written next to it.
+                        claim = None
+                        for probe in (i, i - 1, i - 2):
+                            if probe < 1:
+                                continue
+                            m = CLAIM.search(lines[probe - 1])
+                            if m:
+                                claim = m.group(1)
+                                break
+                        hits.append(
+                            dict(file=rel, line=i, kind=kind, text=stripped[:120],
+                                 claim=claim,
+                                 function=enclosing_function(lines[:cut], i))
+                        )
                         break
     return hits
+
+FUNCTION = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(\w+)")
+CLAIM = re.compile(r"//\s*sink:\s*([\w:.-]+)")
+
+def enclosing_function(lines, lineno):
+    """The nearest `fn` above a hit: the branch a call site belongs to (#1494)."""
+    for i in range(min(lineno, len(lines)) - 1, -1, -1):
+        m = FUNCTION.match(lines[i])
+        if m:
+            return m.group(1)
+    return "<file scope>"
 
 def scan_dropped_evidence(src_dir):
     """Rule 3: `let _ =` under the evidence paths, unless it names a sink."""
@@ -228,12 +260,27 @@ for row in rows:
 sink_ids = {row["sink"] for row in rows}
 
 hits = scan(src_dir)
-unregistered, registered = [], []
-for rel, lineno, kind, text in hits:
-    if any(r["kind"] == kind and matches(r["module"], rel) for r in rows):
-        registered.append((rel, lineno, kind))
-    else:
-        unregistered.append((rel, lineno, kind, text))
+unregistered, registered, unclaimed = [], [], []
+
+# Rule 5 (#1494): a module with more than one sink of a kind cannot be described by
+# one row, so each of its call sites names the row that governs it.
+by_module = {}
+for hit in hits:
+    by_module.setdefault((hit["file"], hit["kind"]), []).append(hit)
+
+for (rel, kind), group in by_module.items():
+    candidates = [r for r in rows if r["kind"] == kind and matches(r["module"], rel)]
+    if not candidates:
+        for hit in group:
+            unregistered.append((hit["file"], hit["line"], kind, hit["text"]))
+        continue
+    for hit in group:
+        claim = hit["claim"]
+        row = next((r for r in rows if r["sink"] == claim), None) if claim else None
+        if row is None or row["kind"] != kind or not matches(row["module"], rel):
+            unclaimed.append(hit)
+            continue
+        registered.append((rel, hit["line"], kind))
 
 dropped = scan_dropped_evidence(src_dir)
 
@@ -254,9 +301,12 @@ if mode in ("--report", "report"):
     print()
     for rel, lineno, kind, text in unregistered:
         print(f"  UNREGISTERED  {rel}:{lineno}  [{kind}]  {text}")
+    for hit in unclaimed:
+        print(f"  UNCLAIMED     {hit['file']}:{hit['line']}  [{hit['kind']}]  "
+              f"{hit['function']}()  claim={hit['claim']}")
     for rel, lineno, text in dropped:
         print(f"  DROPPED       {rel}:{lineno}  {text}")
-    if not unregistered and not dropped and not reg_errors:
+    if not unregistered and not unclaimed and not dropped and not reg_errors:
         print("  register matches the code.")
         sys.exit(0)
     sys.exit(1)
@@ -269,6 +319,22 @@ for rel, lineno, kind, text in unregistered:
         f"    add a row to {os.path.basename(reg_path)}, or route the call through a "
         f"module that already has one"
     )
+for hit in unclaimed:
+    where = f"engine/src/{hit['file']}:{hit['line']}"
+    if hit["claim"] is None:
+        failures.append(
+            f"{where}: unclaimed {hit['kind']} sink in {hit['function']}() — {hit['text']}\n"
+            f"    every call site names the row that governs it (#1494): one row cannot state what\n"
+            f"    several sites do, and a site that inherits a row written about another site is\n"
+            f"    how an unguarded write stayed registered as `atomic`. Write `// sink: <id>` on or\n"
+            f"    above the line — and split the row if the guarantees differ"
+        )
+    else:
+        failures.append(
+            f"{where}: `// sink: {hit['claim']}` does not name a {hit['kind']} row whose module\n"
+            f"    contains {hit['file']} — an anchor that points at another call site's row\n"
+            f"    describes nothing"
+        )
 for rel, lineno, text in dropped:
     failures.append(
         f"engine/src/{rel}:{lineno}: dropped result on the evidence path — {text}\n"
@@ -300,7 +366,7 @@ if failures:
     sys.exit(1)
 
 print(f"{GREEN}✅ sink register: {len(rows)} row(s), {len(registered)} production hit(s), "
-      f"all registered and honest{NC}")
+      f"all registered, claimed and honest{NC}")
 print(f"{DIM}   every row states what it does not do; every boundary crossing has a row{NC}")
 PY
 }
@@ -430,6 +496,79 @@ RS
 tools:run-command-spawn	tools/application/run_command_tool.rs	process	none	—	does not execute argv: the string still reaches the shell
 TSV
 	seed "an unmitigated row with no owning issue is refused" "must name the open issue"
+
+	# --- seed H: a second call site under one row (#1494) ------------------
+	#
+	# The measured defect: one `atomic` row for a file with five write sites, of
+	# which four were raw path writes. A row is about a call site, so a module with
+	# two sinks of a kind must name each of them.
+	reset_fixture
+	cat >"$WORK/src/tools/application/store.rs" <<'RS'
+pub fn save(path: &str, bytes: &[u8]) {
+    std::fs::write(path, bytes).unwrap();
+}
+
+pub fn append(path: &str, bytes: &[u8]) {
+    std::fs::write(path, bytes).unwrap();
+}
+RS
+	cat >"$WORK/reg.tsv" <<'TSV'
+tools:store-write	tools/application/store.rs	fs-write	atomic	fs_at::write_atomic — temp file, fsync, rename	in the parent follows links above the final component
+TSV
+	seed "a second, unclaimed call site in one module is refused" "unclaimed fs-write sink"
+
+	# --- seed I: the anchor points at a row that does not govern the line --
+	reset_fixture
+	cat >"$WORK/src/tools/application/store.rs" <<'RS'
+pub fn save(path: &str, bytes: &[u8]) {
+    // sink: tools:other-write
+    std::fs::write(path, bytes).unwrap();
+}
+
+pub fn append(path: &str, bytes: &[u8]) {
+    // sink: tools:other-write
+    std::fs::write(path, bytes).unwrap();
+}
+RS
+	cat >"$WORK/reg.tsv" <<'TSV'
+tools:store-write	tools/application/store.rs	fs-write	atomic	fs_at::write_atomic — temp file, fsync, rename	in the parent follows links above the final component
+tools:other-write	tools/application/other.rs	fs-write	atomic	fs_at::write_atomic — temp file, fsync, rename	in the parent follows links above the final component
+TSV
+	mkdir -p "$WORK/src/tools/application"
+	cat >"$WORK/src/tools/application/other.rs" <<'RS'
+pub fn f(path: &str, bytes: &[u8]) {
+    std::fs::write(path, bytes).unwrap();
+}
+RS
+	seed "an anchor naming another module's row is refused" "does not name a fs-write row whose module"
+
+	# --- the control: claiming both sites passes --------------------------
+	reset_fixture
+	cat >"$WORK/src/tools/application/store.rs" <<'RS'
+pub fn save(path: &str, bytes: &[u8]) {
+    // sink: tools:store-write
+    std::fs::write(path, bytes).unwrap();
+}
+
+pub fn append(path: &str, bytes: &[u8]) {
+    // sink: tools:store-write
+    std::fs::write(path, bytes).unwrap();
+}
+RS
+	cat >"$WORK/reg.tsv" <<'TSV'
+tools:store-write	tools/application/store.rs	fs-write	atomic	fs_at::write_atomic — temp file, fsync, rename	in the parent follows links above the final component
+TSV
+	set +e
+	out="$(check "$WORK/reg.tsv" "$WORK/src" check 2>&1)"
+	rc=$?
+	set -e
+	if [ $rc -eq 0 ]; then
+		echo "  ✓ two call sites claiming one row are accepted when the row governs both"
+	else
+		echo "  ✗ a legitimately claimed pair was rejected:"
+		echo "$out" | sed 's/^/      /'
+		failures=$((failures + 1))
+	fi
 
 	if [ "$failures" -ne 0 ]; then
 		echo "✗ $failures self-test(s) failed"

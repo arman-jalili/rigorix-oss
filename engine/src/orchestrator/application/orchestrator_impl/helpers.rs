@@ -297,6 +297,7 @@ impl OrchestratorServiceImpl {
     /// Detect git commit and branch from the working directory.
     pub(super) fn detect_git_info(repo_root: &str) -> (Option<String>, Option<String>) {
         let run_git = |args: &[&str]| -> Option<String> {
+            // sink: orchestrator:git-helpers
             std::process::Command::new("git")
                 .args(args)
                 .current_dir(repo_root)

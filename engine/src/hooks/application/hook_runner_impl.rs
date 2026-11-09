@@ -88,6 +88,7 @@ impl HookRunnerImpl {
         // #1082 class C3: a hook used to inherit the whole engine environment,
         // including `RIGORIX_HMAC_KEY`, so any operator-configured hook could
         // forge audit envelopes. Same allowlist as every other sink.
+        // sink: hooks:hook-shell
         let mut hook_cmd = tokio::process::Command::new("sh");
         hook_cmd.arg("-c").arg(command);
         apply_child_env(&mut hook_cmd, &[]);

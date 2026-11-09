@@ -125,6 +125,7 @@ impl GitDiffEffectOracle {
 }
 
 fn run_git(repo: &Path, args: &[&str]) -> Result<Vec<String>, ApprovalError> {
+    // sink: approval:effect-scope-git
     let output = Command::new("git")
         .arg("-C")
         .arg(repo)

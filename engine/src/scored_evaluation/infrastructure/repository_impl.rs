@@ -48,6 +48,7 @@ impl LocalEvaluationRepository {
     /// Ensure the execution directory exists.
     async fn ensure_dir(&self, execution_id: Uuid) -> Result<(), ScoredEvaluationError> {
         let dir = self.execution_dir(execution_id);
+        // sink: scored-evaluation:score-store
         tokio::fs::create_dir_all(&dir).await.map_err(|e| {
             ScoredEvaluationError::Internal(format!("Failed to create directory: {}", e))
         })
@@ -66,10 +67,12 @@ impl EvaluationRepository for LocalEvaluationRepository {
             .map_err(|e| ScoredEvaluationError::Internal(format!("Serialization error: {}", e)))?;
 
         // Atomic write: write to .tmp, then rename
+        // sink: scored-evaluation:score-store
         tokio::fs::write(&tmp_path, &json)
             .await
             .map_err(|e| ScoredEvaluationError::Internal(format!("Write error: {}", e)))?;
 
+        // sink: scored-evaluation:score-store
         tokio::fs::rename(&tmp_path, &path)
             .await
             .map_err(|e| ScoredEvaluationError::Internal(format!("Rename error: {}", e)))?;
@@ -133,6 +136,7 @@ impl EvaluationRepository for LocalEvaluationRepository {
 
     async fn delete_by_execution(&self, execution_id: Uuid) -> Result<(), ScoredEvaluationError> {
         let dir = self.execution_dir(execution_id);
+        // sink: scored-evaluation:score-store
         match tokio::fs::remove_dir_all(&dir).await {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),

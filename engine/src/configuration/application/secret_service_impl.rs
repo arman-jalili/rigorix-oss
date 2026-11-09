@@ -41,6 +41,7 @@ impl SecretService for SecretServiceImpl {
 
         match secret {
             Some(secret) => {
+                // sink: configuration:secret-availability
                 let source = if std::env::var(&input.env_var).is_ok() {
                     format!("env:{}", input.env_var)
                 } else {
@@ -70,6 +71,7 @@ impl SecretService for SecretServiceImpl {
     ) -> Result<Vec<String>, ConfigurationError> {
         let mut missing = Vec::new();
         for key in required_keys {
+            // sink: configuration:secret-availability
             match std::env::var(&key) {
                 Ok(value) => {
                     if value.is_empty() {

@@ -60,16 +60,95 @@ impl PermissionEnforcerImpl {
         path.split(['/', '\\']).any(|seg| seg == ".rigorix")
     }
 
+    /// Where a write to `path` would actually land, for the protection decision.
+    ///
+    /// #1493 (SINK-9): the check above judges the *requested string*, and the write
+    /// resolves that string through the filesystem. `ln -s .rigorix tmp` is named
+    /// nothing like `.rigorix`, passes the string test, and lands inside it — and
+    /// `.rigorix/hooks.toml` is not data, it is a command list the next host start
+    /// runs with the engine's privileges. So the decision is made on the effective
+    /// path: the deepest existing ancestor is resolved once, the remaining
+    /// components are appended (they cannot be links yet — they do not exist), and
+    /// the segment rule is applied to the result.
+    ///
+    /// Following links here is deliberate and is not the SINK-2 defect: this is a
+    /// *check*, and the thing it must recognise is where the write lands. The
+    /// mutation does not follow: it walks with `O_NOFOLLOW` (`fs_at`), so a link on
+    /// the way is refused independently of this decision.
+    fn effective_write_path(path: &str, workspace_root: &str) -> Option<std::path::PathBuf> {
+        let requested = std::path::Path::new(path);
+        let absolute = if requested.is_absolute() {
+            requested.to_path_buf()
+        } else {
+            std::path::Path::new(workspace_root).join(requested)
+        };
+
+        // Resolve the deepest ancestor that exists, then re-attach the rest.
+        let mut tail = Vec::new();
+        let mut cursor = absolute.as_path();
+        loop {
+            if let Ok(resolved) = cursor.canonicalize() {
+                let mut effective = resolved;
+                for part in tail.iter().rev() {
+                    effective.push(part);
+                }
+                return Some(effective);
+            }
+            match (cursor.file_name(), cursor.parent()) {
+                (Some(name), Some(parent)) => {
+                    tail.push(name.to_os_string());
+                    cursor = parent;
+                }
+                _ => return None,
+            }
+        }
+    }
+
+    /// The protection decision, on the effective path (#1493).
+    ///
+    /// Returns the reason when the write is refused, `None` when it may proceed.
+    /// The string test runs first because it is exact for the ordinary case and
+    /// names the requested path; the resolved test then catches the alias.
+    fn protected_config_refusal(path: &str, workspace_root: &str) -> Option<String> {
+        if Self::is_protected_config_path(path) {
+            return Some(format!(
+                "path '{}' is under .rigorix/** — operator-controlled config, agent writes denied by default permission config (R5)",
+                path
+            ));
+        }
+        let effective = Self::effective_write_path(path, workspace_root)?;
+        let effective_str = effective.to_string_lossy();
+        if Self::is_protected_config_path(&effective_str) {
+            return Some(format!(
+                "path '{}' resolves to '{}', which is under .rigorix/** — operator-controlled config; an alias of the protected directory is the protected directory (R5, #1493)",
+                path,
+                effective.display()
+            ));
+        }
+        None
+    }
+
     fn is_within_workspace(path: &str, workspace_root: &str) -> bool {
-        let canonical_path = match std::fs::canonicalize(path) {
+        // #1493: a relative path is relative to the workspace root, because that is
+        // what the writer joins it to. Canonicalizing it as given made it relative to
+        // the *process's* working directory — true for a CLI started in the repo, and
+        // silently wrong everywhere else, including every test.
+        let requested = Path::new(path);
+        let absolute = if requested.is_absolute() {
+            requested.to_path_buf()
+        } else {
+            Path::new(workspace_root).join(requested)
+        };
+        let absolute = absolute.as_path();
+        let canonical_path = match std::fs::canonicalize(absolute) {
             Ok(p) => p,
             Err(_) => {
                 // If the path doesn't exist yet (write to new file),
                 // resolve its parent directory
-                let parent = Path::new(path).parent();
+                let parent = absolute.parent();
                 match parent.and_then(|p| std::fs::canonicalize(p).ok()) {
-                    Some(par) => par.join(Path::new(path).file_name().unwrap_or_default()),
-                    None => Path::new(path).to_path_buf(),
+                    Some(par) => par.join(absolute.file_name().unwrap_or_default()),
+                    None => absolute.to_path_buf(),
                 }
             }
         };
@@ -157,15 +236,12 @@ impl PermissionEnforcer for PermissionEnforcerImpl {
             PermissionMode::WorkspaceWrite => {
                 // R5: deny agent writes to the operator-controlled config
                 // dir FIRST — protected regardless of workspace location.
-                if Self::is_protected_config_path(path) {
+                if let Some(reason) = Self::protected_config_refusal(path, workspace_root) {
                     return PermissionOutcome::Denied {
                         tool: "write_file".to_string(),
                         active_mode: effective_mode.as_str().to_string(),
                         required_mode: PermissionMode::DangerousFullAccess.as_str().to_string(),
-                        reason: format!(
-                            "path '{}' is under .rigorix/** — operator-controlled config, agent writes denied by default permission config (R5)",
-                            path
-                        ),
+                        reason,
                     };
                 }
                 let within_workspace = Self::is_within_workspace(path, workspace_root);
@@ -652,6 +728,92 @@ mod tests {
             );
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// #1493 acceptance 1 + 2 + 4: an alias of `.rigorix` is `.rigorix`.
+    ///
+    /// The seed is the measurement in the issue: `ln -s .rigorix tmp`, then write
+    /// `tmp/hooks.toml`. The string test says no (`tmp` is not `.rigorix`), the
+    /// write canonicalizes and lands inside it, and `.rigorix/hooks.toml` is a
+    /// command list the next host start executes with the engine's privileges.
+    /// Reverting the fix makes this test's first assertion fail, which is what
+    /// makes it a seed rather than a restatement.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn test_a_symlinked_alias_of_rigorix_is_denied_like_rigorix() {
+        let dir = std::env::temp_dir().join(format!("rigorix-r5-alias-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(dir.join(".rigorix")).expect("config dir");
+        std::fs::create_dir_all(dir.join("work")).expect("work dir");
+        let root = dir.to_str().unwrap().to_string();
+        std::os::unix::fs::symlink(dir.join(".rigorix"), dir.join("work/tmp")).expect("symlink");
+
+        let enforcer = test_enforcer(&root);
+        for alias in [
+            "work/tmp/hooks.toml",
+            "work/tmp/sequence-policy.toml",
+            "work/tmp/approvals.json",
+            "work/tmp/effect-commitment.toml",
+        ] {
+            let outcome = enforcer.check_file_write(alias, &root, None).await;
+            assert!(
+                outcome.is_denied(),
+                "an aliased write to '{alias}' must be denied like .rigorix itself, got {outcome:?}"
+            );
+            // The reason must name the resolved path: a refusal that says only
+            // "outside workspace" would be true on the next runner and useless.
+            if let PermissionOutcome::Denied { reason, .. } = &outcome {
+                assert!(
+                    reason.contains(".rigorix"),
+                    "the refusal must name what it refused: {reason}"
+                );
+            }
+            assert!(
+                !dir.join(".rigorix/hooks.toml").exists(),
+                "nothing may be created through the alias"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The resolved check does not become a blanket refusal: a path that resolves
+    /// to an ordinary directory inside the workspace is still allowed, and one that
+    /// resolves outside is denied for the reason that is true (it is outside).
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn test_the_resolved_check_does_not_invent_refusals() {
+        let dir = std::env::temp_dir().join(format!("rigorix-r5-near-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(dir.join("work/real")).expect("work dir");
+        let root = dir.to_str().unwrap().to_string();
+        std::os::unix::fs::symlink(dir.join("work/real"), dir.join("work/alias")).expect("link");
+
+        let enforcer = test_enforcer(&root);
+        let inside = enforcer
+            .check_file_write("work/alias/notes.txt", &root, None)
+            .await;
+        assert!(
+            inside.is_allowed(),
+            "an alias of an ordinary workspace directory stays writable, got {inside:?}"
+        );
+
+        let outside = std::env::temp_dir().join(format!("rigorix-r5-out-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(outside.join("plain")).expect("outside dir");
+        std::os::unix::fs::symlink(outside.join("plain"), dir.join("work/escape")).expect("link");
+        let denied = enforcer
+            .check_file_write("work/escape/notes.txt", &root, None)
+            .await;
+        assert!(
+            denied.is_denied(),
+            "outside the root stays denied: {denied:?}"
+        );
+        if let PermissionOutcome::Denied { reason, .. } = &denied {
+            assert!(
+                reason.contains("outside workspace"),
+                "the refusal must state the actual reason: {reason}"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&outside);
     }
 
     #[tokio::test]

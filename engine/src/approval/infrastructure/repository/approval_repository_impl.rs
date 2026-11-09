@@ -70,6 +70,7 @@ fn with_file_lock<T>(
     use std::os::unix::io::AsRawFd;
     let lock = lock_path(path);
     if let Some(parent) = lock.parent() {
+        // sink: approval:consumption-ledger
         let _ = std::fs::create_dir_all(parent);
     }
     let file = std::fs::OpenOptions::new()
@@ -155,6 +156,7 @@ fn write_consumption_ledger(
     run_key: Option<&[u8]>,
 ) -> Result<(), ApprovalError> {
     if let Some(parent) = ledger.parent() {
+        // sink: approval:consumption-ledger
         let _ = std::fs::create_dir_all(parent);
     }
     let mac = match run_key {
@@ -178,12 +180,14 @@ fn write_consumption_ledger(
             .unwrap_or_default(),
         Uuid::new_v4()
     ));
+    // sink: approval:consumption-ledger
     std::fs::write(&tmp, contents).map_err(|e| {
         ApprovalError::Internal(format!(
             "write approval consumption ledger {}: {e}",
             tmp.display()
         ))
     })?;
+    // sink: approval:consumption-ledger
     std::fs::rename(&tmp, ledger).map_err(|e| {
         ApprovalError::Internal(format!(
             "commit approval consumption ledger {}: {e}",
@@ -801,8 +805,10 @@ impl FileBackedApprovalRepository {
                     .unwrap_or_default(),
                 Uuid::new_v4()
             ));
+            // sink: approval:consumption-ledger
             std::fs::write(&tmp, contents)
                 .map_err(|e| ApprovalError::Internal(format!("write store: {e}")))?;
+            // sink: approval:consumption-ledger
             std::fs::rename(&tmp, &self.path)
                 .map_err(|e| ApprovalError::Internal(format!("commit store: {e}")))?;
             Ok(())

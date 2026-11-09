@@ -52,6 +52,7 @@ impl Tool for GitStageTool {
 
         let start = Instant::now();
 
+        // sink: tools:git-stage-fixed-argv
         let output = tokio::process::Command::new("git")
             .args(["add", &path])
             .current_dir(&self.repo_root)

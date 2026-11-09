@@ -553,6 +553,7 @@ impl PreconditionRunner for ProcessPreconditionRunner {
             "precondition: spawning check (argv-only, no shell)"
         );
 
+        // sink: precondition:operator-argv
         let mut child = Command::new(&resolved)
             .args(&precondition.command[1..])
             .env("RIGORIX_PRECONDITION_ID", &precondition.id)

@@ -63,6 +63,7 @@ impl SequencePolicyPrecedence {
 
     /// Read [`PRECEDENCE_ENV`], falling back to the safe default.
     pub fn from_env() -> Self {
+        // sink: sequence-policy:precedence
         std::env::var(PRECEDENCE_ENV)
             .ok()
             .and_then(|v| Self::parse(&v))

@@ -131,6 +131,7 @@ impl HookCommandRepository for FilesystemHookConfigRepository {
 
     async fn reset(&self) -> Result<(), HookError> {
         if self.config_path.exists() {
+            // sink: hooks:config-store
             fs::remove_file(&self.config_path).map_err(|e| HookError::Internal {
                 detail: format!(
                     "Failed to remove hook config '{}': {}",

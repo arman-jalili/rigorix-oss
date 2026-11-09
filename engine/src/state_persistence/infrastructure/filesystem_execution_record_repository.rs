@@ -28,6 +28,7 @@ impl FileSystemExecutionRecordRepository {
         let record_dir: PathBuf = record_dir.into();
 
         if !record_dir.exists() {
+            // sink: state-persistence:execution-records
             fs::create_dir_all(&record_dir)
                 .await
                 .map_err(|e| StateError::DirectoryError {
@@ -67,12 +68,14 @@ impl ExecutionRecordRepository for FileSystemExecutionRecordRepository {
                 detail: format!("Failed to serialise execution record: {}", e),
             })?;
 
+        // sink: state-persistence:execution-records
         fs::write(&temp, &json)
             .await
             .map_err(|e| StateError::IoError {
                 detail: format!("Failed to write temp record file: {}", e),
             })?;
 
+        // sink: state-persistence:execution-records
         fs::rename(&temp, &path)
             .await
             .map_err(|e| StateError::IoError {
@@ -145,9 +148,11 @@ impl ExecutionRecordRepository for FileSystemExecutionRecordRepository {
             if let Ok(record) = self.load_record(record_id).await {
                 let idx_path = self.execution_index_path(record.execution_id);
                 if idx_path.exists() {
+                    // sink: state-persistence:execution-records
                     let _ = fs::remove_file(&idx_path).await;
                 }
             }
+            // sink: state-persistence:execution-records
             fs::remove_file(&path)
                 .await
                 .map_err(|e| StateError::IoError {
@@ -156,6 +161,7 @@ impl ExecutionRecordRepository for FileSystemExecutionRecordRepository {
         }
 
         if temp.exists() {
+            // sink: state-persistence:execution-records
             let _ = fs::remove_file(&temp).await;
         }
 
