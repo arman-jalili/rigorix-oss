@@ -1,0 +1,15 @@
+# Descriptive ADR citation labels, and the reason each one is allowed.
+#
+# A citation `ADR-nnn (label)` is normally checked by `engine/.pi/scripts/validate-adr-references.sh`:
+# the label has to name something in that ADR's subject (its title, its `## Title` section, or its
+# filename). Sometimes the label names the *interaction* instead — what this record does with that
+# one — and that is a judgement, not a fact the guard can derive. A judgement with no record is the
+# silence the guard removes, so it is recorded here with the sentence that makes it true.
+#
+# Adding a row is a review decision: the reason must say why the label is right for that document,
+# and the guard fails a row with an empty reason. A label that is simply wrong belongs in the ADR,
+# not in this file.
+#
+# Columns (tab-separated): ADR-nnn <tab> label (lowercased, whitespace collapsed) <tab> reason
+ADR-013	write-deny boundary	ADR-013's sequence policy is where a write is denied across a window — deny/promote gating is its subject matter, and this is the half the citing record consults
+ADR-016	which scopes its phase d out explicitly rather than over-claiming	labels ADR-016's scope discipline (Phase D declared out of scope), not its subject; the citation is about how it states a limit

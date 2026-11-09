@@ -5,7 +5,7 @@ Adoption is gated by the triggers in § Adoption triggers.
 **Date:** 2026-10-31
 **Supersedes:** the storage shape introduced with the record MAC (#1237) — a design, not an earlier ADR.
 **Superseded by:** nothing.
-**Related:** ADR-016 (the chained-log pattern and its boundary), ADR-011 (approval binding),
+**Related:** ADR-016 (audit integrity anchor: the ledger this log projects), ADR-011 (approval binding),
 ADR-019 (effect commitment — the claim/lease vocabulary this reuses), ADR-006 (atomic write-rename),
 ADR-017 (consequence gating)
 

@@ -3,8 +3,11 @@
 **Status:** Accepted (implemented by WASI-1, #1465)
 **Date:** 2026-11-08
 **Supersedes:** nothing. **Superseded by:** nothing.
-**Related:** ADR-012 (failure semantics), ADR-013 (who verifies), ADR-014 (portable slice and
-pinned inputs), ADR-011 (crate identity and release train)
+**Related:** ADR-009 (error handling — failure semantics), ADR-012 (identity attestation — who verifies, and on what
+authority), ADR-023 (the sink boundary this artifact sits inside). Two of the four subjects that
+used to be listed here have **no ADR**, and naming a number for them was how this block came to
+point at four unrelated documents: the portable slice is `docs/spike-portable-slice-2026-11.md`,
+and the release train is enforced by `validate-release-train.sh` rather than decided in a record.
 
 ## Context
 
@@ -44,7 +47,7 @@ rigx_free(ptr: u32, len: u32)        the host returns a buffer
 A response is a buffer whose first four bytes are the little-endian payload length. Two reasons:
 
 - **Four exports named after four operations is four bindings a host must generate**, and the
-  fifth operation (verification, ADR-013) is exactly how that surface grows. One entry with an
+  fifth operation (verification, ADR-012) is exactly how that surface grows. One entry with an
   `op` field cannot grow a dialect: an operation is a `match` arm.
 - **A non-JS host returns one `i32` from a call.** An ABI that needs two return values needs a
   side channel or a struct, and both are a second dialect.
@@ -62,7 +65,9 @@ domain does not.
 
 ### 3. A trap is not a refusal
 
-ADR-012 tier 3 says a trap is fatal and host-visible, never rendered as a refusal or an allow.
+§3 of this record says a trap is fatal and host-visible, never rendered as a refusal or an
+allow — `ADR-009` is where the failure vocabulary lives, and `docs/binding-responsibility.md`
+is where the promise is made to embedders.
 On `wasm32-wasip1` there is no unwinder, so the promise is kept by *not panicking*:
 
 - `-C panic=abort` (a `[profile.release]` block in a non-root package is ignored by Cargo and
@@ -131,7 +136,10 @@ not because of the module.
 
 So the host policy is a fixture, not a paragraph: `wasi/ci/embedder-contract.json`, with
 `wasi/ci/embedder-contract.mjs` as the reference implementation. Every embedding language
-implements the same six rows.
+implements the same **five behaviours across six imports** — `environ_sizes_get` and
+`environ_get` share a row, and the import count (six, one per entry in `wasi/ci/imports.txt`) is
+a different number from the row count, which is why both are named. `docs/binding-responsibility.md`
+states it the same way: "the module imports six functions", "five claims, five owners".
 
 | import | what a default runtime gives | what an embedder must answer | why |
 |---|---|---|---|
@@ -139,7 +147,7 @@ implements the same six rows.
 | `clock_time_get` | the wall clock | `0`, and count the call | the instant comes from the facts; the count is what catches a decision that starts reading it |
 | `random_get` | OS entropy | leave the (already zero) buffer alone, and count | determinism: a digest that changes per run is unusable |
 | `fd_write` | stdout | discard, and count the bytes | a refusal goes to a `detail` field, never to a log |
-| `proc_exit` | exits the host process | **raise**, never return | a trap is not a refusal (ADR-012), and it must not take the caller down |
+| `proc_exit` | exits the host process | **raise**, never return | a trap is not a refusal (§3), and it must not take the caller down |
 
 Two rules, and the second is what makes the first enforceable:
 
