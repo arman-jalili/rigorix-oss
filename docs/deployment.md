@@ -213,10 +213,14 @@ a client that does not know the field, which is how the original defect stayed i
 crossing out of the engine's types; `engine/.pi/architecture/sink-register.tsv` is the
 enumeration, one row per call site. Three things an operator should take from it:
 
-- **`RIGORIX_SANDBOX` is a declaration, not a proof.** The engine refuses a `run_command` step
-  with no declaration and records which regime it was told it runs under. It does not inspect
-  the namespace it is in. If you declare `container` and run without one, the audit record says
-  `container` and the truth is otherwise.
+- **`RIGORIX_SANDBOX` is a declaration, not a proof.** The engine refuses any step that can
+  start a process — `run_command`, `git_read`, `git_stage`, `git_commit` — when no declaration
+  exists, and records which regime it was told it runs under. It does not inspect the namespace
+  it is in. If you declare `container` and run without one, the audit record says `container`
+  and the truth is otherwise. `git_read` additionally runs only read subcommands and refuses
+  the forms that name a program (`-c`, `--exec-path`, `ext::`, …), but a git alias or hook
+  defined in the repository (`.git/config`, `.git/hooks`) is still code the agent can write —
+  the declaration is the boundary for that, not the allowlist.
 - **`.rigorix/` protection is a resolved-path decision.** A write that lands inside it is
   refused, including through an alias (a symlinked directory). It does not make the directory
   unwritable: an operator who widens its mode, or a status quo where the agent's user owns the

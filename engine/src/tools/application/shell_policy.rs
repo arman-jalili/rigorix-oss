@@ -257,6 +257,142 @@ pub fn resolve_program(program: &str) -> Result<std::path::PathBuf, String> {
     ))
 }
 
+/// Options and forms a `git_read` step may never use, with the reason (#1498).
+///
+/// Each of these makes git run a **program**, or point it at one:
+///
+/// * `-c` / `--config` / `--config-env` set a config value for this invocation, and
+///   `-c alias.pwn=!curl …` is a shell command. Measured on `d834cc41`, with the
+///   argv the dispatcher built from `args: "-c alias.pwn=!touch pwn /tmp/x"`:
+///   the file was created. `!`-prefixed aliases run through a shell, and the
+///   one-token restriction of `split_whitespace` is not a constraint — `!curl`
+///   plus ordinary arguments is a download.
+/// * `--exec-path` points git at a different binary directory.
+/// * `--upload-pack` / `--receive-pack` name the program the *other* side of a
+///   transport runs.
+/// * `--paginate` / `--open-files-in-pager` run a pager.
+/// * `--git-dir`, `--work-tree`, `--namespace` retarget the invocation at something
+///   other than the repository the step was given.
+/// * `ext::` is a transport that names a program.
+///
+/// A read step needs none of them. The list is refusals **by name**, because a
+/// refusal that says "invalid argument" teaches the next author nothing.
+pub const REFUSED_GIT_FORMS: &[(&str, &str)] = &[
+    (
+        "-c",
+        "sets a config value for this invocation, and `-c alias.x=!cmd` runs a shell command",
+    ),
+    (
+        "--config",
+        "sets a config value for this invocation (`-c` long form)",
+    ),
+    (
+        "--config-env",
+        "sets a config value from the environment for this invocation",
+    ),
+    ("--exec-path", "points git at a different binary directory"),
+    (
+        "--upload-pack",
+        "names the program the receiving side of a transport runs",
+    ),
+    (
+        "--receive-pack",
+        "names the program the sending side of a transport runs",
+    ),
+    ("--paginate", "runs a pager program"),
+    ("--open-files-in-pager", "names the pager program to run"),
+    (
+        "--git-dir",
+        "retargets the invocation at another repository",
+    ),
+    (
+        "--work-tree",
+        "retargets the invocation at another working tree",
+    ),
+    ("ext::", "a transport that names a program"),
+];
+
+/// Subcommands a `git_read` step may run: reads, and nothing that executes.
+///
+/// The dispatcher's `git_read` is a read step, so the list is what the name
+/// promises. A subcommand that is not here is refused, which is the point: the
+/// dangerous forms are not a list someone has to keep complete, they are anything
+/// not enumerated. `git_stage` and `git_commit` build their own argv and do not
+/// come through here.
+pub const GIT_READ_SUBCOMMANDS: &[&str] = &[
+    "blame",
+    "branch",
+    "cat-file",
+    "describe",
+    "diff",
+    "for-each-ref",
+    "grep",
+    "log",
+    "ls-files",
+    "ls-tree",
+    "merge-base",
+    "name-rev",
+    "rev-list",
+    "rev-parse",
+    "shortlog",
+    "show",
+    "show-ref",
+    "status",
+    "symbolic-ref",
+    "tag",
+    "whatchanged",
+];
+
+/// Refuse a `git_read` argument list that could run a program (#1498).
+///
+/// Two rules, in the order that produces the better message: a refused form is
+/// named with its reason (it is what an author is most likely to have typed), then
+/// the subcommand must be on the read allowlist (it is what catches everything
+/// nobody enumerated).
+pub fn validate_git_read_args(args: &[&str]) -> Result<(), String> {
+    let mut words = args.iter().copied().filter(|word| !word.is_empty());
+    let first = words.next().ok_or_else(|| {
+        "the git step has no subcommand; it needs one of: ".to_string()
+            + &GIT_READ_SUBCOMMANDS.join(", ")
+    })?;
+
+    for word in std::iter::once(first).chain(words.clone()) {
+        // `-ckey=value` is the attached form of `-c`; git accepts it, so a
+        // prefix check is what covers both.
+        if word.starts_with("-c") && word.len() > 2 && !word.starts_with("--") {
+            return Err(format!(
+                "git argument '{word}' is refused: it is the attached form of `-c` (a config \
+                 value for this invocation), and `alias.x=!cmd` in a config value runs a shell \
+                 command. A `git_read` step reads the repository; it never names a program \
+                 (#1498)"
+            ));
+        }
+        for (form, why) in REFUSED_GIT_FORMS {
+            if word == *form || word.starts_with(&format!("{form}=")) {
+                return Err(format!(
+                    "git argument '{word}' is refused: {form} {why}. A `git_read` step reads the \
+                     repository; it never names a program (#1498)"
+                ));
+            }
+            if word.contains(form) && form.ends_with("::") {
+                return Err(format!(
+                    "git argument '{word}' is refused: {form} {why} (#1498)"
+                ));
+            }
+        }
+    }
+
+    if !GIT_READ_SUBCOMMANDS.contains(&first) {
+        return Err(format!(
+            "'{first}' is not a read subcommand. A `git_read` step may run: {}. \
+             Anything else can write, fetch or execute, which is what `git_stage`, `git_commit` \
+             and `run_command` are for — and those require a declared isolation (#1498)",
+            GIT_READ_SUBCOMMANDS.join(", ")
+        ));
+    }
+    Ok(())
+}
+
 /// The deployment fact that must exist before `run-command` may be enabled.
 ///
 /// `none` is a recognized value and a refusal: declaring that there is no

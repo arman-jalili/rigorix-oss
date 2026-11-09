@@ -35,6 +35,18 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   program resolved in the engine's `PATH`, argv rather than a string, and the standard child
   environment allowlist. **This can break a deployment** whose git operations authenticate
   through an ssh-agent or a `GIT_*` variable: those are no longer visible to the child.
+- **`git_read` can no longer name a program, and every step that can execute now needs a
+  declared boundary (#1498).** `git -c alias.pwn='!touch /tmp/x' pwn` created the file: git's
+  argv can name a program, a `!`-prefixed alias runs through a shell, and the step was exempt
+  from the `RIGORIX_SANDBOX` requirement that `run_command` has had since #1487. `git_read` now
+  accepts only read subcommands and refuses `-c`/`--config`/`--config-env`, `--exec-path`,
+  `--upload-pack`, `--receive-pack`, `--paginate`, `--open-files-in-pager`, `--git-dir`,
+  `--work-tree` and `ext::` by name. The declaration gate now covers every kind that can spawn
+  (`run_command`, `git_read`, `git_stage`, `git_commit`), keyed on the capability rather than
+  the step's name. **Breaking:** a deployment that runs git steps without `RIGORIX_SANDBOX` set
+  will have those steps refused. A git alias or hook defined in the repository is still code
+  the agent can write; the declared isolation is the boundary for that, and the register row
+  says so.
 - **`.rigorix` writes are refused for a relative path judged against the process directory
   (#1493).** `is_within_workspace` canonicalized a relative path against the process's working
   directory instead of the workspace root it is relative to.
