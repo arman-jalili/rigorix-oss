@@ -1624,6 +1624,66 @@ mod tests {
         }
     }
 
+    /// #1500 criterion 3, both halves, against real git: **the repository** names the
+    /// program, so the filter is not the containment and the declaration is.
+    ///
+    /// The measured vector (git 2.50.1): `git config core.fsmonitor <script>` then
+    /// `git status` runs the script. Nothing in that argv is unusual — `status --porcelain`
+    /// passes `validate_git_read_args`, which is the point. So:
+    ///
+    /// * the step is refused **before any spawn** when no isolation is declared, and the
+    ///   repository's program does not run (the marker is absent);
+    /// * the same step, run the way a declared deployment runs it, *does* run it — which is
+    ///   why the gate has to exist rather than the filter.
+    #[tokio::test]
+    async fn the_repository_names_the_program_not_the_argv() {
+        let repo = git_repo("sink-12");
+        let marker = marker_path("sink-12-fsmonitor");
+        let script = repo.path().join("fsm.sh");
+        std::fs::write(
+            &script,
+            format!("#!/bin/sh\necho ran >> {}\necho /\n", marker.display()),
+        )
+        .expect("write the fsmonitor script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        let configured = std::process::Command::new("git")
+            .args(["config", "core.fsmonitor", &script.display().to_string()])
+            .current_dir(repo.path())
+            .status()
+            .expect("git config");
+        assert!(configured.success());
+
+        // Half one: no declaration, no spawn — and the argv is one the filter accepts.
+        let refusal = ParallelExecutionServiceImpl::undeclared_step_refusal(
+            "git_read",
+            r#"{"args": "status --porcelain"}"#,
+            Uuid::now_v7(),
+            "git_read",
+            Instant::now(),
+        );
+        assert_eq!(
+            refusal.failure_type.as_deref(),
+            Some("sandbox_undeclared"),
+            "a step whose repository names a program must need a declaration"
+        );
+        assert!(
+            !marker.exists(),
+            "the refusal must happen before the spawn: `core.fsmonitor` ran"
+        );
+
+        // Half two lives in `shell_policy.rs`: `the_filter_does_not_see_a_program_the_repository_names`
+        // runs the same two commands with `current_dir` set per process and asserts the script
+        // *does* run. It is not folded in here because `exec_git_read` spawns git in the engine's
+        // process directory, and changing that from a test thread races every test that uses a
+        // relative path — a test may not buy its property with another test's stability.
+        let _ = std::fs::remove_file(&marker);
+    }
+
     /// The structural half of criterion 4: the gate is on the capability, and the
     /// list cannot fall behind the code.
     ///

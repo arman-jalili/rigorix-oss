@@ -120,21 +120,46 @@ be named here with the reason it was accepted — as §6 does.
 
    Fixed in two parts, and the residual is what remains after both:
 
-   * **Filtering** (the `git_read` argument allowlist): the subcommand must be a *read*, and the
-     forms that name a program are refused **by name** — `-c`/`--config`/`--config-env`,
-     `--exec-path`, `--upload-pack`, `--receive-pack`, `--paginate`, `--open-files-in-pager`,
-     `--git-dir`, `--work-tree`, `ext::`. A read step needs none of them.
+   * **Filtering** (the `git_read` argument allowlist): the subcommand must be a *read* **that
+     cannot write**, and the forms that name a program are refused **by name** —
+     `-c`/`--config`/`--config-env`, `--exec-path`, `--upload-pack`, `--receive-pack`,
+     `--paginate`, `--open-files-in-pager`, `--git-dir`, `--work-tree`, `--namespace`, `-C`,
+     `ext::`. A read step needs none of them. `-c` is a *leading* option (git's grammar):
+     `git -c k=v status` sets a config value, `git status -c k=v` is `unknown switch 'c'`, and
+     the same word after the subcommand is that subcommand's own read flag (`git grep -c`,
+     `git log -c`). The first version of this filter scanned every word, which refused both of
+     those reads and told the author they had tried to set a config value (#1502).
+
+     The allowlist also answers "can this **write**?", which it did not until #1501: it carried
+     `symbolic-ref` (measured: `git symbolic-ref HEAD refs/heads/extra` moved HEAD) and
+     `branch`/`tag` (measured: `git tag -d v1` deleted the tag), and `--output` (measured:
+     `git log --output=<path>` wrote the file, anywhere the engine's uid can write). A write is
+     a consequence, and the step kind is part of the gate's input — a step called `git_read`
+     that moves HEAD presents as a read to every policy that reads the name. So: write flags are
+     refused by name, and `branch`/`tag` must **name** their read form (`--list`, `--contains`,
+     …), because `branch` lists and `branch newb` creates and telling those apart needs a
+     positional grammar.¶
    * **The declaration**: every step kind that can start a process needs `RIGORIX_SANDBOX`
      (`EXECUTING_STEP_KINDS`: `run_command`, `git_read`, `git_stage`, `git_commit`), gated on
      the capability rather than on the name, with a structural test that a new spawning handler
      cannot be added without being in the list.
 
-   **What remains** (accepted, with the reason): an alias or a hook defined in the **repository's
-   own git config or `.git/hooks`** runs a program, and those live inside the agent-writable
-   workspace — `.git` is not `.rigorix`, so the resolved-path protection does not cover it. The
-   boundary there is the declared isolation, exactly as for `run_command`; the row's `does_not`
-   states it. Refusing `git` entirely would be the only way to remove it, and then there is no
-   git step.
+   **What remains** (accepted, with the reason): **git runs programs named by repository
+   configuration, for ordinary read subcommands.** The trigger is not the step's argv — it is
+   any program the repository makes a read consult: `core.fsmonitor` on `git status`,
+   `diff.external` on `git diff`, textconv drivers, aliases, and hooks. Measured on 2.50.1:
+
+   ```
+   $ git config core.fsmonitor <script>;   git status --porcelain   → the script ran
+   $ git config diff.external <script>;    git diff                → the script ran
+   ```
+
+   Naming "an alias in `.git/config`" as the example was the misleading part (#1500, #1502): it
+   reads as *"only if the step names an alias"*, and the measured trigger is plain `git status`
+   with an ordinary argv. `.git` is inside the agent-writable workspace, so the resolved-path
+   protection does not cover it — the boundary is the declared isolation, exactly as for
+   `run_command`, and the row's `does_not` states it that way. Refusing `git` entirely would be
+   the only way to remove it, and then there is no git step.
 
 ### 7. What does not need an ADR
 
