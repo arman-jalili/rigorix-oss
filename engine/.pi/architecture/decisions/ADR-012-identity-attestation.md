@@ -106,7 +106,11 @@ Implementation files should reference: `.pi/architecture/modules/identity.md` (e
 
 ## References
 
-- Related ADRs: ADR-011 (approval binding — consumes identity), ADR-005 (OSS MCP transport auth — amended), ADR-005 (enterprise — JWT deferred, now the authorization half)
+- Related ADRs: ADR-011 (approval binding — consumes identity). The transport-side decisions are
+  **not** in this register: the OSS MCP transport auth, and the enterprise IdP record where
+  JWT/OAuth2 was deferred and is now the authorization half, are `rigorix-enterprise` ADR-005 and
+  the MCP transport document. They were cited here as `ADR-005`, which in this repository is
+  Event Bus — the number resolved, the document did not (#1505).
 - External: OIDC device flow (RFC 8628); Portotify — "Capability Is Not Authority"; SOC 2 change-management evidence requirements
 
 ---

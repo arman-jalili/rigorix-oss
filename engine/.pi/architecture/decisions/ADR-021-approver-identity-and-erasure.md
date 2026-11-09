@@ -7,7 +7,7 @@ the legal question in § Open questions is not, and this ADR does not pretend to
 the approver, and completes the item ADR-020 § D7 deferred: *"the pseudonym/erasure decision moves to
 ADR-021 with the legal question undecided."*
 **Superseded by:** nothing.
-**Related:** ADR-016 (chained log and its boundary), ADR-019 (effect commitment — `claim.subject()`
+**Related:** ADR-016 (audit integrity anchor: the ledger this log projects), ADR-019 (effect commitment — `claim.subject()`
 is the vocabulary this reuses), ADR-020 (approval store; Proposed), ADR-011 (approval binding),
 ADR-009 (error handling — redaction at construction).
 
