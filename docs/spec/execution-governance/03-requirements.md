@@ -469,8 +469,7 @@ are configured but cannot arm — malformed configuration, an executable missing
 network semantics other than an operator-declared determination service, no retry that changes the
 verdict; identical step inputs, configuration and check process MUST produce an identical verdict.
 The engine MUST NOT contain domain semantics: a new domain requires a new operator-authored check,
-not an engine change. This is demonstrated in
-[the validation protocol](../validation-protocol-v1.md#case-3--domain-neutrality).
+not an engine change. This is demonstrated in case 3 of `docs/spec/validation-protocol-v1.md`.
 
 **Inbound interfaces, both operator-owned.** The check is an argv array (no shell), a JSON stdin
 document, documented environment variables, a wall-clock timeout, and exit-code mapping; the check
