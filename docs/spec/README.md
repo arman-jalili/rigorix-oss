@@ -7,12 +7,18 @@ artifact and checked against stated failure conditions.
 
 ## Index
 
+<!-- index: generated from specs.json by engine/.pi/scripts/validate-spec-register.sh — do not edit by hand -->
 | Specification | Version | Date | Status |
 |---------------|---------|------|--------|
-| [Consequence Gating](./consequence-gating-v1.md) | 1.0 | 2026-10-12 | Published |
-| [Consequence Gating — Validation Protocol](./validation-protocol-v1.md) | 1.0 | 2026-10-12 | Published |
-| [Terminology](./terminology.md) | 1.0 | 2026-10-12 | Published |
-| [Execution Governance](./execution-governance/README.md) | 0.4 | 2026-11-10 | Review draft |
+| [Preconditions](./consequence-gating-v1.md) | 1.0 | 2026-10-12 | current |
+| Requirements | — | — | in `execution-governance/03-requirements.md` §D |
+| Capacity | — | — | in `execution-governance/03-requirements.md` §E |
+| Effects | — | — | in `execution-governance/03-requirements.md` §J |
+| Approval | — | — | in `execution-governance/03-requirements.md` §B |
+| [Execution Governance](./execution-governance/README.md) | 0.4 | 2026-11-10 | draft |
+| [Consequence Gating — Validation Protocol](./validation-protocol-v1.md) | 1.0 | 2026-10-12 | current |
+| [Terminology](./terminology.md) | 1.0 | 2026-10-12 | current |
+<!-- /index -->
 
 ## How to cite
 
