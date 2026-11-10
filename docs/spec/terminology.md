@@ -94,8 +94,7 @@ when, and how it can be verified*; it does not carry standing.
 ### declaration (isolation)
 The **regime an operator states the deployment runs in** — `container` or `vm`. A
 declaration is a fact the operator supplies, not a property the engine checks: nothing in
-the engine inspects the namespace, the cgroup or the hypervisor. Consequence Gating v2.0
-§5 and Execution Governance RS-099/RS-100 fix the vocabulary: an *undeclared* step does
+the engine inspects the namespace, the cgroup or the hypervisor. RS-099/RS-100 fix the vocabulary: an *undeclared* step does
 not run; a *declared* step is not thereby contained.
 
 ### embedder
@@ -105,7 +104,7 @@ section states what the module *can reach*; the embedder's import table states w
 
 ### operand
 A **number or identifier a refusal uses**, carried as a typed field rather than
-interpolated into a sentence (Consequence Gating v2.0 §2.7). A missing operand refuses as
+interpolated into a sentence (`03-requirements.md` RS-111). A missing operand refuses as
 `port_unavailable`; it is never reported as `0`, because `0` overage is a statement that
 the request fits.
 

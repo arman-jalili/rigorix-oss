@@ -36,7 +36,7 @@ refuses.
 ## 1b. The in-process binding (0.4.0)
 
 A third *form* of deployment, not a third mode: the gate as an artifact the host loads
-(Consequence Gating v2.0 §4). It is a producer — it evaluates and returns a decision and
+(ADR-022). It is a producer — it evaluates and returns a decision and
 it cannot verify anything — and a claim about it must state three further facts:
 
 1. **the digest it loaded**, with the platform and commit the digest belongs to (RS-106);

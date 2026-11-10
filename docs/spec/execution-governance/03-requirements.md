@@ -330,15 +330,15 @@ step that can execute a program may run. An absent, unrecognized or `none` decla
 MUST refuse the step, with a named failure type, **before any process is started**.
 *Rationale:* a policy over an argv string is not a boundary. The boundary is what the
 deployment states it has; a step that runs before stating it has none.
-*Trace:* `SandboxDeclaration`; failure type `sandbox_undeclared`; Consequence Gating
-v2.0 §5.
+*Trace:* `SandboxDeclaration`; failure type `sandbox_undeclared`; §L (RS-111).
+
 
 **RS-100** A claim MUST NOT present the declaration as evidence of containment. What the
 implementation may claim is that an undeclared step does not run, never that a declared
 step is contained. Inspecting the namespace is not something the engine does.
 *Rationale:* a declaration is a fact the operator supplies, not a property the engine
 checks; conflating them is the claim `10-non-claims.md` 21 refuses.
-*Trace:* Consequence Gating v2.0 §5; ADR-023 §5.
+*Trace:* `03-requirements.md` §L; ADR-023 §5.
 
 **RS-101** The set of step kinds that can execute a program MUST be derivable from the
 implementation's source by a check, and a kind that spawns a process but is not in that
@@ -374,7 +374,7 @@ path means something else.
 run as complete.
 *Rationale:* "the run succeeded and the evidence for it did not" is a fact about the run,
 not a warning on stderr.
-*Trace:* Consequence Gating v2.0 §3.2; `EvidenceStatus`; the CLI status bar; the MCP run
+*Trace:* §G (decision records); `EvidenceStatus`; the CLI status bar; the MCP run
 response's `evidence` field.
 
 **RS-106** A bound artifact MUST be verified against its recorded digest at load, and a
@@ -382,7 +382,7 @@ module whose import section differs from the recorded one MUST be refused by nam
 published digest MUST state the platform and commit it belongs to.
 *Rationale:* the import table is cheap to reproduce in a hostile module; the digest is
 not. A digest without its build context pins nothing.
-*Trace:* Consequence Gating v2.0 §4.3; `loader.verify_artifact` (Python), `gate.Open`
+*Trace:* ADR-022 §6; `loader.verify_artifact` (Python), `gate.Open`
 (Go); the release page's `.wasm` + `.sha256`.
 
 **RS-107** A behaviour the specification names a *read* MUST NOT change repository state
@@ -397,4 +397,55 @@ word MUST have exactly one owner in the implementation, and a host MUST be able 
 from that owner's spelling.
 *Rationale:* the three vocabularies are what a verifier parses; an unannounced addition is
 a record a published verifier cannot read.
-*Trace:* Consequence Gating v2.0 §2.6, §3.1, §7; `RefusalKind::as_str` (exhaustive).
+*Trace:* §L (RS-111); `RefusalKind::as_str` (exhaustive).
+
+## L. The gate: composition and vocabulary
+
+Added in 0.4.0. One gate evaluates four questions in a fixed order and answers with one
+vocabulary; capacity (§E) and commitment (§J) are two of the questions, not separate
+mechanisms, and the wording a refusal carries is part of the contract because a verifier
+parses it.
+
+**RS-109** The gate MUST evaluate its questions in a fixed order — preconditions,
+requirements, capacity, effects — and MUST stop at the first refusal. Later questions MUST
+NOT add a finding to a decision that an earlier question stopped.
+*Rationale:* a step that must not run cannot be refused for consuming capacity it never
+reaches, and an answer that varies with evaluation order is not reproducible.
+*Trace:* `gate/application/compose.rs`; `a_refusal_precondition_is_not_displaced_by_a_requirement_promotion`.
+
+**RS-110** A decision MUST be a pure function of the declared facts, the step, and the instant
+of evaluation. No ambient input — wall clock, process environment, filesystem, network, map
+iteration order — may reach it.
+*Rationale:* a decision that reads its own host is a decision about that host, and two
+evaluations of the same inputs must produce the same record.
+*Trace:* conformance vectors `vec-0001`, `vec-fixture-0001`; the same digests under a moving clock.
+
+**RS-111** A refusal MUST name one kind from a closed vocabulary, and the wire word MUST have
+exactly one owner in the implementation. Where a refusal has numbers or identifiers they MUST
+be carried as typed fields and the business wording MUST be value-free.
+*Rationale:* a verifier parses the word; a sentence that interpolated a deployment's numbers
+would put that deployment's data into a static string, where it can be neither redacted nor typed.
+
+| Kind | Wire word |
+|---|---|
+| precondition failed / errored / timed out | `precondition_failed` · `precondition_error` · `precondition_timeout` |
+| unmet or promoted | `requirement_unsatisfied` · `companion_step_missing` · `sequence_violation` |
+| history did not verify | `history_integrity_violated` |
+| approval | `approval_unbound` · `approval_expired` |
+| identity could not be checked | `identity_unverified` |
+| a port could not answer, **including a missing operand** | `port_unavailable` |
+| the declared scenario is unsupported or sealed | `scenario_unsupported` · `session_sealed` |
+| the cap does not admit this consumption | `capacity_exceeded` |
+| the effect already committed | `duplicate_effect` |
+
+*Trace:* `wasm/src/domain/outcome/refusal.rs` (`as_str` is exhaustive and equal to serde's spelling).
+
+**RS-112** A missing operand MUST refuse as `port_unavailable`. It MUST NOT be reported as `0`.
+*Rationale:* a zero overage is a statement that the request fits; producing it from an
+unreadable port is a false statement in the one field an operator would use to size a cap.
+*Trace:* `finding_projection.rs`; the `refusaldetail` tests.
+
+**RS-113** A refusal MUST NOT consume capacity or commit an effect. Reservation belongs to the
+caller's dispatch path, not to the gate.
+*Rationale:* a refused step that leaves a reservation behind silently reduces capacity forever (RS-041).
+*Trace:* ADR-018; the dispatcher's reserve-after-permit ordering.
