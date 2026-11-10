@@ -133,7 +133,7 @@ Two properties follow, and both were defects before they were requirements:
    envelopes live only in memory, `degraded` is the honest status until they are
    persisted; the loss window must be stated, not implied.
 
-The operand discipline of Consequence Gating v2.0 §2.7 applies here too: the reason and
+The operand discipline of `03-requirements.md` RS-111 applies here too: the reason and
 the count are fields. A sentence that interpolated them would put a deployment's numbers
 into a static string.
 

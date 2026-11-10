@@ -9,8 +9,7 @@ artifact and checked against stated failure conditions.
 
 | Specification | Version | Date | Status |
 |---------------|---------|------|--------|
-| [Consequence Gating](./consequence-gating-v1.md) | 1.0 | 2026-10-12 | Published — superseded by v2.0 for the composed gate; still citable for precondition-only claims |
-| [Consequence Gating](./consequence-gating-v2.md) | 2.0 | 2026-11-10 | Published — the composed gate, the refusal vocabulary, and the artifact surface |
+| [Consequence Gating](./consequence-gating-v1.md) | 1.0 | 2026-10-12 | Published |
 | [Consequence Gating — Validation Protocol](./validation-protocol-v1.md) | 1.0 | 2026-10-12 | Published |
 | [Terminology](./terminology.md) | 1.0 | 2026-10-12 | Published |
 | [Execution Governance](./execution-governance/README.md) | 0.4 | 2026-11-10 | Review draft |
