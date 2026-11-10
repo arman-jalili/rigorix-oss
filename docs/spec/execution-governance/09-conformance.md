@@ -33,6 +33,23 @@ side of the boundary the deployment is on: evidence that nobody can verify is no
 verifiable evidence, and a claim that conflates the two is the claim `10-non-claims.md`
 refuses.
 
+## 1b. The in-process binding (0.4.0)
+
+A third *form* of deployment, not a third mode: the gate as an artifact the host loads
+(Consequence Gating v2.0 §4). It is a producer — it evaluates and returns a decision and
+it cannot verify anything — and a claim about it must state three further facts:
+
+1. **the digest it loaded**, with the platform and commit the digest belongs to (RS-106);
+2. **the embedder duties it performed**, because the import table bounds what the module
+   *can* reach and not what the host *grants* (§4.4 there; RS-103);
+3. **the mode it is not**: an artifact cannot verify evidence, so a deployment that is
+   only an artifact cannot claim Level 4 and above.
+
+A claim that cites "the module imports six functions and no decision reads them" is a
+statement about the recorded vectors under the recorded digest. It is not a statement
+about a particular host, and a claim that conflates the two is what §1a already forbids
+for producer-only deployments.
+
 ## 2. Levels
 
 Levels are cumulative. An implementation declares the highest level it satisfies.

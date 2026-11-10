@@ -91,6 +91,29 @@ A **fact** is an attributable, present-state statement with provenance, exported
 by the **fact projection** (spec §4.3). A fact carries *what was established,
 when, and how it can be verified*; it does not carry standing.
 
+### declaration (isolation)
+The **regime an operator states the deployment runs in** — `container` or `vm`. A
+declaration is a fact the operator supplies, not a property the engine checks: nothing in
+the engine inspects the namespace, the cgroup or the hypervisor. Consequence Gating v2.0
+§5 and Execution Governance RS-099/RS-100 fix the vocabulary: an *undeclared* step does
+not run; a *declared* step is not thereby contained.
+
+### embedder
+The **host that loads the artifact** and answers its imports. The artifact's import
+section states what the module *can reach*; the embedder's import table states what it is
+*given*. A claim about the first is not a claim about the second.
+
+### operand
+A **number or identifier a refusal uses**, carried as a typed field rather than
+interpolated into a sentence (Consequence Gating v2.0 §2.7). A missing operand refuses as
+`port_unavailable`; it is never reported as `0`, because `0` overage is a statement that
+the request fits.
+
+### completeness (of evidence)
+The **status of a run's evidence**: `complete`, `degraded` (with reason and count), or
+`not_requested`. Distinct from *verified*: a complete record may still fail verification,
+and a degraded run may have complete records for the steps it recorded.
+
 ## Terms deliberately not used
 
 - **"trusted"** — no component is asserted trusted; boundaries are *enforced* and

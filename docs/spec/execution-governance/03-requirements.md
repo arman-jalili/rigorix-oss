@@ -318,3 +318,83 @@ and MUST NOT claim it from an in-process record.
 has provider evidence (L3). Otherwise it MAY claim only *not-settled*.
 *Rationale:* the strongest and most abusable claim in the model.
 *Trace:* ADR-019 settlement axis; doctor's derived ceiling.
+
+## K. The boundary: what the engine may execute, read and ship
+
+Added in 0.4.0. These requirements state obligations the reference implementation took on
+in the batches behind `rigorix-oss` #1478–#1502 and ADR-023. They are not new
+capabilities; they are the obligations that made the capabilities honest.
+
+**RS-099** A deployment MUST declare its isolation regime (`container`, `vm`) before a
+step that can execute a program may run. An absent, unrecognized or `none` declaration
+MUST refuse the step, with a named failure type, **before any process is started**.
+*Rationale:* a policy over an argv string is not a boundary. The boundary is what the
+deployment states it has; a step that runs before stating it has none.
+*Trace:* `SandboxDeclaration`; failure type `sandbox_undeclared`; Consequence Gating
+v2.0 §5.
+
+**RS-100** A claim MUST NOT present the declaration as evidence of containment. What the
+implementation may claim is that an undeclared step does not run, never that a declared
+step is contained. Inspecting the namespace is not something the engine does.
+*Rationale:* a declaration is a fact the operator supplies, not a property the engine
+checks; conflating them is the claim `10-non-claims.md` 21 refuses.
+*Trace:* Consequence Gating v2.0 §5; ADR-023 §5.
+
+**RS-101** The set of step kinds that can execute a program MUST be derivable from the
+implementation's source by a check, and a kind that spawns a process but is not in that
+set MUST fail the build.
+*Rationale:* a gate keyed on a remembered name is forgotten when the next kind is added;
+a gate keyed on a list plus a structural test is not.
+*Trace:* `EXECUTING_STEP_KINDS`; `every_spawning_step_kind_is_gated`.
+
+**RS-102** An unrecognized value for a configuration key that selects a permission or
+isolation regime MUST be a startup error. It MUST NOT be absorbed by the permissive
+default.
+*Rationale:* a typo (`read-only` for `read_only`) that silently selects the permissive
+regime is a downgrade nobody chose.
+*Trace:* `PermissionMode::parse_host_value`; `RIGORIX_PERMISSION_MODE` in all three hosts.
+
+**RS-103** Every boundary crossing the implementation performs — process spawn,
+filesystem write, network, environment read — MUST be inventoried with (a) its mitigation
+class, (b) what that mitigation depends on, and (c) **what it does not do**. A crossing
+that is not in the inventory MUST fail a check.
+*Rationale:* the three properties are what turn "we validate the path" into "here is what
+the validation does not cover"; the third one is the sentence nobody writes unprompted.
+*Trace:* `engine/.pi/architecture/sink-register.tsv`; `validate-sink-register.sh` (one row
+per call site, not per file); ADR-023.
+
+**RS-104** A path the implementation validates MUST be mutated through the validated
+handle. Validation and mutation MUST NOT be separate resolutions of the same string.
+*Rationale:* a check and a use in separate events are not a control; between them the
+path means something else.
+*Trace:* `tools/infrastructure/fs_at.rs`; the component-swap test; ADR-023 §4.
+
+**RS-105** A decision record MUST carry an evidence-completeness status: `complete`,
+`degraded` (with a reason and a count) or `not_requested`. No host MAY present a degraded
+run as complete.
+*Rationale:* "the run succeeded and the evidence for it did not" is a fact about the run,
+not a warning on stderr.
+*Trace:* Consequence Gating v2.0 §3.2; `EvidenceStatus`; the CLI status bar; the MCP run
+response's `evidence` field.
+
+**RS-106** A bound artifact MUST be verified against its recorded digest at load, and a
+module whose import section differs from the recorded one MUST be refused by name. A
+published digest MUST state the platform and commit it belongs to.
+*Rationale:* the import table is cheap to reproduce in a hostile module; the digest is
+not. A digest without its build context pins nothing.
+*Trace:* Consequence Gating v2.0 §4.3; `loader.verify_artifact` (Python), `gate.Open`
+(Go); the release page's `.wasm` + `.sha256`.
+
+**RS-107** A behaviour the specification names a *read* MUST NOT change repository state
+or write a file, and the implementation MUST refuse the subcommands and flags that would.
+*Rationale:* a gate that classifies a step by its name is only as good as the name.
+*Trace:* `GIT_READ_SUBCOMMANDS`; `validate_git_read_args`; the refusing list for
+`symbolic-ref`, `branch -D`, `tag -d`, `--output`.
+
+**RS-108** A refusal kind, an evidence kind, or a gate identifier MUST be added only with
+a specification version that names it and a conformance vector that exercises it. A wire
+word MUST have exactly one owner in the implementation, and a host MUST be able to read it
+from that owner's spelling.
+*Rationale:* the three vocabularies are what a verifier parses; an unannounced addition is
+a record a published verifier cannot read.
+*Trace:* Consequence Gating v2.0 §2.6, §3.1, §7; `RefusalKind::as_str` (exhaustive).

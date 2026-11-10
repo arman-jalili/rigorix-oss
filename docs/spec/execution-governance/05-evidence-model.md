@@ -112,6 +112,31 @@ and MUST NOT describe V1 or V2 as proving external provenance.
 | V3 | that the underlying action was legitimate, or that the authority data was true |
 | Any | that the decision was correct — only that it was made, recorded and (at V3) attested |
 
+## 5a. Completeness is a status on the run (0.4.0)
+
+A record answers "what was decided". A **run** answers a second question: "did every
+decision in it reach the record". RS-105 makes that a status rather than a log line:
+
+| Status | Meaning | What a host must do |
+|---|---|---|
+| `complete` | every decision in the run has a record that was emitted, and delivered where delivery is configured | nothing |
+| `degraded` | the run completed, but at least one record was not emitted or not delivered | print the reason and the count; never report the run as complete |
+| `not_requested` | evidence was not configured for this run | say so, once |
+
+Two properties follow, and both were defects before they were requirements:
+
+1. **A dropped result is not a policy.** The evidence path computes a result at every
+   step (build, persist, deliver, enqueue). A result that can be discarded silently makes
+   the difference between "the evidence exists" and "we ran the code" unobservable. The
+   implementation marks those results `#[must_use]` and a dropped one fails the build.
+2. **A queue that loses its contents on restart is not a retry queue.** If undelivered
+   envelopes live only in memory, `degraded` is the honest status until they are
+   persisted; the loss window must be stated, not implied.
+
+The operand discipline of Consequence Gating v2.0 §2.7 applies here too: the reason and
+the count are fields. A sentence that interpolated them would put a deployment's numbers
+into a static string.
+
 ## 6. Degraded evidence
 
 An envelope that lacks a signature, an anchor reference, or a required field MUST be
@@ -155,10 +180,12 @@ with extra steps.
 
 ## 10. Reference implementation
 
-- Envelope schema v2 and signed fixtures: `rigorix-sdk/schemas`.
-- Verifiers: `rigorix-verifier` on crates.io and npm (0.8.0); Java and Go in-repo. The
-  PyPI package is behind and cannot yet verify effect-commitment evidence — see
-  `10-non-claims.md` §3 item 14 before citing PyPI as a channel.
+- Envelope schema v2 and signed fixtures: the `rigorix-schemas` crate (and the
+  verifier packages' bundled copy).
+- Verifiers: `rigorix-verifier` 0.9.0 on crates.io, npm and PyPI; Java and Go in the
+  same tree as this document. The Python package verifies chain, signature and anchor
+  artifacts but has no effect-commitment verification — see `10-non-claims.md` §3 item 14
+  before citing PyPI as a channel for a commitment claim.
 - Functions: `verify_chain`, `verify_chain_with_checkpoints`, `verify_ed25519`,
   `verify_ledger_receipt`, `verify_history_slice`, `verify_compaction_checkpoint`.
 - Anchor: Ed25519 signed reads in the enterprise audit service (ADR-016).

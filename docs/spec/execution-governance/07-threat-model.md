@@ -100,6 +100,29 @@ The agent retries a refused action through a different tool or path until one pa
 **Residual:** a genuinely different tool with the same effect may not match the rule
 unless the operator expressed it by effect rather than by tool.
 
+### T13 — Repository-configured execution
+
+A step that runs a *version control* command, rather than a shell, is assumed to be a read.
+But `git` runs programs named by the repository it is pointed at: an alias prefixed with
+`!` runs a shell command, a hook in `.git/hooks` runs on the operation, `core.fsmonitor`
+runs on `git status`, and `diff.external` / `diff.*.textconv` run on `git diff`. All of
+those live in `.git/`, inside the agent-writable workspace.
+**Control:** the declared isolation (RS-099); a read-subcommand allowlist with the
+program-naming forms refused by name; a refusal of the subcommands that write
+(RS-107); and the `does_not` column of the sink register naming this class (RS-103).
+**Residual:** a repository the operator points the step at is code. The control is the
+declaration, not the allowlist.
+
+### T14 — Artifact substitution
+
+The gate is a file. Replace the file in an installed package, or serve a module that
+reproduces the import section and exports of the real one, and every decision it returns
+is the attacker's — while the embedder's capability check still passes.
+**Control:** digest verification at load (RS-106); the published digest beside the
+artifact, with its platform and commit; the import-section refusal by name.
+**Residual:** a build-from-source consumer who does not check the digest has no control;
+the digest is the control, and it only works when it is checked.
+
 ## 3. Out of scope
 
 - Compromised hardware, hypervisor or supply chain.

@@ -53,9 +53,12 @@ talk or sales conversation can be checked against it.
 13. **Kill/restart semantics under L1.** A process restart loses the in-process
     record; orphaned `Dispatched` records are swept, but the sweep is a recovery
     mechanism, not a settlement proof.
-14. **The Python verifier is behind.** `rigorix-verifier` is 0.8.0 on crates.io and
-    npm, and 0.6.0 on PyPI. Until the PyPI job runs (blocked by CI quota until
-    November), the Python package cannot verify effect-commitment evidence.
+14. **The Python verifier has no effect-commitment verification.** All three channels
+    publish `rigorix-verifier` 0.9.0 (crates.io, npm, PyPI — checked against each
+    registry, 2026-11-10), and the Python package verifies the chain, signatures and the
+    three anchor artifacts. It does not verify an effect-commitment record: the Rust
+    verifier has since 0.7.0, and the Python API has no equivalent. A PyPI consumer may
+    verify evidence integrity and may not verify a commitment claim.
 15. **Enterprise has no tagged release.** It is deployed continuously; there is no
     version number to cite for it.
 
@@ -69,6 +72,31 @@ talk or sales conversation can be checked against it.
 20. No claim beyond this document set. These requirements bind an implementation that
     claims conformance to this specification. They make no statement, favourable or
     otherwise, about any other system, framework or term.
+
+## 4a. Boundary non-claims (added in 0.4.0)
+
+21. **No containment from a declaration.** `RIGORIX_SANDBOX=container` is a statement the
+    operator makes; the engine does not inspect the namespace it runs in. What a
+    conforming implementation establishes is that an *undeclared* step does not run —
+    never that a declared step is contained (RS-099, RS-100).
+22. **No control-plane protection inside the workspace.** `.rigorix/**` is refused on the
+    resolved path, and a symlinked alias of it is refused as the directory itself. That
+    is the extent of it: a configuration file an agent can write, and whose write the
+    engine does not see, is a control the agent holds. `.git/config` and `.git/hooks`
+    are exactly that, which is why a version-control step requires a declared isolation
+    (T13).
+23. **No guarantee that a "read" step only reads.** The implementation refuses the
+    subcommands and flags known to write (RS-107) and refuses a form list of
+    program-naming options. It cannot promise that no future flag of a read subcommand
+    writes; the list is a control, not a proof.
+24. **No claim about the file, from the import table.** Six imports that no decision
+    reads establish a capability bound for the recorded artifact. They establish nothing
+    about whether *this* host answered them with constants — that is the embedder's
+    claim (RS-103, RS-106).
+25. **No reproduction across toolchains, claimed as one digest.** A digest identifies an
+    artifact built on a stated platform with a stated toolchain. A Linux build and a
+    macOS build of one commit are different artifacts, and a specification that published
+    one number for both would pin neither.
 
 ## 5. How to use this document
 

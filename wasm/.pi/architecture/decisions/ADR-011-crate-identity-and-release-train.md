@@ -94,8 +94,9 @@ is not on the train:
 - **Own semantic range (`0.x`)** for the wasm crate. Rejected: the whole claim is that
   it produces the same artifacts as the engine; divergent versions make that
   unverifiable.
-- **Publish from `rigorix-gtm`** because the demo is the first consumer. Rejected:
-  a marketing repo cannot be the distribution channel for a partner-embeddable gate.
+- **Publish from the marketing site's repository**, because the demo is the first
+  consumer. Rejected: a site repository cannot be the distribution channel for a
+  partner-embeddable gate.
 
 ## Implementation
 
