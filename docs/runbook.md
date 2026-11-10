@@ -85,11 +85,18 @@ Four things this repository learned the expensive way, each now with a check beh
   bash wasi/ci/check-release-asset.sh v<version> --expect <that digest>
   ```
 
-  The `--expect` line is the one that decides whether a downstream vendor must re-vendor: the digest
-  on the page is the fact, and it is a function of the commit and the pinned toolchain. `a314672c`
-  builds `7414f8df…`; `main` at `v1.14.3` builds `b0ed0ee6…`, so a vendor pinned to the former has to
-  re-vendor — measured by rebuilding the old commit in a worktree, byte-identical to its recorded
-  digest.
+  The `--expect` line is the one that decides whether a downstream vendor must re-vendor, and the
+  number to write there is **the page's**, quoted in full. `v1.14.3` is `ab77bb821bcff564dd2302a43cf3a73930cfd5ec94925b78328770a8023b7928` — 1,899,431 bytes, built by
+  `package-wasi` on `ubuntu-latest` at `c8d162e1`. `wasi/ci/check-recorded-digest.sh v<version>`
+  compares every digest these docs record for that tag with the page and fails naming both.
+
+  **A digest is a function of the commit, the platform and the toolchain — and a number measured
+  before the version bump denotes no artifact at all.** Both bit: this document first recorded
+  `b0ed0ee6…`, measured on the tree *before* the bump (`9727559b`, version 1.14.2) and therefore
+  about a file that never shipped; the same tag rebuilt on macOS is
+  `0cfacf43…` (1,899,660 bytes), and the release itself is the Linux build above. Three numbers,
+  one tag — so the docs quote the page's, and the abbreviated `…` form is refused outright: a
+  prefix cannot be compared by a reader or pinned by a vendor (#1509).
 - **A claim about a registry comes from the coordinate's metadata.** `.../crates/<name>/<version>` for
   crates.io, `maven-metadata.xml` plus the artifact itself for Central — never a URL composed from what
   one expects the layout to be. A directory listing that 404s proves nothing; Central serves no listings.

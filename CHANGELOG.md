@@ -113,12 +113,15 @@ Nothing yet.
 
 ### Changed
 
-- **The WASI artifact's digest changes with this release.** `a314672c` builds `7414f8df…`
-  (1,896,910 bytes); `main` at this tag builds `b0ed0ee6…` (1,897,095 bytes), because four
-  batches of engine code landed in between. Verified by rebuilding `a314672c` in a worktree
-  with the pinned toolchain: byte-identical to the recorded digest, so the build is
-  reproducible and the difference is code, not compiler. A downstream vendor pinned to
-  `7414f8df…` must re-vendor against this release.
+- **The WASI artifact's digest changes with this release, and the page states which one it is.**
+  `v1.14.3` (`c8d162e1`) carries:
+  `ab77bb821bcff564dd2302a43cf3a73930cfd5ec94925b78328770a8023b7928` — 1,899,431 bytes, built by
+  `package-wasi` on `ubuntu-latest`. That is the number a download produces, and the number to
+  quote: the build is reproducible **per platform and toolchain**, not in the abstract (the same
+  tag rebuilt on macOS with the same rustc pin is a different file). A downstream vendor pinned
+  to the previous release's digest must re-vendor against this one. `wasi/ci/check-recorded-digest.sh`
+  compares the digests these docs record with the page, so this sentence cannot drift again
+  (#1509).
 
 ## [1.14.2] - 2026-11-07
 

@@ -18,6 +18,8 @@
 #   6. the release page carries the artifact  release-wiring
 #  12. the release *did* carry it            release-asset  (only answerable from a release;
 #       `--release <tag>` asks it, and without the flag the claim is named as not applicable)
+#  13. the docs quote the released digest    release-digest (same: the page is the fact, and a
+#       documented number that disagrees with it is a number nobody can pin)
 #
 # A gate that is not applicable is *named* and not counted as a pass: a skipped claim that
 # reads as green is how an artifact ships with a claim nobody checked.
@@ -47,6 +49,7 @@ if [ "$MODE" = "self-test" ]; then
   bash "$HERE/run-hostile.sh" --self-test
   bash "$HERE/check-no-builder-paths.sh" --self-test
   bash "$HERE/check-release-asset.sh" --self-test
+  bash "$HERE/check-recorded-digest.sh" --self-test
   bash "$HERE/check-responsibility-matrix.sh" --self-test
   # The contract's seeds: a moving clock, a leaking stdout, and a `proc_exit` that returns.
   if node "$HERE/embedder-contract.mjs" --self-test "$MODULE" >/dev/null 2>&1; then
@@ -114,13 +117,14 @@ bash "$HERE/check-responsibility-matrix.sh"
 step "release wiring (the workflow attaches it)"
 bash "$HERE/check-release-wiring.sh"
 
-step "release asset (the release carried it)"
+step "release asset and recorded digest (the release carried it, and the docs say so)"
 # Claim 6 is a string in YAML and claim 12 is a file on a release page. The first was green for
 # the whole life of `package-wasi` while `v1.14.2` carried no assets (#1503), so the second is
 # asked separately — and when there is no tag to ask about, the claim is *named as not
 # applicable* rather than counted as a pass. That is the rule this file states for itself.
 if [ -n "$RELEASE" ]; then
   bash "$HERE/check-release-asset.sh" "$RELEASE"
+  bash "$HERE/check-recorded-digest.sh" "$RELEASE"
 else
   printf '   ⏭  claim 12 not applicable: no --release <tag> given, so no release page was read.\n'
   printf '      Ask it with: bash wasi/ci/run-wasi-gates.sh --release v<version>\n'

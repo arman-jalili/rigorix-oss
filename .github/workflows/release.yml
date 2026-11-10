@@ -373,7 +373,7 @@ jobs:
             wasi-asset/rigorix_gate_wasi.wasm.sha256
 
   verify-release-asset:
-    name: 🔖 Verify the release carries the artifact
+    name: 🔖 Verify the release carries the artifact, and that the docs quote it
     # #1503: `package-wasi` existed for two releases without ever executing, and `v1.14.2`
     # carried no assets at all while `check-release-wiring.sh` was green — because that guard
     # reads the workflow, and a job read from YAML is not a job that runs. This job asks the
@@ -413,8 +413,13 @@ jobs:
               && cut -d' ' -f1 built/rigorix_gate_wasi.wasm.sha256) || EXPECT=""
             if [ -n "$EXPECT" ]; then
               bash wasi/ci/check-release-asset.sh "$GITHUB_REF_NAME" --expect "$EXPECT"
+              bash wasi/ci/check-recorded-digest.sh "$GITHUB_REF_NAME"
               exit 0
             fi
             echo "⚠ the built artifact could not be fetched from this run; checking the page alone"
           fi
           bash wasi/ci/check-release-asset.sh "$GITHUB_REF_NAME"
+          # #1509: the page is sound and the docs were not. A digest the docs record for this tag
+          # has to be the page's, and `v1.14.3` shipped with a number measured from the tree before
+          # the version bump — an artifact that never existed.
+          bash wasi/ci/check-recorded-digest.sh "$GITHUB_REF_NAME"

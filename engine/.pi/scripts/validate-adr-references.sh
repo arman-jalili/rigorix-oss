@@ -78,7 +78,11 @@ if [ "$MODE" = "self-test" ]; then
     > "$scratch/decisions/ADR-102-thing-store.md"
   : > "$scratch/labels.tsv"
 
-  run_case() {  # run_case <label> <expect pass|fail> ...
+  ACCEPTED=0
+  REFUSED=0
+  MALFORMED=0
+
+  run_case() {  # run_case <label> <expect pass|fail|malformed> ...
     local label="$1" expect="$2"; shift 2
     local out status
     set +e
@@ -86,13 +90,16 @@ if [ "$MODE" = "self-test" ]; then
     set -e
     case "$expect" in
       pass)
-        [ "$status" -eq 0 ] || { echo "✗ self-test: $label passed when it must fail" >&2; printf '%s\n' "$out" >&2; return 1; } ;;
+        [ "$status" -eq 0 ] || { echo "✗ self-test: $label passed when it must fail" >&2; printf '%s\n' "$out" >&2; return 1; }
+        ACCEPTED=$((ACCEPTED + 1)) ;;
       fail)
-        [ "$status" -eq 1 ] || { echo "✗ self-test: $label did not fail as a violation (status $status)" >&2; printf '%s\n' "$out" >&2; return 1; } ;;
+        [ "$status" -eq 1 ] || { echo "✗ self-test: $label did not fail as a violation (status $status)" >&2; printf '%s\n' "$out" >&2; return 1; }
+        REFUSED=$((REFUSED + 1)) ;;
       malformed)
         # Exit 2 is the "I cannot read this" door: a malformed record must not read as a
         # pass, and it must not read as a violation either — the two have different remedies.
-        [ "$status" -eq 2 ] || { echo "✗ self-test: $label was not refused as malformed (status $status)" >&2; printf '%s\n' "$out" >&2; return 1; } ;;
+        [ "$status" -eq 2 ] || { echo "✗ self-test: $label was not refused as malformed (status $status)" >&2; printf '%s\n' "$out" >&2; return 1; }
+        MALFORMED=$((MALFORMED + 1)) ;;
     esac
     echo "  ✓ $label"
   }
@@ -145,7 +152,11 @@ if [ "$MODE" = "self-test" ]; then
   run_case "an ADR directory with no ADRs is refused" malformed \
     bash "$0" --adr-dir "$scratch/empty" --labels "$scratch/labels.tsv"
 
-  echo "✅ every seed was rejected and the control case passed"
+  # Derived, so it cannot describe a run it did not have. `$(( ))` rather than `(( x++ ))`:
+  # the post-increment form returns 1 when the result is 0 and ends an errexit script (#1291).
+  printf '✅ %s acceptance case(s) passed, %s rejection case(s) refused, %s malformed-input ' \
+    "$ACCEPTED" "$REFUSED" "$MALFORMED"
+  printf 'case(s) refused as such\n' 
   exit 0
 fi
 
@@ -234,21 +245,20 @@ for num, path in sorted(files.items()):
     for m in re.finditer(r"ADR-(\d{3})\s*\(([^)]{2,70})\)", body):
         lineno = body.count("\n", 0, m.start()) + 1
         target, label = m.group(1), " ".join(m.group(2).split())
-        if True:
-            if target not in files:
-                violations.append(f"{name}:{lineno}: cites ADR-{target}, which does not exist")
-                continue
-            subj, subj_words = subject(target)
-            citations.append((name, lineno, target, label))
-            if words(label) & subj_words:
-                continue
-            if (f"ADR-{target}", label.lower()) in recorded:
-                descriptive.append((name, lineno, target, label))
-                continue
-            violations.append(
-                f"{name}:{lineno}: ADR-{target} ({label}) — the label names nothing in that "
-                f"document's subject: {subj}"
-            )
+        if target not in files:
+            violations.append(f"{name}:{lineno}: cites ADR-{target}, which does not exist")
+            continue
+        subj, subj_words = subject(target)
+        citations.append((name, lineno, target, label))
+        if words(label) & subj_words:
+            continue
+        if (f"ADR-{target}", label.lower()) in recorded:
+            descriptive.append((name, lineno, target, label))
+            continue
+        violations.append(
+            f"{name}:{lineno}: ADR-{target} ({label}) — the label names nothing in that "
+            f"document's subject: {subj}"
+        )
 
     for lineno, line in enumerate(body.split("\n"), 1):
         # Rule 4: section citations.
@@ -289,9 +299,19 @@ for num, path in sorted(files.items()):
                     f"{name}:{lineno}: cites §{section}, and this ADR has no §{section} heading"
                 )
 
+# A "label" is a row in the labels file; a "citation" is a use of one. They are different
+# numbers whenever a label is cited twice — which it was, and the summary said "3 descriptive
+# label(s) are recorded" over a 2-row file (#1508).
+used = {(f"ADR-{t}", lbl.lower()) for _, _, t, lbl in descriptive}
+unused = sorted(set(recorded) - used)
+
 if mode == "report":
-    print(f"{len(files)} ADR(s), {len(citations)} labelled citation(s), "
-          f"{len(descriptive)} recorded descriptive label(s)")
+    print(f"{len(files)} ADR(s), {len(citations)} labelled citation(s) resolving to a subject, "
+          f"{len(descriptive)} citation(s) using {len(used)} recorded label(s)")
+    if unused:
+        print(f"  {len(unused)} recorded label(s) are used nowhere — a licence nobody needed:")
+        for num, label in unused:
+            print(f"    {num} ({label})")
     for name, lineno, target, label in citations:
         tag = "subject" if words(label) & subject(target)[1] else "recorded"
         print(f"  {name}:{lineno}  ADR-{target}  [{tag}]  {label}")
@@ -306,7 +326,9 @@ if violations:
           f"descriptive label in {os.path.relpath(labels_path)}{RESET}", file=sys.stderr)
     sys.exit(1)
 
-print(f"{GREEN}✅ ADR references: {len(citations)} labelled citation(s) resolve to the subject they "
-      f"name, {len(descriptive)} descriptive label(s) are recorded with a reason{RESET}")
+print(f"{GREEN}✅ ADR references: every one of {len(citations)} labelled citation(s) resolves to the "
+      f"subject it names ({len(citations) - len(descriptive)} by the target's own wording, "
+      f"{len(descriptive)} by {len(used)} recorded label(s) used at {len(descriptive)} "
+      f"citation(s)){RESET}")
 sys.exit(0)
 PY
