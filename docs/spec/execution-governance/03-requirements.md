@@ -230,6 +230,16 @@ without access to the agent's conversation.
 *Rationale:* the agent's narrative is not evidence.
 *Trace:* signed refusal findings.
 
+**RS-067** The signed record MUST NOT contain parameter values, raw check output, or absolute paths.
+Parameter presence is recorded, never parameter values; check output is recorded only where the
+operator opts in, and is then truncated and redacted. A message that can reach the signed record
+MUST name an artifact by basename plus a one-way hash of its path, and MUST be redacted where the
+error is **constructed** rather than where it is recorded — a composition root forwards error
+strings into a fail-closed gate's detail and from there into every refusal.
+*Rationale:* redaction at the point of recording is redaction after the value has already travelled
+through the paths that copy strings.
+*Trace:* `SpanPrivacy`; the authority-demo's record; `no_absolute_paths_or_username_in_the_canonical_bytes`.
+
 ## H. Interfaces and control-plane integrity
 
 **RS-070** Every interface that can trigger execution (CLI, MCP, HTTP, CI adapter)
@@ -251,6 +261,21 @@ writable through the execution interface used by the agent.
 than the caller's permission, before planning.
 *Rationale:* scope expansion at the boundary is a decision, not a detail.
 *Trace:* permission enforcer.
+
+**RS-074** A host that is not the engine's own process MUST be able to evaluate the gate with no
+network and no engine runtime: the decision MUST be loadable as a module whose operation is a field
+inside the request, so that the exported surface cannot grow by accident.
+*Rationale:* three exports and one named operation is a surface a reviewer can enumerate; a fifth
+export appears without anyone deciding it should exist.
+*Trace:* `wasm/`; the six-import table in `wasi/ci/imports.txt`; `verify-published-module.mjs`.
+
+**RS-075** The module's import section MUST be exactly the declared set, and a host MUST refuse a
+module whose imports differ, naming what is unaccounted for. A response MUST be length-prefixed and
+MUST NOT be trusted by the host without checking the length prefix.
+*Rationale:* the trust property is the artifact plus the embedder's import table; a module that
+imports a filesystem handle can read one, and a host that trusts a length field can be made to
+over-read.
+*Trace:* `wasi/ci/imports.txt`; `--self-test` in `check-imports.sh`; the `proc_exit`-raises test.
 
 ## I. Claims
 
@@ -399,32 +424,140 @@ from that owner's spelling.
 a record a published verifier cannot read.
 *Trace:* §L (RS-111); `RefusalKind::as_str` (exhaustive).
 
-## L. The gate: composition and vocabulary
+## L. The five gates
 
-Added in 0.4.0. One gate evaluates four questions in a fixed order and answers with one
-vocabulary; capacity (§E) and commitment (§J) are two of the questions, not separate
-mechanisms, and the wording a refusal carries is part of the contract because a verifier
-parses it.
+A governed step passes one gate, and the gate asks five questions: four it evaluates in a fixed
+order, and one that is answered by a signature bound to the consequence. This section presents
+the five — what each decides, where it sits, and what it must not decide. The requirement numbers
+are cited rather than restated: one statement, one place.
 
-**RS-109** The gate MUST evaluate its questions in a fixed order — preconditions,
-requirements, capacity, effects — and MUST stop at the first refusal. Later questions MUST
-NOT add a finding to a decision that an earlier question stopped.
-*Rationale:* a step that must not run cannot be refused for consuming capacity it never
-reaches, and an answer that varies with evaluation order is not reproducible.
+| Gate | Identifier in the record | The question it asks | Decision | Requirements |
+|---|---|---|---|---|
+| **Preconditions** | `preconditions` | may this step dispatch at all? | ADR-017 | RS-020–RS-026 (§C), L.1 |
+| **Requirements** | `requirements` | which operator obligations does the step leave unmet? | ADR-013 R9, ADR-015 | RS-030–RS-035 (§D), L.2 |
+| **Capacity** | `capacity` | does the declared cap admit this consumption? | ADR-018 / ADR-010 | RS-040–RS-043 (§E), L.3 |
+| **Effects** | `effects` | has this effect already committed? | ADR-019 | RS-090–RS-098 (§J), L.4 |
+| **Approval** | — (a signature, not a gate identifier) | has a human bound to this consequence signed it off? | ADR-011 | RS-010–RS-014 (§B), L.5 |
+
+A sixth decision is added by adding a row here and its requirements in its own section — not by
+adding a document, an identifier the record does not carry, or a vocabulary word (§L.6).
+
+### L.1 Preconditions — may this step dispatch at all?
+
+The gate at the choke point, and the only one whose inputs are the operator's own. Its primitive
+is small and closed: **match a step → run an operator-authored check → refuse on failure → record
+the outcome.** Loops, chained checks, retries that change a verdict, a policy DSL and multi-step
+orchestration are not part of it; a use case needing them is a different module (ADR-017
+§Non-goals).
+
+**Evaluation order at the choke point.** For the node about to dispatch, the order is fixed:
+approval verification (ADR-011) → precondition evaluation (this section) → sequence-policy prefix
+(ADR-013 R3) → spawn. A refusal at the precondition step records a deterministic node failure and
+MUST NOT invoke the step's tool.
+
+**Outcomes.** Three are recorded distinctly and none is a warning: `passed` (the check exited 0,
+or a determination service permitted — the operator's own rules are then still evaluated),
+`failed` (the check exited non-zero, or the service denied) — refuse, `error` (timeout, spawn
+failure, trust-boundary failure, unreadable artifact, unknown determination vocabulary) — refuse.
+There is no "allow on error" mode.
+
+**Fail-closed arming.** Configured-but-unarmed is a refusal, never a silent downgrade: if rules
+are configured but cannot arm — malformed configuration, an executable missing at evaluation time
+— a matching step is refused with an `unarmed` finding.
+
+**Determinism and domain neutrality.** Evaluation MUST be deterministic: no model, no engine-side
+network semantics other than an operator-declared determination service, no retry that changes the
+verdict; identical step inputs, configuration and check process MUST produce an identical verdict.
+The engine MUST NOT contain domain semantics: a new domain requires a new operator-authored check,
+not an engine change. This is demonstrated in
+[the validation protocol](../validation-protocol-v1.md#case-3--domain-neutrality).
+
+**Inbound interfaces, both operator-owned.** The check is an argv array (no shell), a JSON stdin
+document, documented environment variables, a wall-clock timeout, and exit-code mapping; the check
+artifact however invoked — a direct program, or the script an interpreter runs — MUST resolve
+outside the agent-writable workspace (RS-025). A precondition MAY instead be satisfied by an
+operator-configured external determination service evaluated at the same enforcement point; its
+request and response bytes MUST be bound into the record as digests, its endpoint MUST be recorded
+redacted, and its determination vocabulary MUST be mapped explicitly — an unknown or newer
+vocabulary maps to `error`, and unknown MUST NOT become authority.
+
+**Boundary strength is mode-dependent, and the default row is a permanent caveat** — not a
+temporary gap:
+
+| Mode | Guarantee | Does NOT cover |
+|---|---|---|
+| default install | agent-mediated tool calls cannot touch the check or the authority (path containment + hook) | an unmediated write path to `$HOME` |
+| `--isolated` | the agent's UID cannot write the check or the authority (OS ownership and mode) | requires no passwordless privilege escalation for the agent user |
+| `require_immutable_check` | a writable check or authority is refused at dispatch | a check writable by a different privileged identity |
+| attribution | a forged or changed authority is visible (`authority_digest`) | detection, not prevention |
+
+### L.2 Requirements — which operator obligations does the step leave unmet?
+
+Asked twice from one rule set: when the plan is validated, and again over the prefix as the step
+is about to dispatch (RS-030, RS-031). The only outcomes are promote or refuse (RS-033) — a
+requirement never rewrites a step — and a promotion is an approval, so it is decided by the
+approval binding (§L.5), not by the requirement. A requirement that cannot be evaluated is a
+refusal (RS-051), not a pass.
+
+### L.3 Capacity — does the declared cap admit this consumption?
+
+The gate reserves before it authorizes and releases on drop (RS-040, RS-041); a cap that cannot be
+read refuses (RS-042) rather than admitting on a zero. Reservation belongs to the caller's dispatch
+path — a refusal MUST NOT leave a reservation behind (RS-113), because a refused step that leaves a
+hold silently reduces capacity forever.
+
+### L.4 Effects — has this effect already committed?
+
+An effect that has committed MUST NOT be dispatched again, and a retry of an `Ambiguous` effect is
+refused (RS-093) — ambiguity is a state the run stays in, not a licence to repeat. The
+idempotency key MUST be derived from the intent rather than generated at the call site (RS-094),
+so that "the same intent" is a fact the store can decide, and only a resolver presenting provider
+evidence may leave `Ambiguous` (RS-096). A deployment MUST NOT claim an effect committed unless its
+resolver says so (RS-098).
+
+### L.5 Approval — has a human bound to this consequence signed it off?
+
+The fifth question is not a gate identifier: the answer is a signature bound to the consequence
+(ADR-011 canonical intent, HMAC), not an evaluation of the step. A signature is re-derived at
+dispatch and a mismatch halts the step; a consequence that reaches its boundary unsigned is refused
+as `approval_unbound`, and one whose signature no longer covers it as `approval_expired`. The
+approver's identity is attested (RS-013) and a missing key fails closed (RS-014). Because the
+binding is a signature and not a finding, it survives a plan change in a way a cached gate verdict
+must not (§L.6).
+
+### L.6 Composition and vocabulary
+
+One gate evaluates its questions in a fixed order and answers with one vocabulary; capacity and
+commitment are two of the questions, not separate mechanisms, and the wording a refusal carries is
+part of the contract because a verifier parses it.
+
+**RS-109** The gate MUST evaluate its questions in a fixed order — preconditions, requirements,
+capacity, effects — and MUST stop at the first refusal. Later questions MUST NOT add a finding to a
+decision that an earlier question stopped.
+*Rationale:* a step that must not run cannot be refused for consuming capacity it never reaches,
+and an answer that varies with evaluation order is not reproducible.
 *Trace:* `gate/application/compose.rs`; `a_refusal_precondition_is_not_displaced_by_a_requirement_promotion`.
 
-**RS-110** A decision MUST be a pure function of the declared facts, the step, and the instant
-of evaluation. No ambient input — wall clock, process environment, filesystem, network, map
-iteration order — may reach it.
-*Rationale:* a decision that reads its own host is a decision about that host, and two
-evaluations of the same inputs must produce the same record.
+**RS-110** A decision MUST be a pure function of the declared facts, the step, and the instant of
+evaluation. No ambient input — wall clock, process environment, filesystem, network, map iteration
+order — may reach it.
+*Rationale:* a decision that reads its own host is a decision about that host, and two evaluations
+of the same inputs must produce the same record.
 *Trace:* conformance vectors `vec-0001`, `vec-fixture-0001`; the same digests under a moving clock.
 
-**RS-111** A refusal MUST name one kind from a closed vocabulary, and the wire word MUST have
-exactly one owner in the implementation. Where a refusal has numbers or identifiers they MUST
-be carried as typed fields and the business wording MUST be value-free.
-*Rationale:* a verifier parses the word; a sentence that interpolated a deployment's numbers
-would put that deployment's data into a static string, where it can be neither redacted nor typed.
+**RS-114** The decision set MUST be the five in the table above and no others. A decision the gate
+reaches that is not a row there, or a row there that no execution path reaches, MUST fail
+conformance.
+*Rationale:* a decision that exists only in the implementation is a consequence nobody reviewed, and
+a row naming a decision the code does not reach is a claim the code does not keep.
+*Trace:* `engine/src/gate/domain/finding.rs` (`GateId`, four variants) plus the approval binding;
+`gate/application/compose.rs`.
+
+**RS-111** A refusal MUST name one kind from a closed vocabulary, and the wire word MUST have exactly
+one owner in the implementation. Where a refusal has numbers or identifiers they MUST be carried as
+typed fields and the business wording MUST be value-free.
+*Rationale:* a verifier parses the word; a sentence that interpolated a deployment's numbers would
+put that deployment's data into a static string, where it can be neither redacted nor typed.
 
 | Kind | Wire word |
 |---|---|
@@ -441,8 +574,8 @@ would put that deployment's data into a static string, where it can be neither r
 *Trace:* `wasm/src/domain/outcome/refusal.rs` (`as_str` is exhaustive and equal to serde's spelling).
 
 **RS-112** A missing operand MUST refuse as `port_unavailable`. It MUST NOT be reported as `0`.
-*Rationale:* a zero overage is a statement that the request fits; producing it from an
-unreadable port is a false statement in the one field an operator would use to size a cap.
+*Rationale:* a zero overage is a statement that the request fits; producing it from an unreadable
+port is a false statement in the one field an operator would use to size a cap.
 *Trace:* `finding_projection.rs`; the `refusaldetail` tests.
 
 **RS-113** A refusal MUST NOT consume capacity or commit an effect. Reservation belongs to the

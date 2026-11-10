@@ -1,7 +1,7 @@
 //! Authority-fact projection — attributable present-state facts from our own
 //! signed history (ISSUE-AUTHORITY-FACT-PROJECTION).
 //!
-//! @canonical docs/spec/consequence-gating-v1.md
+//! @canonical docs/spec/execution-governance/03-requirements.md
 //! @canonical .pi/architecture/decisions/ADR-016-audit-integrity-anchor.md
 //! @canonical .pi/architecture/decisions/ADR-017-consequence-gating.md
 //! Implements: ISSUE-AUTHORITY-FACT-PROJECTION (audit-integrity)

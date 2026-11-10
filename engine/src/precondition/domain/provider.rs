@@ -13,7 +13,7 @@
 //! # Non-inheritance (normative)
 //!
 //! The provider's permitting answer is **evidence, not authority**
-//! ([`docs/spec/consequence-gating-v1.md`] §2.7). It enters the same place an
+//! ([`docs/spec/execution-governance/03-requirements.md`] §L.1). It enters the same place an
 //! operator check result does: a permitting provider result never satisfies the
 //! step on its own — every *other* matching precondition is still evaluated, and
 //! a denying provider result refuses. There is deliberately no
@@ -25,7 +25,7 @@
 //! vocabulary all map to [`ProviderDetermination::Unknown`], which refuses. An
 //! unknown vocabulary never becomes authority.
 //!
-//! [`docs/spec/consequence-gating-v1.md`]: ../../../../docs/spec/consequence-gating-v1.md
+//! [`docs/spec/execution-governance/03-requirements.md`]: ../../../../docs/spec/execution-governance/03-requirements.md
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

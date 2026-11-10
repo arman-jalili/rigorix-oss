@@ -5,7 +5,7 @@
 | **Identifier** | `rigorix-consequence-gating-terminology` |
 | **Version** | `1.0` |
 | **Date** | 2026-10-12 |
-| **Specifies** | [`rigorix-consequence-gating` v1.0](./consequence-gating-v1.md) |
+| **Specifies** | [`03-requirements.md`](./execution-governance/03-requirements.md) §L (the five gates) |
 
 This appendix is **normative**. Its purpose is vocabulary stability: the terms
 below are overloaded across the project's own documents, and an overloaded term

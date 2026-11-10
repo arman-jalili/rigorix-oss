@@ -19,7 +19,7 @@ IMPORTANT — Guardian invocation:
 
 > **Published specification.** Consequence Gating is published as a versioned,
 > citable specification with enumerated non-claims and a falsifiable validation
-> protocol: [`docs/spec/consequence-gating-v1.md`](../../../../docs/spec/consequence-gating-v1.md)
+> protocol: [`docs/spec/execution-governance/03-requirements.md` §L](../../../../docs/spec/execution-governance/03-requirements.md)
 > (protocol: [`docs/spec/validation-protocol-v1.md`](../../../../docs/spec/validation-protocol-v1.md),
 > vocabulary: [`docs/spec/terminology.md`](../../../../docs/spec/terminology.md)).
 > This module doc is the implementation view; the specification is the

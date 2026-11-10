@@ -10,7 +10,7 @@ The template asks for a "Compliance Engine Architecture". This crate is adjacent
 question but must not answer it: it compiles a **slice of the existing engine** so a host
 can run the real gate locally. Compliance semantics — which rules exist, what counts as
 a violation, who may approve, what a refusal must cite — belong to
-`docs/spec/consequence-gating-v1.md` and to the engine's `precondition`,
+`docs/spec/execution-governance/03-requirements.md` §L and to the engine's `precondition`,
 `sequence_policy`, `approval`, `enforcement`, `identity` and `audit` contexts.
 
 What this crate *does* own is the part a compliance regime actually depends on:
@@ -73,7 +73,7 @@ Hard rules that keep the boundary honest:
   reporting surface (ADR-006).
 
 ### Neutral
-- Spec references are normative elsewhere: `docs/spec/consequence-gating-v1.md`,
+- Spec references are normative elsewhere: `docs/spec/execution-governance/03-requirements.md`,
   `docs/spec/terminology.md`, `docs/spec/validation-protocol-v1.md`.
 
 ## Alternatives Considered
@@ -108,7 +108,7 @@ Hard rules that keep the boundary honest:
 ## References
 
 - Related ADRs: ADR-003, ADR-004, ADR-005, ADR-010
-- Normative specs: `docs/spec/consequence-gating-v1.md`, `docs/spec/terminology.md`
+- Normative specs: `docs/spec/execution-governance/03-requirements.md` §L, `docs/spec/terminology.md`
 
 ---
 

@@ -5,7 +5,7 @@
 | **Identifier** | `rigorix-consequence-gating-protocol` |
 | **Version** | `1.0` |
 | **Date** | 2026-10-12 |
-| **Specifies** | [`rigorix-consequence-gating` v1.0](./consequence-gating-v1.md) |
+| **Specifies** | [`03-requirements.md`](./execution-governance/03-requirements.md) §L (the five gates) |
 | **Layer** | **L1 — Engineering verification** (see spec §6) |
 
 A protocol is *falsifiable* only if each case states, in advance, what would
