@@ -61,6 +61,17 @@ stays honest.
 | RS-098 settlement requires receipt (L3) | provider receipt reader | receipt tests |
 | Effect-scope evidence wired | #1106; plan declares scope (#1175) | R5 oracle tests |
 
+| RS-099 declared isolation before a step that executes | `SandboxDeclaration`; `EXECUTING_STEP_KINDS`; the dispatcher's pre-spawn refusal | `sandbox_undeclared` tests on both dispatch routes; the marker-file assertions |
+| RS-100 the declaration is not containment | `10-non-claims.md` 21; `docs/deployment.md` | the sentence and its non-claim, side by side |
+| RS-101 the spawn set is derivable from source | `engine/src/execution_engine/.../tools.rs EXECUTING_STEP_KINDS` | `every_spawning_step_kind_is_gated` (fails on a new spawning `exec_*` kind) |
+| RS-102 an unrecognized regime is a startup error | `PermissionMode::parse_host_value` | the three hosts' startup errors; the `read-only` seed |
+| RS-103 every crossing is inventoried with what it does not do | `engine/.pi/architecture/sink-register.tsv` | `validate-sink-register.sh` (+ 11 seeds): one row per call site, `does_not` mandatory |
+| RS-104 validation and mutation share a handle | `tools/infrastructure/fs_at.rs` | `a_component_swapped_for_a_symlink_cannot_redirect_the_write`; `append_refuses_a_symlink_target` |
+| RS-105 evidence completeness is a status | `EvidenceStatus`; CLI status bar; MCP `evidence` | `a_rejected_local_save_is_degraded_not_success`; the durable-queue test |
+| RS-106 the artifact is verified at load | `loader.verify_artifact` (Python), `gate.Open` (Go) | the digest-mismatch tests; the release page's `.wasm` + `.sha256` |
+| RS-107 a read cannot write | `GIT_READ_SUBCOMMANDS`; `validate_git_read_args` | the refusing list tests for `symbolic-ref`, `branch -D`, `tag -d`, `--output` |
+| RS-108 the three vocabularies are closed and owned | `RefusalKind::as_str`, `EvidenceKind`, `GateId::as_str` (exhaustive matches) | conformance vectors `vec-0001`–`vec-0003`, `vec-fixture-0001`; the `refusaldetail` tests |
+
 ## Known gaps, and one caveat
 
 Two of the rows below are gaps: work that is not enforced. The first is not — it is a

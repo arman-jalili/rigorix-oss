@@ -76,7 +76,7 @@ guardian_issue:
 
   out_of_scope:
     - "Any new RS requirement, any stricter obligation, or any new conformance level. Those are **major** per `12-versioning.md:27-31`; if an edit turns out to need one, stop and file the delta for review rather than bumping to 1.0.0 unilaterally"
-    - "Re-publishing the spec site in `rigorix-gtm`. The published copy must be re-synced in the same release and its claim-coverage check re-run — that is a separate repository and a separate PR, noted as a release task, not executed here"
+    - "Re-publishing the site that carries the specification. The published copy must be re-synced in the same release and its claim-coverage check re-run — that is a separate repository and a separate PR, noted as a release task, not executed here"
     - "Phase C's code. This issue records evidence, it does not produce any"
 
   affected_layers:
