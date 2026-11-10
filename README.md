@@ -431,7 +431,7 @@ Public claims here are bounded by the published specifications. A passing test i
 **engineering verification (L1)** under a stated fixture; it does not silently
 inherit standing as **protocol validation (L2)** or **independent evidence (L3)**.
 
-- [Consequence Gating v1.0](docs/spec/consequence-gating-v1.md) — the normative
+- [Requirements §L](docs/spec/execution-governance/03-requirements.md) — the normative
   spec, including what each mode does *not* cover
 - [Validation Protocol v1](docs/spec/validation-protocol-v1.md) — falsifiable
   claims with stated failure conditions

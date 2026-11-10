@@ -273,4 +273,4 @@ and it does not affect the in-scope threat.
   integrity — no chain/anchor; this ADR)
 - **Backlog / strategy:** the SDK/server split and the C-series follow-ups were
   tracked in dated snapshot documents, since removed as superseded; the shipped
-  state is this ADR together with `docs/spec/consequence-gating-v1.md`
+  state is this ADR together with `docs/spec/execution-governance/03-requirements.md` §L

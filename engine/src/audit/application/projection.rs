@@ -1,7 +1,7 @@
 //! ProjectAuthorityFacts — derive attributable authority facts from our own
 //! signed, hash-chained history (ISSUE-AUTHORITY-FACT-PROJECTION).
 //!
-//! @canonical docs/spec/consequence-gating-v1.md
+//! @canonical docs/spec/execution-governance/03-requirements.md
 //! @canonical .pi/architecture/decisions/ADR-016-audit-integrity-anchor.md
 //! Implements: ISSUE-AUTHORITY-FACT-PROJECTION (application)
 //!

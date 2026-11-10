@@ -106,7 +106,7 @@ Invariants of the decision:
 - Related ADRs: ADR-002 (storage), ADR-003 (events), ADR-004 (host contract),
   ADR-005 (authority), ADR-008 (modeling depth)
 - Domain exploration: `.pi/domain/exploration/3baf6e5c-e352-4127-af09-a5e7fe0a2d29.md`
-- Engine spec: `docs/spec/consequence-gating-v1.md`, `docs/spec/terminology.md`
+- Engine spec: `docs/spec/execution-governance/03-requirements.md` §L, `docs/spec/terminology.md`
 
 ---
 
