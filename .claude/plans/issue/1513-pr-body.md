@@ -23,7 +23,7 @@ So concealing the `ci.yml` literal would have spent a repository variable and an
 - **The registry is the subject list**, not a pattern compiled into the script. Deleting the `rigorix-sdk` row turns **112** mentions into findings — the seed that proves the registry decides rather than the shape.
 - A `repository` row must carry the `gh repo view`/`gh repo list` result **and** the word public; a row typed from memory is refused (exit 2). That is the issue's criterion "derived from the org's public repositories, not typed from memory", enforced rather than stated.
 - Kinds separate the nouns that keep getting conflated: `repository`, `artifact` (a published crate is not a repository), `workspace-package`, `proposed-crate`, `rejected`, `identifier` (a fixture, env prefix, hook name or script name owns nothing).
-- Governed = `.md`, `.tsv`, `.yml`, `.yaml`, **workflows included** — no `.github/**` exemption, because the one instance that matters lives there. Code is out, and that hole is named in the script: `engine/src/**` is full of `rigorix-r5-near` temp directories, and a `std::env::temp_dir()` fixture is not a claim about whose repository something is.
+- Governed = `.md`, `.tsv`, `.yml`, `.yaml`, **workflows included** — no `.github/**` exemption, because the one instance that matters lives there. Code is out, and that hole is named in the script: `engine/src/**` is full of temp-directory names shaped like the organisation's (`std::env::temp_dir()` fixtures), and a fixture is not a claim about whose repository something is.
 - Two exit codes: malformed registry (2) and violation (1), because the remedies differ.
 
 ## The wiring
@@ -35,7 +35,7 @@ So concealing the `ci.yml` literal would have spent a repository variable and an
 
 ## The sweep
 
-33 files, 47 mentions: the private repository's name and the two proposed crates that carried it as a prefix now read as prose. Every rewrite keeps the sentence's subject; no decision, number or measurement moved.
+33 files, 47 mentions: the private repository's name — and the two proposed crates that carried it as a prefix — now read as prose. Every rewrite keeps the sentence's subject; no decision, number or measurement moved.
 
 ## Acceptance
 
@@ -57,7 +57,7 @@ So concealing the `ci.yml` literal would have spent a repository variable and an
 
 - It does not touch git history, where the name predates this branch. Removing it there is a rewrite decision, not a docs sweep.
 - It does not rename `ENTERPRISE_REPO_TOKEN`: the workflow still needs it, and a secret's value cannot be read back to re-create it under another name.
-- `demo/anchor-e2e/run.sh` still spells the binary `rigorix-enterprise` — that is the name that repository's own crate builds.
+- `demo/anchor-e2e/run.sh` still spells the enterprise binary by the name that repository's own crate builds. It is a path in someone else's build output, and `.sh` is outside the governed set — the same limit stated for source code.
 - Source code is out of the governed set, deliberately and stated in the script.
 
 Closes #1513.
