@@ -21,7 +21,7 @@ Constraints that shape this decision:
 
 `rigorix auth login` initiates the device authorization grant against any OIDC provider the dev/org configures (`RIGORIX_IDP_ISSUER`, `RIGORIX_IDP_CLIENT_ID`, optional `RIGORIX_IDP_CLIENT_SECRET`). The user is shown a `verification_uri` + `user_code` (the GitHub CLI / Azure CLI pattern — no redirect server needed). Polling completes the exchange.
 
-This works with the enterprise's existing Keycloak realm (`rigorix-enterprise/keycloak/realm-config.json`) and any commercial IdP (Entra ID, Okta, Auth0).
+This works with the enterprise's existing Keycloak realm (`the enterprise repository's keycloak/realm-config.json`) and any commercial IdP (Entra ID, Okta, Auth0).
 
 ### 2. Keychain custody for the refresh token
 

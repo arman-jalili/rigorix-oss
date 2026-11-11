@@ -60,7 +60,7 @@ guardian_issue:
   citations:
     - file: "demo/anchor-e2e/run.sh"
       note: ":96-131 the hand-written envelope with `\"signature\": null`; :133 the `curl -fsS` that discards the body"
-    - file: "rigorix-enterprise/core/src/audit_ingestion"
+    - file: "the enterprise repository's core/src/audit_ingestion"
       note: "ingest verifies the envelope HMAC; the error names the canonical-bytes scheme"
 
   verification:

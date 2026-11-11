@@ -32,7 +32,7 @@ services:
 
   enterprise:
     build:
-      context: ${ENTERPRISE_DIR:-../../rigorix-enterprise}/core
+      context: ${ENTERPRISE_DIR:-../../enterprise}/core
     depends_on:
       postgres:
         condition: service_healthy

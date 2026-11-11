@@ -7,7 +7,7 @@ guardian_issue:
   status: planned
   priority: high
   order: 4
-  dependencies: ["ISSUE-TRUST-BOUNDARY-HARDENING", "rigorix-sdk contract change", "rigorix-enterprise ingestion"]
+  dependencies: ["ISSUE-TRUST-BOUNDARY-HARDENING", "rigorix-sdk contract change", "the enterprise repository ingestion"]
 ---
 
 # ISSUE-AUTHORITY-ATTRIBUTION — make a forged authority visible
@@ -72,7 +72,7 @@ verifier can compare against the operator's known-good digest.
 - `engine/src/audit/domain/envelope.rs` (`PreconditionFindingRef`)
 - `engine/src/audit/application/envelope_factory_impl.rs` (derivation)
 - `rigorix-sdk/schemas/envelope.json`, `policy.json`, all verifiers, fixtures
-- `rigorix-enterprise` ingestion (cross-repo)
+- the enterprise repository ingestion (cross-repo)
 
 ## References
 

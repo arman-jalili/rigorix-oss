@@ -42,7 +42,7 @@ match verifier {
 ### Why a request field and not `IdentityRef`
 
 `IdentityRef` is serialized into the audit envelope, whose canonical form is mirrored
-**frozen** in `rigorix-enterprise` (ADR-016). #1282 declined to put a diagnostic string
+**frozen** in the enterprise repository (ADR-016). #1282 declined to put a diagnostic string
 there and that decision stands. `identity_verification_failure` is request-side only —
 never written to an envelope, optional, and dropped for `unauthenticated` where there is
 no verification attempt to blame. The engine quotes what the verifying process recorded

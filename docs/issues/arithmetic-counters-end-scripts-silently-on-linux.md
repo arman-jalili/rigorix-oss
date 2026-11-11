@@ -9,7 +9,7 @@ guardian_issue:
   priority: high
   tracking_issue: 1291
   dependencies:
-    - "rigorix-enterprise#492 — the same fix and the reference guard, already merged there"
+    - "the enterprise repository #492 — the same fix and the reference guard, already merged there"
 
   intent: |
     `(( X++ ))` returns status 1 when the result is 0, so the **first** increment of a counter that
@@ -76,7 +76,7 @@ guardian_issue:
       note: ":51, :57, :76, :83, :89 — the measured silent death, 11 sites"
     - file: ".pi/scripts/ci/run_preflight.sh"
       note: ":71-72 the first increments, reached before any verdict is printed"
-    - file: "rigorix-enterprise .pi/scripts/validate-shell-exit-status.sh"
+    - file: "the enterprise repository's .pi/scripts/validate-shell-exit-status.sh"
       note: "the reference guard and its 12-case self-test, merged as enterprise#492"
 
   verification:
@@ -105,7 +105,7 @@ The exemption is a bash 3.2 behaviour; bash 4.4 and later do propagate a failing
 `errexit`. A claim about shell semantics is a claim about a specific shell, and the one that runs in CI is
 not the one that runs on the development machine.
 
-The reference implementation exists and is merged: `rigorix-enterprise#492` fixed 39 sites the same way and
+The reference implementation exists and is merged: `the enterprise repository #492` fixed 39 sites the same way and
 added `.pi/scripts/validate-shell-exit-status.sh` (12/12 self-test, five positive cases, five negative), with
 a seeded mutation that names file and line. This issue is that fix applied to this tree, where the site count
 is 167 and the copies multiply it.

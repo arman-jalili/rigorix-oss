@@ -31,7 +31,7 @@ Key facts verified in code (rigorix-oss, 2026-09-04):
 - The **approval pause/resume chain is complete and freshly hardened** (Approval module, ADR-011): `requires_approval` node → `PendingApproval` → `approve_execution` → resume; pre-dispatch intent verification at the single `run_dispatch_loop` choke point; signed `ApprovalRecorded` evidence. Composing on it costs near-zero new gate machinery.
 - The dispatch path has a **single choke point** (`run_dispatch_loop`, used by `execute_graph` and `resume_execution`) — the same property ADR-011 exploits.
 - **Hooks are arbitrary code** (PreToolUse/PostToolUse receive `tool_name`, `tool_input`, `session_id`) — a stateful hook can implement composition detection today with zero engine changes, but per-policy and custom, not declarative.
-- **Enterprise** (`rigorix-enterprise`) evaluates policies against audit records with six rule types (risk threshold, tool blocklist, repo/author allowlist, llm budget, template allowlist) — none sequential; its `policy-engine.md` explicitly anticipates "(future) planned DAGs".
+- **Enterprise** (the enterprise repository) evaluates policies against audit records with six rule types (risk threshold, tool blocklist, repo/author allowlist, llm budget, template allowlist) — none sequential; its `policy-engine.md` explicitly anticipates "(future) planned DAGs".
 - Audit gaps from the 2026-09-04 hardening review that gate the enterprise path: F-20260904-02 (pre-ingestion policy evaluation fails open — record not yet stored) and F-20260904-04 (OSS↔ENT policy-transfer seams unclosed in both directions).
 - Config-self-protection gap: default `PermissionConfig.deny` is empty and `workspace_write` permits in-workspace writes (F-20260904-06a) — a declarative rule file would be editable by the executing agent unless `.rigorix/**` writes are denied in the same epic.
 
@@ -120,8 +120,8 @@ The engine governs steps it dispatches. Composition inside one opaque `run_comma
 - `mcp/src/execution_tools/**` (surface plan-time findings; layer vocabulary mapping per execution-tools.md)
 
 **Enterprise (P3, gated):**
-- `rigorix-enterprise/core/.pi/architecture/modules/policy-engine.md` (new `sequence_policy` rule type)
-- `rigorix-enterprise/core/.pi/architecture/modules/oss-integration.md` (signed-bundle handoff of sequence rules)
+- `the enterprise repository's core/.pi/architecture/modules/policy-engine.md` (new `sequence_policy` rule type)
+- `the enterprise repository's core/.pi/architecture/modules/oss-integration.md` (signed-bundle handoff of sequence rules)
 - Blockers: F-20260904-02 (pre-store payload evaluation), F-20260904-04 (seam closure)
 
 **Canonical References:**

@@ -57,7 +57,7 @@ guardian_issue:
         - ".pi/architecture/decisions/ADR-018-distributed-capacity-ledger.md"
     - evidence: "engine/src/capacity_ledger/infrastructure/in_process.rs — by_key hit returns grant_from(reservation) without comparing amount"
     - evidence: "engine/src/capacity_ledger/infrastructure/in_process.rs — expire_lapsed removes the key ('the claim is void, so the key may be retried afresh')"
-    - evidence: "rigorix-enterprise core/src/capacity_ledger/infrastructure/reservation_repository.rs — ON CONFLICT DO NOTHING then find_by_idempotency_key, amount never compared"
+    - evidence: "the enterprise repository's core/src/capacity_ledger/infrastructure/reservation_repository.rs — ON CONFLICT DO NOTHING then find_by_idempotency_key, amount never compared"
     - evidence: "engine/src/capacity_ledger/domain/error.rs — no mismatch variant exists"
 
   acceptance_criteria:

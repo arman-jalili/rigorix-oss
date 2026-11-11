@@ -1,0 +1,86 @@
+# Names this tree may use in public text — the registry `validate-public-references.sh` decides by.
+#
+# A repository must not be named here unless it is *published*: the allowlist is the check, so a
+# name that is not public must not appear in this file either. That is the whole design — the
+# private-side denylist cannot live in a public repository, but the complement can.
+#
+# Columns (tab-separated):
+#   token     the name as it appears in text; a `*` glob registers a family
+#   kind      repository | artifact | workspace-package | proposed-crate | rejected | identifier
+#               repository        a published GitHub repository — evidence REQUIRED, see below
+#               artifact          a published package (crate / npm / PyPI / Maven)
+#               workspace-package a crate in this workspace that is not published
+#               proposed-crate    a crate name an ADR considered, published nowhere
+#               rejected          a name the tree mentions in order to say "not this"
+#               identifier        a fixture, env prefix, hook name or script name — no owner
+#   evidence  why this name is public, or what it is. A bare assertion is not evidence: every
+#             `repository` row carries the command that was run and its result, and the checker
+#             refuses a row that does not.
+#
+# Measurement date for every row below: 2026-11-11.
+#   gh repo view arman-jalili/<name> --json visibility,isPrivate
+#   curl -s -o /dev/null -w '%{http_code}' https://github.com/arman-jalili/<name>       (anonymous)
+#   curl -s -A chk -o /dev/null -w '%{http_code}' https://crates.io/api/v1/crates/<name>
+#   curl -s -o /dev/null -w '%{http_code}' https://pypi.org/pypi/<name>/json
+#   curl -s -o /dev/null -w '%{http_code}' https://registry.npmjs.org/<name>
+#
+# A `repository` row is why a token passes. If a repository is made private, delete its row and
+# the guard names every place the tree still says it.
+
+# token	kind	evidence
+rigorix-oss	repository	gh repo view arman-jalili/rigorix-oss --json visibility → PUBLIC (2026-11-11); anonymous GET https://github.com/arman-jalili/rigorix-oss → 200
+rigorix-sdk	repository	gh repo view arman-jalili/rigorix-sdk --json visibility → PUBLIC, pushed 2026-11-11T16:33:41Z; anonymous GET → 200. It was private when this tree called it "same-owner private", which is why the row records the measurement rather than the claim
+authority-demo	repository	gh repo list arman-jalili --visibility public → present (2026-11-11)
+payouts-demo	repository	gh repo list arman-jalili --visibility public → present (2026-11-11)
+conference-demo	repository	gh repo list arman-jalili --visibility public → present (2026-11-11)
+migration-demo	repository	gh repo list arman-jalili --visibility public → present (2026-11-11)
+payments-demo	repository	gh repo list arman-jalili --visibility public → present (2026-11-11)
+health-policy-simulator	repository	gh repo list arman-jalili --visibility public → present (2026-11-11)
+# a crate name is not a repository name: publishing a package does not publish a Git repository,
+# and conflating them would force an exception per crate
+rigorix-engine	artifact	crates.io /api/v1/crates/rigorix-engine → 200 (published crate)
+rigorix-cli	artifact	crates.io → 200
+rigorix-mcp	artifact	crates.io → 200
+rigorix-actions	artifact	crates.io → 200
+rigorix-schemas	artifact	crates.io → 200
+rigorix-verifier	artifact	crates.io → 200; PyPI → 200; npm → 200
+rigorix-client	artifact	crates.io → 200; npm → 200
+rigorix-gate	artifact	npm → 200
+rigorix-gate-wasm	artifact	crates.io → 200
+rigorix-server	artifact	crates.io → 200
+rigorix-gate-wasi	workspace-package	a workspace member (`.github/workflows/ci.yml` runs `cargo test -p rigorix-gate-wasi`); crates.io, PyPI and npm all → 404, so it is not a published artifact and names no repository
+rigorix-action	identifier	the GitHub Action adapter's name inside this repository (`actions/`); npm → 404, no registry row anywhere
+# names an ADR considered and did not take — recorded so a reader can tell them from packages
+rigorix-audit-tools	proposed-crate	an option in `mcp/.pi/architecture/decisions/ADR-001`; crates.io, PyPI, npm → 404, so neither a package nor a repository
+rigorix-execution-tools	proposed-crate	an option in `mcp/.pi/architecture/decisions/ADR-001`; 404 on all three registries
+rigorix-template-tools	proposed-crate	an option in `mcp/.pi/architecture/decisions/ADR-001`; 404 on all three registries
+rigorix-mcp-server	proposed-crate	an option in `mcp/.pi/architecture/decisions/ADR-001`; 404 on all three registries
+rigorix-mcp-bin	proposed-crate	an option in `mcp/.pi/architecture/decisions/ADR-001`; 404 on all three registries
+rigorix-gate-core	proposed-crate	the extraction `docs/issues/adr014-decides-a-feature-main-does-not-have.md` records as not taken; 404 on all three registries
+rigorix-gate-wasm-domain	proposed-crate	one half of the split in `wasm/.pi/architecture/decisions/ADR-001`; crates.io, PyPI and npm → 404
+rigorix-gate-wasm-host	proposed-crate	the other half of that split; crates.io, PyPI and npm → 404
+rigorix-wasm	rejected	`.github/workflows/hardening.yml` records that the crate is `rigorix-gate-wasm`, *not* this — the name exists to be refused
+# identifiers: names that belong to no organization. Each is why the token is not a repository.
+rigorix-bot	identifier	the marker a bot writes into a comment body (`[rigorix-bot]`)
+rigorix-user	identifier	an authority string in the MCP auth tests
+rigorix-dev-envelope-hmac-key	identifier	an environment variable name for a development HMAC key
+rigorix-hook-*	identifier	a hook program name in a user's harness configuration, not a repository (`rigorix-hook-validate-path`, `-ci-guard`, `-fmt-check`, `-notify`)
+rigorix-authority-fact-projection	identifier	the value of a `const …_SPEC` in the audit domain
+rigorix-consequence-gating-protocol	identifier	the *Document identifier* row of `docs/spec/validation-protocol-v1.md`
+rigorix-consequence-gating-terminology	identifier	the *Document identifier* row of `docs/spec/terminology.md`
+rigorix-orchestrator	identifier	a systemd unit name in a deployment plan
+rigorix-hooks	identifier	an installable hook bundle in a plan
+rigorix-backup	identifier	an archive filename in a disaster-recovery plan
+rigorix-fits	identifier	a heading anchor (`#where-rigorix-fits`) in `README.md`
+rigorix-eng	identifier	a chat channel name in a plan
+rigorix-audit	identifier	a bucket name in an example configuration
+rigorix-demo	identifier	`rigorix-demo.mov`, a tracked video filename recorded in the gap ledger
+rigorix-authority-demo	identifier	the product name of the public `authority-demo` application as the gap ledger writes it
+# demo-shaped names that are not the demo repositories: directories, scripts and branch names
+issue-consequence-gating-demo	identifier	an issue id plus "demo" in the engine CHANGELOG — a branch name
+1018-capacity-demo	identifier	an issue id plus "demo" — the branch name a plan records
+narrowed-demo	identifier	a directory name in a plan note
+reset-demo	identifier	`reset-demo.sh`, a script name in a measured command
+cost-demo	identifier	a demo scenario name in a `docs/issues` record
+run-demo	identifier	`.rigorix/run-demo.mjs`, a script name
+run-conference-demo	identifier	`run-conference-demo.sh`, a script name in an engine issue note

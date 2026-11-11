@@ -17,7 +17,31 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **A check that public text names only published repositories.** `.pi/scripts/validate-public-references.sh`
+  reads every repository-shaped token in governed text (`.md`, `.tsv`, `.yml`, `.yaml`, workflows
+  included) and requires it in `.pi/public-repositories.tsv`, where each name carries its kind and
+  the command that showed it is public. A private repository fails **by absence**, which is why the
+  rule can live in a public repository at all — a denylist would write the private names down. Each
+  `repository` row stores the `gh repo view`/`gh repo list` result rather than the claim, so a name
+  that stops being public is one row and a failing build, not a memory (#1513).
+
+### Changed
+
+- **The SDK-schema conformance stage no longer needs a credential.** `rigorix-sdk` is public, so the
+  job clones it with the workflow's own `contents: read` instead of `secrets.RIGORIX_SDK_TOKEN`.
+  Two consequences: one fewer long-lived PAT, and the stage can now run on a **fork PR**, where a
+  secret does not exist and the job previously read as an infrastructure error. `RIGORIX_SDK_SCHEMAS`
+  and `--manifest-path rigorix-sdk/rust/…` are unchanged — they are the SDK's documented names
+  (`rust/RELEASING.md` §3). The `rigorix-sdk/**` row in `ci-affected.tsv` is deleted: no diff in
+  this repository can contain that path, so it could never select a job.
+- **The anchor E2E names its repository from a variable.** `.github/workflows/anchor-e2e.yml`
+  reached the private enterprise repository through a literal owner/name and a PAT in the clone URL;
+  it now reads `vars.ENTERPRISE_REPOSITORY` and clones to `$RUNNER_TEMP/enterprise`, with a comment
+  that names the symptom when the variable is unset. The job still runs only on `workflow_dispatch`
+  and the weekly schedule, and still skips cleanly. The private repository's name and the two
+  proposed crates that carried it as a prefix are rewritten to public-safe wording in 33 files.
 
 ## [1.14.3] - 2026-11-09
 

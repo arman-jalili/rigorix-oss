@@ -51,7 +51,7 @@ guardian_issue:
     - registry: ".pi/guards.tsv"
     - existing: "engine/.pi/scripts/validate-code-graph-contracts.sh (check_impl / check_contains precedent)"
     - existing: "ISSUE-SELF-OWNED-VULN-CHECKS — the 'a guard must be registered' rule"
-    - precedent_for_forbid: "rigorix-enterprise core/.pi/scripts/ci/check_capacity-ledger_contracts.sh (forbid() — pattern must be ABSENT)"
+    - precedent_for_forbid: "the enterprise repository's core/.pi/scripts/ci/check_capacity-ledger_contracts.sh (forbid() — pattern must be ABSENT)"
 
   acceptance_criteria:
     - "The catalogue names each class, one instance per class, and the class owner"

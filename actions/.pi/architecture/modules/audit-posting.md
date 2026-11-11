@@ -426,7 +426,7 @@ fn resolve_backend(config: &AuditConfig) -> Arc<dyn AuditBackend> {
         "filesystem" => Arc::new(FilesystemAuditBackend::new(".rigorix/audit")),
         "noop" => Arc::new(NoopAuditBackend),
         "api" => {
-            // Enterprise: RigorixApiBackend (from rigorix-enterprise crate)
+            // Enterprise: RigorixApiBackend (from the enterprise crate)
             #[cfg(feature = "enterprise")]
             {
                 let api = RigorixApiBackend::new(&config.api_url, &config.api_key);
@@ -434,7 +434,7 @@ fn resolve_backend(config: &AuditConfig) -> Arc<dyn AuditBackend> {
             }
             #[cfg(not(feature = "enterprise"))]
             {
-                panic!("Enterprise backend requires rigorix-enterprise crate")
+                panic!("Enterprise backend requires the enterprise crate")
             }
         }
         _ => {

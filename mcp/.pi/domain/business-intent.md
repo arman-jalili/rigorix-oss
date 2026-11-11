@@ -123,6 +123,6 @@ The system implements the Model Context Protocol (MCP) specification:
 ## Out of Scope (Phase 0)
 
 - The system does NOT implement AI chat functionality. Chat/planning is handled by the connected AI tool.
-- The system does NOT implement enterprise server functionality. Enterprise logic lives in rigorix-enterprise.
+- The system does NOT implement enterprise server functionality. Enterprise logic lives in the enterprise repository.
 - The system does NOT implement RBAC or multi-tenancy. Those are enterprise server concerns.
 - The system does NOT implement its own authentication beyond inheriting OS process identity (stdio) or bind-address restriction (SSE).

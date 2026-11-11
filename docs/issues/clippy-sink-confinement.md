@@ -48,7 +48,7 @@ guardian_issue:
     - evidence: "engine/src/execution_engine/application/service_impl/tools.rs — exec_run_command spawned `sh -c` with no allowlist (#1067)"
     - evidence: "engine/src/tools/application/run_command_tool.rs:125 — the guarded path, same sink"
     - evidence: "engine/src/tools/application/shell_policy.rs — apply_child_env, the intended single helper"
-    - precedent: "rigorix-enterprise core/.pi/scripts/ci/check_capacity-ledger_contracts.sh — forbid() guards that fail on a pattern's presence"
+    - precedent: "the enterprise repository's core/.pi/scripts/ci/check_capacity-ledger_contracts.sh — forbid() guards that fail on a pattern's presence"
 
   acceptance_criteria:
     - "clippy.toml disallows std::process::Command and tokio::process::Command"

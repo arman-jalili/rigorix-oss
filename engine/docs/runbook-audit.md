@@ -74,7 +74,7 @@ not an edit:
 4. console.
 
 Shipped example (#1071): the engine emitted `anchored_pending` before the schema
-knew it, and enterprise ingestion rejected it before `rigorix-enterprise` #268
+knew it, and enterprise ingestion rejected it before the enterprise repository #268
 accepted it — consumer-first ordering was required for the release even though
 the engine and schema were already on `main`. To check the emit side only:
 `engine/tests/conformance/envelope.rs` validates all three variants against the

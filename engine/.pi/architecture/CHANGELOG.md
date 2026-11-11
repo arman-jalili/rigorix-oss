@@ -376,7 +376,7 @@ the window *after* it, where a permitted action is sent, the response is lost, a
   it: `/architect --epic "consequence gating"` (contract freeze + one issue per
   component + proofing + readiness). The payouts falsifier is tracked in this
   repo as `engine/.pi/issues/issue-consequence-gating-demo.md`.
-- **Cross-repo:** rigorix-sdk #39 (contract freeze), rigorix-enterprise #225
+- **Cross-repo:** rigorix-sdk #39 (contract freeze), the enterprise repository #225
   (evidence ingestion).
 
 ### Notes
@@ -400,7 +400,7 @@ the window *after* it, where a permitted action is sent, the response is lost, a
     chain/HMAC bytes are unchanged) and `history_integrity = anchored` tagging via
     `AuditEnvelopeFactoryImpl::with_anchor`.
   - `rigorix.system.version` reports `history_integrity` + `anchor.{id,head}`.
-- **ADR-016 Phase B — enterprise audit ledger** (rigorix-enterprise #207/#210):
+- **ADR-016 Phase B — enterprise audit ledger** (the enterprise repository #207/#210):
   append-only `sequence`/`prev_hash` chain, `LedgerService` (`append`/`head`/
   `history_slice`/`compact`/`verify`), Ed25519 anchor receipts/slices/checkpoints,
   compaction as the only purge path (GDPR), and the ADR-016 Phase B catalog methods

@@ -27,7 +27,7 @@ implementor keep compiling unchanged.
 
 The refusal does not embed the free-form error. It could only reach it through `IdentityRef`,
 which is serialized into the audit envelope — and that canonical form is mirrored frozen in
-`rigorix-enterprise` (ADR-016). Adding a diagnostic string there would change the signed bytes of
+the enterprise repository (ADR-016). Adding a diagnostic string there would change the signed bytes of
 every envelope for a message. The refusal states the condition and points at
 `rigorix_auth_status`, which carries the recorded error; the two surfaces report the same facts.
 

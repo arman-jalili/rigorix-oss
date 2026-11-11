@@ -10,7 +10,7 @@
 Rigorix's evidence chain lacks attributable human identity. `RunInput.author` is a self-asserted `Option<String>`; `approve_node` carries no identity. The envelope signs execution events but not *who* decided. Meanwhile:
 
 - The industry is moving toward decision governance where "who authorized, when, under what authority" is first-class evidence (Portotify — capability vs authority; SOC 2 change-management evidence; the OpenAI/HF incident — separation of requester and approver)
-- The enterprise already has a Keycloak realm (`rigorix-enterprise/keycloak/realm-config.json`) and deferred JWT/OAuth2 for SSO in its ADR-005
+- The enterprise already has a Keycloak realm (`the enterprise repository's keycloak/realm-config.json`) and deferred JWT/OAuth2 for SSO in its ADR-005
 - The OSS MCP ADR-005 already correctly rejects MCP-level auth (transport trust) and OAuth2-for-SSE as over-engineering
 - The approval-binding work (ADR-011) needs a credible `approver_id`, not a self-claimed string
 
@@ -21,7 +21,7 @@ Rigorix's evidence chain lacks attributable human identity. `RunInput.author` is
 ### 1. OSS attests; Enterprise authorizes
 
 - **OSS (this repo)**: records who was presented as acting — an **attributed, time-bound claim**, best-effort verified when online, explicitly marked when not. OSS makes **no authorization judgment** (no scope/role evaluation).
-- **Enterprise (rigorix-enterprise)**: performs JWKS verification and authorization — "is this approver allowed to approve a production-switch?" lives there, on top of the existing API-key/scope RBAC and Keycloak realm.
+- **Enterprise (the enterprise repository)**: performs JWKS verification and authorization — "is this approver allowed to approve a production-switch?" lives there, on top of the existing API-key/scope RBAC and Keycloak realm.
 
 The two halves meet at the `IdentityClaim` type and the signed envelope: OSS produces evidence; Enterprise consumes and enforces. This mirrors the project's existing enforcement/evidence split.
 
@@ -108,7 +108,7 @@ Implementation files should reference: `.pi/architecture/modules/identity.md` (e
 
 - Related ADRs: ADR-011 (approval binding — consumes identity). The transport-side decisions are
   **not** in this register: the OSS MCP transport auth, and the enterprise IdP record where
-  JWT/OAuth2 was deferred and is now the authorization half, are `rigorix-enterprise` ADR-005 and
+  JWT/OAuth2 was deferred and is now the authorization half, are the enterprise repository's ADR-005 and
   the MCP transport document. They were cited here as `ADR-005`, which in this repository is
   Event Bus — the number resolved, the document did not (#1505).
 - External: OIDC device flow (RFC 8628); Portotify — "Capability Is Not Authority"; SOC 2 change-management evidence requirements
