@@ -29,6 +29,15 @@
 #      different documents with the same numbers — so a bare number means one thing inside
 #      this directory and another elsewhere, which is why rule 5 is scoped to this directory.
 #
+# # Scope, stated because silence is not a scope (#1514)
+#
+# The wasm register is **not** checked here. Measured on 2026-11-11, running this guard against
+# it reports four unresolved citations: an `ADR-016` that set does not contain, a
+# `.pi/architecture/decisions/ADR-010-…` path that resolves nowhere, and two descriptive labels
+# (`ADR-009 (error handling)`, `ADR-005 (key custody)`) with no record. Every one of them is a
+# decision about what a number means in another tree — a rewrite, not a mechanical fix — so it is
+# tracked rather than silently absent from both this guard and the affected-path map.
+#
 # Usage:
 #   bash engine/.pi/scripts/validate-adr-references.sh             # check
 #   bash engine/.pi/scripts/validate-adr-references.sh --report    # citations + labels

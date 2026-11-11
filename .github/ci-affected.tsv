@@ -23,29 +23,30 @@ deny.toml	ALL	the audit's subject is the whole dependency graph
 .github/**	ALL	the pipeline is the thing being narrowed
 .pi/**	ALL	the guards and mirrors gate every crate
 .rigorix/**	ALL	product configuration the engine reads at run time
-engine/src/**	engine,test,portable,conformance,coverage,wasm-gates,wasi,actions,cli,mcp,server,integration	the engine and everything that builds against it — the comment was true of the intent and false of the row until #1468: `portable` proves the slice compiles, it does not replay a decision, and every other member's tests link it
-engine/tests/**	engine,test,portable,conformance,coverage,wasm-gates,wasi,actions,cli,mcp,server,integration	the engine's test binaries — and, like its sources, every member that links the crate
+engine/src/**	engine,test,portable,conformance,coverage,wasm-gates,wasi,actions,cli,mcp,server,integration,audit	the engine and everything that builds against it — the comment was true of the intent and false of the row until #1468: `portable` proves the slice compiles, it does not replay a decision, and every other member's tests link it
+engine/tests/**	engine,test,portable,conformance,coverage,wasm-gates,wasi,actions,cli,mcp,server,integration,audit	the engine's test binaries — and, like its sources, every member that links the crate
+**/.pi/**	audit	the mirrored guards and the crate documents a guard reads, in every crate: `**/*.md` alone sent `actions/.pi/INDEX.md` to `docs` and nothing else, and `validate-script-drift.sh` reads exactly that tree (#1514)
 engine/.pi/**	engine,test,portable,conformance,coverage,audit	the engine's own guards — documents and guard scripts, which no artifact replays. `audit` is here because it is the job that *runs* them: `validate-guards.sh` executes every `run_here=yes` guard, and `engine/.pi/scripts/validate-sink-register.sh` is one. Without `audit` a change to the register or to the guard narrowed the pipeline away from the only job that enforces it (#1498)
-cli/src/**	cli,test,coverage	the CLI surface
-cli/tests/**	cli,test,integration,coverage	the CLI test binaries, incl. the pinned-inputs surface
-mcp/src/**	mcp,test,coverage,server,integration	the MCP server, and the server that links it
-mcp/tests/**	mcp,test,integration,coverage	the MCP test binaries, incl. the stdio e2e
-actions/src/**	actions,test,coverage	the actions adapter
-actions/tests/**	actions,test,integration,coverage	the actions test binaries, incl. process isolation
-server/src/**	server,test,integration,coverage	the HTTP server
-server/tests/**	server,test,integration,coverage	the server's e2e and parity binaries
-wasm/src/**	test,wasm-gates,portable,coverage,wasi	the gate crate, its matrix leg, its eleven gates, and the WASI artifact that links its operations
+cli/src/**	cli,test,coverage,audit	the CLI surface
+cli/tests/**	cli,test,integration,coverage,audit	the CLI test binaries, incl. the pinned-inputs surface
+mcp/src/**	mcp,test,coverage,server,integration,audit	the MCP server, and the server that links it
+mcp/tests/**	mcp,test,integration,coverage,audit	the MCP test binaries, incl. the stdio e2e
+actions/src/**	actions,test,coverage,audit	the actions adapter
+actions/tests/**	actions,test,integration,coverage,audit	the actions test binaries, incl. process isolation
+server/src/**	server,test,integration,coverage,audit	the HTTP server
+server/tests/**	server,test,integration,coverage,audit	the server's e2e and parity binaries
+wasm/src/**	test,wasm-gates,portable,coverage,wasi,audit	the gate crate, its matrix leg, its eleven gates, and the WASI artifact that links its operations
 wasm/ci/**	wasm-gates,wasi	the gates' own scripts and budgets, and the artifact that replays their vectors
-wasi/src/**	test,wasi,coverage	the WASI boundary: its leg, its artifact gates, its coverage
+wasi/src/**	test,wasi,coverage,audit	the WASI boundary: its leg, its artifact gates, its coverage
 wasi/ci/**	wasi	the artifact's own gates, budgets and record
 wasi/Cargo.toml	ALL	a manifest change reaches the workspace feature graph
 wasm/pkg/**	wasm-gates	the packaged artifact
 schemas/**	conformance,docs	the contract schemas
-docs/**	docs	documentation and the canonical spec
+docs/**	docs,audit	documentation and the canonical spec — and `audit`, because `validate-docs.sh` and `validate-public-references.sh` read it: a pull request that rewrote seven specification documents was green without running the guard whose subject is documentation (#1514)
 demo/**	none	the demo is not built or tested by this pipeline
 admin/**	none	not in this pipeline
-*.md	docs	a document is the docs stage's subject, and prose alone narrows to it
-**/*.md	docs	the same for a document inside a directory
+*.md	docs,audit	a document is the docs stage's subject, and the document guards (`validate-docs.sh`, `validate-wiring-claims.sh`, `validate-public-references.sh`) run in `audit` (#1514)
+**/*.md	docs,audit	the same for a document inside a directory — and the same guards read it
 rust-toolchain.toml	ALL	the pinned toolchain compiles every crate
 clippy.toml	lint	the lints every crate is checked against
 action.yml	ALL	the published action's identity; it names the crates it invokes
@@ -54,6 +55,6 @@ guardian-manifest.json	ALL	the manifest the guards and the pipeline are generate
 LICENSE-*	none	not read by any gate
 **/LICENSE-*	none	not read by any gate
 .config/**	ALL	the test runner's configuration changes how every binary runs
-.claude/**	none	agent scaffolding
-.agents/**	none	agent scaffolding
+.claude/**	audit	agent scaffolding, and prose a public guard reads: `validate-public-references.sh` reads these plans, which is how this branch's own PR body was caught (#1513)
+.agents/**	audit	agent scaffolding, and documents the document guards read
 .githooks/**	none	not used by CI

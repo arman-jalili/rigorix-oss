@@ -27,6 +27,20 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   `repository` row stores the `gh repo view`/`gh repo list` result rather than the claim, so a name
   that stops being public is one row and a failing build, not a memory (#1513).
 
+### Fixed
+
+- **A documentation change now runs the documentation guard.** `.github/ci-affected.tsv` sent
+  `docs/**` to the `docs` job, which runs three per-crate validators and **not**
+  `.pi/scripts/validate-docs.sh` — a gating guard, and gating guards run only in `Audit`. A pull
+  request that rewrote seven specification documents therefore reported success without running the
+  validator whose subject is documentation (#1514). The map's rows now carry `audit` wherever a
+  `run_here=yes` guard reads their contents, and the class is checkable rather than remembered:
+  `.pi/guard-subjects.tsv` says what each of the sixteen guards reads, and
+  `.github/scripts/check_affected_map.sh` fails when a guard's subject does not reach `audit`, when
+  a declared glob matches no tracked path, and when a guard that runs here declares nothing
+  (rules 5 with seeds S6/S7). The cost is stated rather than hidden: `Audit` is now selected by
+  more changes, because a guard that does not run is not a gate.
+
 ### Changed
 
 - **The SDK-schema conformance stage no longer needs a credential.** `rigorix-sdk` is public, so the
