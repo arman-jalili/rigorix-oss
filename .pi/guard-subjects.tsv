@@ -1,0 +1,49 @@
+# What each gating guard reads, and the job that must therefore run it (#1514).
+#
+# `.pi/guards.tsv` says *whether* a guard gates. This file says *what it reads*, so the path→subject
+# map in `.github/ci-affected.tsv` can be compared with the guards instead of trusted. The defect it
+# closes has now happened twice: `engine/.pi/**` did not reach `audit` (#1498), and `docs/**` did not
+# either — so a pull request that rewrote seven specification documents reported success without
+# running the validator whose subject is documentation (#1514).
+#
+# Columns (tab-separated):
+#   guard    the guard script, as `.pi/guards.tsv` names it
+#   reads    a path glob whose contents the guard reads
+#   why      what the content of those paths is to that guard
+#
+# Rules, enforced by `.github/scripts/check_affected_map.sh`:
+#   1. `reads` must match at least one tracked path — a glob nobody's file matches is a row that
+#      stopped describing the tree;
+#   2. the map must route `reads` to `audit`, the job that runs `validate-guards.sh`, which runs
+#      every guard with `run_here=yes`;
+#   3. every `run_here=yes` guard in `.pi/guards.tsv` must appear here at least once, so a new
+#      guard cannot be added without saying what it reads.
+#
+# The cost of rule 2 is stated rather than hidden: `audit` is selected by the rows whose contents a
+# guard reads, so it runs on more changes than it used to. That is the price of the guard running at
+# all; the alternative is the green pipeline this issue was filed about.
+#
+# guard	reads	why
+.pi/scripts/validate-panic-sites.sh	**/*.rs	the panic surface is production Rust, wherever it lives
+.pi/scripts/validate-unsafe-sites.sh	**/*.rs	the `unsafe` surface is production Rust
+.pi/scripts/validate-secret-logs.sh	**/*.rs	secret material can only reach a log from code
+.pi/scripts/validate-script-drift.sh	**/.pi/**	the mirrored scripts live in every crate's `.pi` tree
+.pi/scripts/validate-public-references.sh	**/*.md	prose is where a repository's name is published
+.pi/scripts/validate-public-references.sh	.github/workflows/**	the workflows name repositories functionally, in `repository:`, in a clone URL and in a path
+.pi/scripts/validate-docs.sh	docs/**	the canonical specification is the documentation guard's subject
+.pi/scripts/validate-docs.sh	**/*.md	a document anywhere can carry a link that does not resolve or a claim that is not true
+.pi/scripts/validate-wiring-claims.sh	**/*.md	"it is wired" is a claim made in documents
+.pi/scripts/validate-portable-inventory.sh	engine/src/**	the portable slice's counts are read from the engine's code
+.pi/scripts/ci/check_effect-commitment_contracts.sh	engine/src/**	the frozen contracts are implemented in the engine
+.pi/scripts/ci/check_capacity-ledger_contracts.sh	engine/src/**	the frozen interfaces are implemented in the engine
+.pi/scripts/ci/stage_workspace_check.sh	**/Cargo.toml	the workspace's members, features and pins
+.pi/scripts/validate-decision-expiry.sh	.cargo/audit.toml	the audit suppressions are the decisions that expire
+.pi/scripts/validate-workspace-pins.sh	**/Cargo.toml	an intra-workspace pin is written in a manifest
+.pi/scripts/validate-release-train.sh	**/Cargo.toml	the train is the set of manifests
+engine/.pi/scripts/validate-sink-register.sh	engine/.pi/architecture/sink-register.tsv	the register is the table itself
+engine/.pi/scripts/validate-adr-references.sh	engine/.pi/architecture/decisions/**	the engine's decision records
+# The wasm register is a *different* ADR set with the same numbers, and the engine guard does not
+# read it: measured, it reports four unresolved citations there (an ADR-016 that set does not have,
+# a path that resolves nowhere, and two descriptive labels with no record). Those are decisions in
+# another tree, not a mechanical rewrite — tracked in its own issue and named in the guard's scope
+# note, rather than silently absent from both this table and the map (#1514).

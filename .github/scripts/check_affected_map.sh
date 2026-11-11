@@ -31,6 +31,9 @@ while [ $# -gt 0 ]; do
     --map)
       [ $# -ge 2 ] || { echo "check_affected_map: --map requires a file" >&2; exit 2; }
       MAP="$2"; shift 2 ;;
+    --subjects)
+      [ $# -ge 2 ] || { echo "check_affected_map: --subjects requires a file" >&2; exit 2; }
+      SUBJECTS="$2"; shift 2 ;;
     -h|--help)
       sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0 ;;
@@ -45,7 +48,7 @@ import re
 import subprocess
 import sys
 
-root, map_path, workflow_path = sys.argv[1:4]
+root, map_path, workflow_path, subjects_path, guards_path = sys.argv[1:6]
 findings = []
 
 rows = []
@@ -127,6 +130,57 @@ for label in gaps:
     findings.append(f"{label} matches no row: a change there would be `unmapped` — the map is "
                     f"not total")
 
+# 5. every gating guard's subject reaches the job that runs it. A guard that reads a path the map
+#    does not route to `audit` is a guard that does not run: #1498 found it for `engine/.pi/**` and
+#    #1514 for `docs/**`, where a pull request rewrote seven specification documents while the
+#    pipeline reported success without running the documentation validator.
+def parse(path, minimum):
+    out = []
+    for line in open(path, encoding="utf-8"):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        fields = line.rstrip("\n").split("\t")
+        if len(fields) < minimum:
+            findings.append(f"`{os.path.basename(path)}` has a row with {len(fields)} field(s): "
+                            f"`{line.strip()}`")
+            continue
+        out.append(fields)
+    return out
+
+declared = parse(subjects_path, 3)
+guard_rows = parse(guards_path, 5)
+runners = {f[0].strip() for f in guard_rows if f[3].strip() == "yes"}
+seen = {f[0].strip() for f in declared}
+for guard in sorted(runners - seen):
+    findings.append(f"`{guard}` runs here but `.pi/guard-subjects.tsv` does not say what it reads "
+                    f"— a guard whose subject is undeclared cannot be checked against the map")
+for guard in sorted(seen - runners):
+    findings.append(f"`.pi/guard-subjects.tsv` names `{guard}`, which is not a `run_here=yes` "
+                    f"guard in `.pi/guards.tsv` — a stale row")
+
+def subjects_for(path):
+    """The subject set the map gives one path, by the same rule `ci_affected.sh` applies: every
+    row whose glob matches contributes its subjects, and `ALL` contributes everything."""
+    picked = set()
+    for glob, subjects in rows:
+        if fnmatch.fnmatchcase(path, glob) or fnmatch.fnmatchcase(path, glob.replace("**/", "")):
+            picked.update(subjects)
+    return picked
+
+for guard, reads, why in ((f[0].strip(), f[1].strip(), f[2].strip()) for f in declared):
+    probe = next((p for p in paths if fnmatch.fnmatchcase(p, reads)), None)
+    if probe is None:
+        findings.append(f"`{guard}` reads `{reads}`, which matches no tracked path — the row has "
+                        f"stopped describing the tree")
+        continue
+    picked = subjects_for(probe)
+    if "ALL" in picked or "audit" in picked:
+        continue
+    findings.append(
+        f"`{guard}` reads `{reads}` ({why}), but a change to `{probe}` selects "
+        f"{{{'|'.join(sorted(picked)) or 'nothing'}}} and not `audit` — the guard would not run on "
+        f"the change it exists to read")
+
 for item in findings:
     print("  ✗ " + item)
 if findings:
@@ -138,8 +192,11 @@ print("✅ affected map: total, every subject a job, one table")
 PY
 )
 
-run_check() { # run_check <root> <map> <workflow>
-  python3 -c "$CORE" "$1" "$2" "$3"
+SUBJECTS="$REPO_ROOT/.pi/guard-subjects.tsv"
+GUARDS="$REPO_ROOT/.pi/guards.tsv"
+
+run_check() { # run_check <root> <map> <workflow> [subjects] [guards]
+  python3 -c "$CORE" "$1" "$2" "$3" "${4:-$SUBJECTS}" "${5:-$GUARDS}"
 }
 
 if [ "$SELF_TEST" -eq 1 ]; then
@@ -208,8 +265,9 @@ if [ "$SELF_TEST" -eq 1 ]; then
   # S5: one table, two consumers — the local runner and CI return the same set.
   ci_set="$(bash "$AFFECTED" --files docs/spec/execution-governance/01-terminology.md --list 2>/dev/null)"
   local_set="$(bash "$REPO_ROOT/.pi/scripts/local-ci.sh" --affected=HEAD~1 --list 2>/dev/null | tail -1)"
-  if [ "$ci_set" = "docs" ]; then
-    echo "  ✅ a docs-only change selects only docs"
+  # One subject per line, ordered: assert the set, not the order.
+  if printf '%s\n' "$ci_set" | grep -qx docs && printf '%s\n' "$ci_set" | grep -qx audit; then
+    echo "  ✅ a docs-only change selects docs and audit (the guard that reads it)"
     passes=$((passes + 1))
   else
     echo "  ❌ a docs-only change selected '$ci_set'"
@@ -221,6 +279,27 @@ if [ "$SELF_TEST" -eq 1 ]; then
     *) echo "  ❌ local-ci --affected returned '$local_set'"
        fails=$((fails + 1)) ;;
   esac
+
+  # S6: the defect this issue was filed for — `docs/**` without `audit` is a change that runs
+  #     everything except the guard whose subject is documentation.
+  #     Every route to a document loses `audit`, which is the real shape: no row sends a docs
+  #     change to the job that runs the documentation guard.
+  awk -F'\t' 'BEGIN { OFS = "\t" }
+       ($1 == "docs/**" || $1 == "**/*.md" || $1 == "*.md") { gsub(/,audit|audit,|audit/, "", $2) }
+       { print }' "$TMP/map.tsv" > "$TMP/docs-no-audit.tsv"
+  expect 1 "a guard whose subject does not reach audit fails" \
+    'reads `docs/**`' "$TMP/docs-no-audit.tsv"
+
+  # S7: a guard that runs here and declares nothing — this is what keeps the table complete.
+  grep -v 'validate-panic-sites' "$SUBJECTS" > "$TMP/undeclared.tsv"
+  out="$(run_check "$REPO_ROOT" "$TMP/map.tsv" "$WORKFLOW" "$TMP/undeclared.tsv" 2>&1 || true)"
+  if printf '%s' "$out" | grep -q 'validate-panic-sites.sh.*does not say what it reads'; then
+    echo "  ✅ a guard with no declared subject fails"
+    passes=$((passes + 1))
+  else
+    echo "  ❌ an undeclared guard did not fail"
+    fails=$((fails + 1))
+  fi
 
   echo "  self-test: $passes passed, $fails failed"
   [ "$fails" -eq 0 ] || exit 1
