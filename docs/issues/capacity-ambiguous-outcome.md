@@ -74,7 +74,7 @@ guardian_issue:
     - evidence: "engine/src/capacity_ledger/infrastructure/in_process.rs — expire_lapsed releases outstanding capacity unconditionally"
     - evidence: "engine/src/capacity_ledger/infrastructure/in_process.rs — commit after expiry returns LedgerError::LeaseExpired"
     - evidence: "engine/src/execution_engine/application/service_impl/dispatch.rs — settle_capacity releases on any non-success"
-    - counterpart: "rigorix-enterprise core/src/capacity_ledger/domain/value.rs — same four states"
+    - counterpart: "the enterprise repository's core/src/capacity_ledger/domain/value.rs — same four states"
 
   acceptance_criteria:
     - "A lapsed lease on a side-effecting resource does NOT make the capacity reusable"
@@ -148,7 +148,7 @@ time.
 | a late success is rejected | `in_process.rs` — `commit` after expiry returns `LeaseExpired` |
 | the seam releases on *any* non-success | `dispatch.rs` — `settle_capacity(node_id, success)`; `false` → release |
 | the raw signal is only `task_result.success` | `dispatch.rs:289` |
-| the enterprise has the same four states | `rigorix-enterprise core/src/capacity_ledger/domain/value.rs` |
+| the enterprise has the same four states | `the enterprise repository's core/src/capacity_ledger/domain/value.rs` |
 
 ## Why it matters
 

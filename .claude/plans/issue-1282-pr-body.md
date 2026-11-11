@@ -47,7 +47,7 @@ only the discovering verifier has something to say.
 ## Why the refusal does not embed the error text
 
 It could only reach it through `IdentityRef`, which is serialized into the audit envelope — and
-that canonical form is mirrored **frozen** in `rigorix-enterprise` (ADR-016). A diagnostic string
+that canonical form is mirrored **frozen** in the enterprise repository (ADR-016). A diagnostic string
 is not worth changing the signed bytes of every envelope. So the refusal states the condition and
 points at the surface that has the cause; `rigorix_auth_status` reports the same facts beside the
 same word.

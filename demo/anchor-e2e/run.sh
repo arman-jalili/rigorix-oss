@@ -15,7 +15,7 @@
 #
 # Usage:  demo/anchor-e2e/run.sh
 # Env overrides:
-#   ENTERPRISE_DIR  path to rigorix-enterprise   (default ../rigorix-enterprise)
+#   ENTERPRISE_DIR  path to the enterprise repository   (default ../enterprise)
 #   PG_PORT         host port for Postgres       (default 55432)
 #   ENT_PORT        enterprise HTTP port         (default 3000)
 #   ANCHOR_SCOPE    producer id                  (default local)
@@ -27,7 +27,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-ENTERPRISE_DIR="${ENTERPRISE_DIR:-$REPO_ROOT/../rigorix-enterprise}"
+ENTERPRISE_DIR="${ENTERPRISE_DIR:-$REPO_ROOT/../enterprise}"
 PG_CONTAINER="${PG_CONTAINER:-rigorix-e2e-pg}"
 PG_PORT="${PG_PORT:-55432}"
 ENT_PORT="${ENT_PORT:-3000}"

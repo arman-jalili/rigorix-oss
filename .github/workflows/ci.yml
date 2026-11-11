@@ -444,9 +444,10 @@ jobs:
   #
   # F-20260907-01/02 (contract-sync milestone 1): validates REAL engine
   # output against rigorix-sdk schemas (schemas/envelope.json | policy.json |
-  # claims.json v1 @ rigorix-sdk main). rigorix-sdk is same-owner private —
-  # checked out with the RIGORIX_SDK_TOKEN secret. Runs the feature-gated
-  # conformance suite (engine [[test]] conformance, required-features).
+  # claims.json v1 @ rigorix-sdk main). rigorix-sdk is public, so it is cloned
+  # with this workflow's own `contents: read` — no PAT, which is also why the
+  # stage can run on a fork PR instead of failing there as an infra error.
+  # Runs the feature-gated conformance suite (engine [[test]] conformance).
   #
   # The independent-HMAC proof (engine-signed envelope verified byte-exact by
   # rigorix-verifier) runs in rigorix-sdk CI via the committed
@@ -462,11 +463,12 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-key: conformance-${{ runner.os }}
-      - name: 🔑 Checkout rigorix-sdk (same-owner private, schema source of truth)
+      - name: 🔑 Checkout rigorix-sdk (public, schema source of truth)
         uses: actions/checkout@v4
         with:
           repository: arman-jalili/rigorix-sdk
-          token: ${{ secrets.RIGORIX_SDK_TOKEN }}
+          # No token: the repository is public and `contents: read` is enough, so this stage
+          # needs no long-lived credential and runs unchanged on a fork PR.
           # rigorix-sdk#1 (fixtures + sorted-key parity) has merged, so track
           # main — the schema source of truth.
           ref: main

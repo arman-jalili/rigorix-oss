@@ -10,7 +10,7 @@ guardian_issue:
   dependencies:
     - "ISSUE-AUTHORITY-FACT-PROJECTION (#1001) — domain + re-derivation verification, LANDED"
     - "rigorix-sdk: catalog method (filed separately)"
-    - "rigorix-enterprise: ingestion + console (filed separately)"
+    - "the enterprise repository: ingestion + console (filed separately)"
 
   intent: |
     Make the authority-fact projection reachable: a CLI command to emit a bundle,
@@ -28,7 +28,7 @@ guardian_issue:
   out_of_scope:
     - "The projection domain/application code and the re-derivation verifier (landed in #1001)"
     - "The SDK catalog edit itself (needs its own issue and release; filed in rigorix-sdk)"
-    - "Enterprise console rendering (filed in rigorix-enterprise)"
+    - "Enterprise console rendering (filed in the enterprise repository)"
     - "A signed projection (documented as deferred in spec 4.3.2)"
 
   affected_layers:
@@ -157,7 +157,7 @@ three-repo contract change and is called out as such rather than bundled in.
                 ▼
 ┌──────────────────────────────────────┐
 │ rigorix-sdk: catalog method          │  (filed separately)
-│ rigorix-enterprise: ingest + console │  (filed separately)
+│ the enterprise repository: ingest + console │  (filed separately)
 └──────────────────────────────────────┘
 ```
 

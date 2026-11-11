@@ -40,7 +40,6 @@ wasi/src/**	test,wasi,coverage	the WASI boundary: its leg, its artifact gates, i
 wasi/ci/**	wasi	the artifact's own gates, budgets and record
 wasi/Cargo.toml	ALL	a manifest change reaches the workspace feature graph
 wasm/pkg/**	wasm-gates	the packaged artifact
-rigorix-sdk/**	conformance	the schemas and fixtures the conformance stage replays
 schemas/**	conformance,docs	the contract schemas
 docs/**	docs	documentation and the canonical spec
 demo/**	none	the demo is not built or tested by this pipeline

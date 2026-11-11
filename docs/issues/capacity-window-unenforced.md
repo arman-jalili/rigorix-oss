@@ -54,7 +54,7 @@ guardian_issue:
     - evidence: "engine/src/capacity_ledger/domain/resource.rs:56 — Window { duration_secs }"
     - evidence: "engine/src/capacity_ledger/infrastructure/in_process.rs — committed/outstanding are HashMap<ResourceId, u64>, no timestamps"
     - evidence: "engine/src/capacity_ledger/infrastructure/in_process.rs — the window is only copied into Exposure::new"
-    - evidence: "rigorix-enterprise core/src/capacity_ledger/infrastructure/capacity_repository.rs — no window reference in the aggregate"
+    - evidence: "the enterprise repository's core/src/capacity_ledger/infrastructure/capacity_repository.rs — no window reference in the aggregate"
     - evidence: "engine/src/capacity_ledger/application/config.rs — window_seconds is parsed and accepted"
 
   acceptance_criteria:

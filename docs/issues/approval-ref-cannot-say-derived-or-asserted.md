@@ -10,7 +10,7 @@ guardian_issue:
   tracking_issue: 1243
   dependencies:
     - "ADR-011 — intent-bound approval (RS-011, RS-012)"
-    - "rigorix-enterprise #439 — the enterprise binding, which asserts the hash"
+    - "the enterprise repository #439 — the enterprise binding, which asserts the hash"
 
   intent: |
     `ApprovalRecordRef.intent_hash` is described as "intent hash the approval is bound to", and

@@ -1,7 +1,7 @@
 # Licensing & Enterprise Boundary — Deep Findings
 
 Status: evidence-based analysis of `rigorix-oss` (workspace: engine, cli, actions, mcp, server).
-OSS license: `MIT OR Apache-2.0` (root + every crate). Enterprise plane (`rigorix-enterprise`)
+OSS license: `MIT OR Apache-2.0` (root + every crate). Enterprise plane (the enterprise repository)
 is a separate workspace/repo and is proprietary.
 
 ## 1. What actually ships in rigorix-oss
@@ -68,7 +68,7 @@ enterprise write path.
 | Component | License | Rationale |
 |---|---|---|
 | `rigorix-oss` (engine, cli, actions, mcp, server) | `MIT OR Apache-2.0` | Permissive; Apache-2.0 covers service/network usage; OSS has no source-level dependency on the commercial plane. |
-| `rigorix-enterprise` | Proprietary / commercial | No OSS source embedded; client never drives OSS code locally. |
+| the enterprise repository | Proprietary / commercial | No OSS source embedded; client never drives OSS code locally. |
 | SDK (engine/mcp as library) | Permissive (MIT OR Apache-2.0) | Independent distribution; keeps client redistribution clean. |
 
 ### Enterprise-OSS connection = client/server API, not a library dependency

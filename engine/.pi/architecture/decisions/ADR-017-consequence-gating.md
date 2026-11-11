@@ -479,7 +479,7 @@ status flip.
 - **Module doc:** `.pi/architecture/modules/precondition.md` (11 planned
   components; Guardian generates the issue series via
   `/architect --epic "consequence gating"`).
-- **Cross-repo:** rigorix-sdk #39 (contract freeze), rigorix-enterprise #225
+- **Cross-repo:** rigorix-sdk #39 (contract freeze), the enterprise repository #225
   (evidence ingestion). Demo: `engine/.pi/issues/issue-consequence-gating-demo.md`.
 - **Gaps:** GAP-A-31 (dispatch-time precondition — this ADR), GAP-A-32
   (step-outcome gating), GAP-A-33 (companion-step obligation), GAP-A-34

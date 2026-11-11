@@ -49,7 +49,7 @@ discovery clears. The outcome already carries the truth; the surface reads elsew
 ### Why a request field and not `IdentityRef`
 
 `IdentityRef` is serialized into the audit envelope, whose canonical form is mirrored
-**frozen** in `rigorix-enterprise` (ADR-016) — #1282 declined to put a diagnostic string
+**frozen** in the enterprise repository (ADR-016) — #1282 declined to put a diagnostic string
 there and that decision stands. `identity_verification_failure` is request-side only: it
 is never written to an envelope, it is the observation the calling process made about its
 own verifier, and the engine only quotes it. Optional, so a caller without a verifier

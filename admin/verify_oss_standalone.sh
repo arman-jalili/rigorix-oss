@@ -3,7 +3,7 @@
 # verify_oss_standalone.sh
 #
 # Prove that the OSS engine (rigorix-oss) is a standalone, offline product and
-# does not hard-depend on the commercial control plane (rigorix-enterprise).
+# does not hard-depend on the commercial control plane (the enterprise repository).
 #
 # What this verifies:
 #   1. The workspace compiles cleanly.

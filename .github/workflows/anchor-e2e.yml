@@ -3,8 +3,16 @@
 # The in-process wire test (`engine/tests/anchored_wire_e2e.rs`) runs in the
 # normal Integration stage. This workflow adds the **cross-repo** run: a real
 # enterprise anchor + throwaway Postgres, then the OSS `anchored_wire_live`
-# assertions. It needs the enterprise repo, so it is dispatched/scheduled —
-# not on every PR — and skips cleanly when `ENTERPRISE_REPO_TOKEN` is unset.
+# assertions. It needs the enterprise repository, which is not published, so it
+# is dispatched/scheduled — not on every PR — and skips cleanly when
+# `ENTERPRISE_REPO_TOKEN` is unset (`skipped`, not a red job: a scheduled run in
+# a fork has no secret and must read as "not applicable", not as a failure).
+#
+# The repository's owner/name comes from the `ENTERPRISE_REPOSITORY` repository
+# variable rather than this file, because this file is public and that repository
+# is not. Symptom when the variable is unset: the clone fails with
+# "repository not found" for `arman-jalili/` — set it under Settings → Secrets
+# and variables → Actions → Variables.
 name: Anchor E2E
 
 on:
@@ -28,18 +36,25 @@ jobs:
       - name: Check out the enterprise anchor
         env:
           ENTERPRISE_REPO_TOKEN: ${{ secrets.ENTERPRISE_REPO_TOKEN }}
+          ENTERPRISE_REPOSITORY: ${{ vars.ENTERPRISE_REPOSITORY }}
         run: |
           if [ -z "${ENTERPRISE_REPO_TOKEN}" ]; then
             echo "ENTERPRISE_REPO_TOKEN unset — skipping the live anchor E2E"
             echo "skip=1" >> "$GITHUB_ENV"
             exit 0
           fi
+          if [ -z "${ENTERPRISE_REPOSITORY}" ]; then
+            # No name to clone. Name the missing setting instead of failing on `arman-jalili/`.
+            echo "ENTERPRISE_REPOSITORY (repository variable) is unset — cannot name the repository"
+            echo "skip=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
           git clone --depth 1 \
-            "https://x-access-token:${ENTERPRISE_REPO_TOKEN}@github.com/arman-jalili/rigorix-enterprise.git" \
-            "$RUNNER_TEMP/rigorix-enterprise"
+            "https://x-access-token:${ENTERPRISE_REPO_TOKEN}@github.com/${ENTERPRISE_REPOSITORY}.git" \
+            "$RUNNER_TEMP/enterprise"
 
       - name: Live anchored-path E2E
         if: env.skip != '1'
         env:
-          ENTERPRISE_DIR: ${{ runner.temp }}/rigorix-enterprise
+          ENTERPRISE_DIR: ${{ runner.temp }}/enterprise
         run: demo/anchor-e2e/run.sh

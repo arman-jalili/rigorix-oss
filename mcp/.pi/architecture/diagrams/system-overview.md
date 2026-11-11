@@ -70,7 +70,7 @@ execution-tools → rigorix-engine (EngineFacade: Orchestrator, ExecutionEnforce
 audit-tools     → rigorix-engine (AuditService, read-only)
 template-tools  → rigorix-engine (template repository, read/write)
 auth            → rigorix-engine (IdentityAttestationService — attestation core)
-enterprise-proxy→ rigorix-enterprise API (HTTPS JSON-RPC, Bearer token)
+enterprise-proxy → the enterprise API (HTTPS JSON-RPC, Bearer token)
 ```
 
 ## Security Boundaries

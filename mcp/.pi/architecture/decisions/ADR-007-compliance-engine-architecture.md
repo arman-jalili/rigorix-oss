@@ -14,7 +14,7 @@ Compliance is a core value proposition of the MCP Gateway. Per the domain explor
 4. **Cross-tool audit**: Enterprise aggregates audit across all AI tools from a single MCP integration
 5. **Full SOC2/SOX-grade audit trails** for enterprise customers
 
-The MCP Gateway must support these requirements without implementing any compliance logic itself — all immutable audit storage happens in rigorix-engine (OSS) and rigorix-enterprise-server (enterprise).
+The MCP Gateway must support these requirements without implementing any compliance logic itself — all immutable audit storage happens in rigorix-engine (OSS) and the enterprise server (enterprise).
 
 ## Decision
 

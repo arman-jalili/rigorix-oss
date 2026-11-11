@@ -443,7 +443,7 @@ concern tracked via ADR-016; the config-time validator is wired (GAP-A-29).
 
 **Related:** ADR-017 · module doc `.pi/architecture/modules/precondition.md`
 (Guardian generates the issue series via `/architect --epic "consequence gating"`)
-· cross-repo rigorix-sdk #39 (contract freeze), rigorix-enterprise #225 (evidence
+· cross-repo rigorix-sdk #39 (contract freeze), the enterprise repository #225 (evidence
 ingestion) · demo tracked at `.pi/issues/issue-consequence-gating-demo.md`.
 
 ---

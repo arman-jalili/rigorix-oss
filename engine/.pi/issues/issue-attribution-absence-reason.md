@@ -7,7 +7,7 @@ guardian_issue:
   status: planned
   priority: high
   dependencies: ["rigorix-sdk contract change (next release)"]
-  blocking: ["rigorix-enterprise console attribution rendering"]
+  blocking: ["the enterprise repository console attribution rendering"]
 ---
 
 # ISSUE-ATTRIBUTION-ABSENCE-REASON — absent ≠ pre-attribution
@@ -67,7 +67,7 @@ this is the same order as #987 → SDK 0.3.0). Sequence:
 2. `rigorix-oss` engine: populate it at the three sites
    (`service_impl.rs` finding construction; `runner.rs` refusal paths;
    `sha256_file` returning `None`).
-3. `rigorix-enterprise`: ingest + serve it; the console renders it.
+3. the enterprise repository: ingest + serve it; the console renders it.
 4. Enterprise conformance mirror (`core/tests/conformance/mod.rs`
    `CanonicalPreconditionFindingRef`) must be updated with the SDK change.
    Verified behaviour: this is a **test-only** mirror — production ingestion

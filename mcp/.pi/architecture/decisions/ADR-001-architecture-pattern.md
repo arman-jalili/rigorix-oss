@@ -51,5 +51,5 @@ We will use **Domain-Driven Design with bounded contexts as independently evolva
 - Execution Tools (crate: `rigorix-execution-tools`)
 - Audit Tools (crate: `rigorix-audit-tools`)
 - Template Tools (crate: `rigorix-template-tools`)
-- Enterprise Proxy (crate: `rigorix-enterprise-proxy`, feature-gated)
+- Enterprise Proxy (a crate in the enterprise repository, feature-gated)
 - Binary composition crate (`rigorix-mcp` or `rigorix-mcp-bin`)

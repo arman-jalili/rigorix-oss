@@ -1,7 +1,7 @@
 # Issue #1291 — 167 arithmetic counters end their scripts silently on bash 4.4+
 
 **Branch:** `issue/1291` · **Epic:** ci-integrity · **Component:** Validation · **Module:** tooling
-**Priority:** high · **Depends on:** rigorix-enterprise#492 (the same fix + reference guard, merged there)
+**Priority:** high · **Depends on:** the enterprise repository #492 (the same fix + reference guard, merged there)
 
 ## Defect
 
