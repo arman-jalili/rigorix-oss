@@ -18,11 +18,27 @@
 #
 # # What it governs, and what it does not
 #
-# Governed: `.md`, `.tsv`, `.yml`, `.yaml` — prose and configuration, where a claim is made.
-# Not governed: source code. `engine/src/**` is full of `rigorix-r5-near` temp directories; a
-# fixture in a `std::env::temp_dir()` call is not a claim about whose repository something is.
-# That hole is named here rather than papered over: a private name in a Rust comment would not be
-# caught, and the guard's output should not be read as "the tree names nothing private".
+# Governed: `.md`, `.tsv`, `.yml`, `.yaml` — prose and configuration, where a claim is made — and
+# `.sh`, because a shell script is a runbook: `demo/anchor-e2e/run.sh` is the entry point a stranger
+# follows to run the flagship demonstration, and it named a private repository in a `mktemp` prefix
+# while the line two below it used a neutral one (#1524). A script's literals are read by a person
+# and pasted by a person, which is exactly what prose is.
+#
+# Not governed: compiled source (`.rs`, `.mjs`, `.js`, `.py`). `engine/src/**` is full of temp
+# directories shaped like the organisation's; a fixture in a `std::env::temp_dir()` call is not a
+# claim about whose repository something is. That hole is named here rather than papered over: a private
+# name in a Rust comment would not be caught, and the guard's output should not be read as "the
+# tree names nothing private".
+#
+# The guard's own fixtures use a placeholder (`rigorix-not-published`), never a real name: an
+# unregistered token in a governed file must fail and the message must name file, line and token,
+# and a placeholder exercises that identically.
+#
+# This script is the one file it does not read. A self-test has to plant a token that is **not**
+# registered — that is what makes it a plant — so scanning itself would force the plant into the
+# registry, and a registered plant passes for the wrong reason. The exclusion is named here, and
+# the seeds assert that a `.sh` file *is* governed, so the exclusion cannot silently grow to cover
+# the taxonomy.
 #
 # # Exit codes
 #
@@ -84,17 +100,37 @@ if [ "$MODE" = "self-test" ]; then
 
   echo "── self-test: the registry decides, and the plants are the two cases that matter ──"
 
-  # Plant 1, required: the private name, in a workflow. It must fail, and it must name where.
-  case_ "a private repository's name in a workflow is refused" fail \
+  # Plant 1, required: an unregistered name, in a workflow. It must fail, and it must name where.
+  # The placeholder is deliberate — a refusal fixture does not have to be a real repository, and
+  # using one made this script the last place the name lived (#1524).
+  case_ "an unregistered repository's name in a workflow is refused" fail \
     'jobs:
   probe:
     steps:
-      - run: git clone https://github.com/arman-jalili/rigorix-enterprise.git' ''
+      - run: git clone https://github.com/arman-jalili/rigorix-not-published.git' ''
   out=$(run 2>&1 || true)
   case "$out" in
-    *"workflows/probe.yml:"*"rigorix-enterprise"*) echo "  ✓ the refusal names file, line and token" ;;
+    *"workflows/probe.yml:"*"rigorix-not-published"*) echo "  ✓ the refusal names file, line and token" ;;
     *) echo "✗ self-test: the refusal did not name file:line:token: $out" >&2; exit 1 ;;
   esac
+
+  # Plant 1b: the same name in a shell script, which is governed for the same reason a document is.
+  printf 'name: probe\non: workflow_dispatch\n' > "$scratch/workflows/probe.yml"
+  printf '# probe\n' > "$scratch/docs/probe.md"
+  printf '#!/usr/bin/env bash\nlog="$(mktemp "/tmp/rigorix-not-published.XXXXXX")"\n' > "$scratch/docs/probe.sh"
+  set +e
+  out=$(run 2>&1)
+  status=$?
+  set -e
+  if [ "$status" -eq 1 ] && printf '%s' "$out" | grep -q 'docs/probe.sh:2: rigorix-not-published'; then
+    echo "  ✓ a shell script is governed, and the refusal names file, line and token"
+    REFUSED=$((REFUSED + 1))
+  else
+    echo "✗ self-test: a shell script was not governed (status $status)" >&2
+    printf '%s\n' "$out" >&2
+    exit 1
+  fi
+  rm -f "$scratch/docs/probe.sh"
 
   # Plant 2, required: a *public* name in the same position. If this failed, the check would be
   # rejecting a shape rather than consulting the registry — and would pass for the wrong reason.
@@ -160,7 +196,7 @@ import sys
 ROOT, REGISTRY, MODE = sys.argv[1], sys.argv[2], sys.argv[3]
 GREEN, RED, DIM, RESET = "\033[0;32m", "\033[0;31m", "\033[2m", "\033[0m"
 KINDS = {"repository", "artifact", "workspace-package", "proposed-crate", "rejected", "identifier"}
-GOVERNED = (".md", ".tsv", ".yml", ".yaml")
+GOVERNED = (".md", ".tsv", ".yml", ".yaml", ".sh")
 SKIP_DIRS = ("node_modules/", "target/", ".git/")
 
 # The organisation's name shape: hyphen-separated lowercase segments, no trailing hyphen. The
@@ -255,6 +291,8 @@ def governed_files():
             continue
         if os.path.abspath(os.path.join(ROOT, path)) == os.path.abspath(REGISTRY):
             continue  # the registry names what it registers; it is the allowlist, not a subject
+        if path.endswith("/validate-public-references.sh") or path == "validate-public-references.sh":
+            continue  # its fixtures must stay unregistered — see the scope note above
         yield path
 
 

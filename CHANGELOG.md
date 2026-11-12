@@ -27,7 +27,27 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   `repository` row stores the `gh repo view`/`gh repo list` result rather than the claim, so a name
   that stops being public is one row and a failing build, not a memory (#1513).
 
+### Security
+
+- **`rustix` 1.1.4 → 1.1.6 (RUSTSEC-2026-0486).** `cargo audit --deny warnings` — the policy
+  `hardening.yml` enforces — failed at the tip on an "unsound" advisory: `xattr` functions marked
+  unwritten bytes as initialized when given a zero-length buffer. Fixed in 1.1.6, so this is a
+  lockfile bump, not a suppression. The local security validator used to downgrade *the same
+  finding* to a warning, so `.ci/local-ci.sh` was green on a tree the pipeline called unsafe; it
+  now runs `cargo audit --deny warnings` too, names the crate and the advisory id, and fails
+  (#1522).
+
 ### Fixed
+
+- **A shell script is governed public text.** The public-reference guard governed `.md`, `.tsv`,
+  `.yml` and `.yaml`, and excluded "source code" — which left `.sh` classified by neither, and the
+  flagship demo's entry point (`demo/anchor-e2e/run.sh`) named the private repository in a `mktemp`
+  prefix two lines above the neutral form it already used for the seed body, and again in the
+  anchor binary's path. A shell script is a runbook: a person reads it and pastes it. The temp
+  prefixes are neutral now and the binary is configured (`ENT_BIN`, else the single executable
+  `cargo build` produced) rather than spelled, because its name belongs to a repository this tree
+  may not name. The guard's own fixtures use a placeholder, never a real name, and the guard does
+  not read itself — a plant must stay unregistered — with the exclusion stated and seeded (#1524).
 
 - **A documentation change now runs the documentation guard.** `.github/ci-affected.tsv` sent
   `docs/**` to the `docs` job, which runs three per-crate validators and **not**

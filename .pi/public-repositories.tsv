@@ -84,3 +84,7 @@ reset-demo	identifier	`reset-demo.sh`, a script name in a measured command
 cost-demo	identifier	a demo scenario name in a `docs/issues` record
 run-demo	identifier	`.rigorix/run-demo.mjs`, a script name
 run-conference-demo	identifier	`run-conference-demo.sh`, a script name in an engine issue note
+rigorix-release-ci	identifier	the User-Agent `.github/scripts/publish-crate.sh` sends to the registry, so a rate-limited request can be traced to this pipeline
+rigorix-e2e-pg	identifier	the throwaway Postgres container name the anchor demo creates
+rigorix-seed-post	identifier	a `mktemp` template for the demo's seed request body
+rigorix-e2e-exports	identifier	the directory the anchor demo writes its audit exports to
