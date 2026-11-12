@@ -148,21 +148,30 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Dependency Audit ---"
+# The policy is the pipeline's, not this script's: `hardening.yml` runs
+# `cargo audit --deny warnings`, so *every* advisory is a failure — a vulnerability and an
+# "unsound" warning alike. This step used to answer the same question with a warning, which is
+# how a tree reported itself safe while the pipeline called it unsafe (RUSTSEC-2026-0486,
+# rustix 1.1.4, #1522). One policy, one answer; the two gates must not disagree.
 if command -v cargo &>/dev/null && cargo audit --version &>/dev/null; then
-    AUDIT_OUT=$(cd "$TREE_ROOT" && cargo audit 2>&1 || true)
-    if echo "$AUDIT_OUT" | grep -qE "No advisabilities found|No known vulnerabilities"; then
-        pass "No known vulnerabilities (cargo audit)"
+    if AUDIT_OUT=$(cd "$TREE_ROOT" && cargo audit --deny warnings 2>&1); then
+        pass "No advisories (cargo audit --deny warnings, the pipeline's policy)"
     else
-        warn "cargo audit reported findings (review manually)"
+        # Name what the pipeline names: the crate, the id, and the version that fixes it.
+        DETAIL=$(printf '%s\n' "$AUDIT_OUT" | grep -E "^(Crate|Version|ID|Title):|denied warning" | head -5 | sed 's/^/    /')
+        fail "cargo audit --deny warnings failed (hardening.yml denies the same finding):
+$DETAIL
+    remedy: bump the dependency the advisory names, or record a suppression with an expiry in
+    .cargo/audit.toml — a suppression is a decision, not a silence"
     fi
 elif command -v cargo &>/dev/null && cargo deny --version &>/dev/null; then
     if (cd "$TREE_ROOT" && cargo deny check 2>/dev/null); then
-        pass "No known vulnerabilities (cargo deny)"
+        pass "No advisories (cargo deny)"
     else
-        warn "cargo deny reported issues (review manually)"
+        fail "cargo deny reported issues (the pipeline denies advisories; review the output above)"
     fi
 else
-    warn "No Rust audit tools available (cargo audit / cargo deny)"
+    warn "No Rust audit tools available (cargo audit / cargo deny) — the pipeline still denies advisories"
 fi
 
 # ---------------------------------------------------------------------------

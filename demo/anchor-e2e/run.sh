@@ -45,7 +45,7 @@ ANCHOR_PUBLIC_KEY="${ANCHOR_PUBLIC_KEY:-ea4a6c63e29c520abef5507b132ec5f9954776ae
 DATABASE_URL="postgres://postgres:postgres@127.0.0.1:${PG_PORT}/rigorix"
 # NOTE: portable mktemp — BSD/macOS requires the XXXXXX template to end the
 # name (a trailing `.log` suffix makes it treat the path as literal).                                                                                
-ENT_LOG="$(mktemp "${TMPDIR:-/tmp}/rigorix-ent.XXXXXX")"
+ENT_LOG="$(mktemp "${TMPDIR:-/tmp}/enterprise-log.XXXXXX")"
 POST_BODY="$(mktemp "${TMPDIR:-/tmp}/rigorix-seed-post.XXXXXX")"
 
 ENT_PID=""
@@ -73,7 +73,22 @@ for _ in $(seq 1 60); do
 done
 
 echo "==> [2/6] enterprise binary"
-ENT_BIN="$ENTERPRISE_DIR/core/target/debug/rigorix-enterprise"
+# The binary's name is the enterprise workspace's, and that workspace is not published: writing it
+# here would put a private repository's name in the flagship demo's entry point (#1524). It is
+# configured instead — `ENT_BIN` if set, otherwise the one executable `cargo build` produced under
+# the crate's `target/debug`, so the common case needs nothing.
+if [ -z "${ENT_BIN:-}" ]; then
+  ENT_BIN=""
+  for candidate in "$ENTERPRISE_DIR"/core/target/debug/*; do
+    [ -f "$candidate" ] && [ -x "$candidate" ] || continue
+    case "${candidate##*/}" in
+      *.d|*.so|*.dylib|*.rlib|*.dSYM|build|deps|examples|incremental) continue ;;
+    esac
+    [ -n "$ENT_BIN" ] && { echo "ERROR: more than one enterprise binary in $ENTERPRISE_DIR/core/target/debug — set ENT_BIN to choose"; exit 1; }
+    ENT_BIN="$candidate"
+  done
+  [ -n "$ENT_BIN" ] || ENT_BIN="$ENTERPRISE_DIR/core/target/debug/enterprise"
+fi
 if [ ! -x "$ENT_BIN" ]; then
   echo "    building enterprise (this can take a while)…"
   (cd "$ENTERPRISE_DIR/core" && cargo build 2>&1 | tail -3)
