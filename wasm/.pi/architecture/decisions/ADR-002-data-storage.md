@@ -77,7 +77,7 @@ format version, and it is already the engine's artifact format (engine ADR-016).
 - `wasm/src/infrastructure/adapters/memory_session_store.rs` — shipped adapter
 - `wasm/src/domain/artifact/artifact_set.rs` — the durable value object
 
-**Canonical References:** `// @canonical .pi/architecture/decisions/ADR-002-data-storage.md`
+**Canonical References:** `// @canonical wasm/.pi/architecture/decisions/ADR-002-data-storage.md`
 
 ## Validation
 
@@ -89,7 +89,7 @@ format version, and it is already the engine's artifact format (engine ADR-016).
 ## References
 
 - Related ADRs: ADR-001, ADR-004, ADR-010
-- Engine ADR-016 (signed audit envelope) — the format we consume, not re-invent
+- Engine `engine/.pi/architecture/decisions/ADR-016-audit-integrity-anchor.md` — the signed audit envelope we consume, not re-invent
 
 ---
 

@@ -99,7 +99,7 @@ Rules:
 - `wasm/src/application/verify_exported_artifacts.rs` — version gate then bridge
 - `wasm/src/infrastructure/verifier_bridge.rs` — the only place the SDK is named
 
-**Canonical References:** `// @canonical .pi/architecture/decisions/ADR-010-artifact-format.md`
+**Canonical References:** `// @canonical wasm/.pi/architecture/decisions/ADR-010-artifact-format.md`
 
 ## Validation
 
@@ -112,7 +112,7 @@ Rules:
 ## References
 
 - Related ADRs: ADR-002, ADR-004, ADR-005, ADR-007, ADR-009
-- Engine ADR-016 (signed audit envelope, hash chain); `docs/spec/terminology.md`
+- Engine `engine/.pi/architecture/decisions/ADR-016-audit-integrity-anchor.md` — the signed audit envelope and hash chain; `docs/spec/terminology.md`
 
 ---
 

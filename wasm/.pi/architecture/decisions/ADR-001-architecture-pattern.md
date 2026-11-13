@@ -91,7 +91,7 @@ Invariants of the decision:
 - `wasm/src/interfaces/` — wasm-bindgen surface + JSON DTOs
 
 **Canonical References:** implementation files carry
-`// @canonical .pi/architecture/decisions/ADR-001-architecture-pattern.md`
+`// @canonical wasm/.pi/architecture/decisions/ADR-001-architecture-pattern.md`
 
 ## Validation
 
@@ -104,7 +104,7 @@ Invariants of the decision:
 ## References
 
 - Related ADRs: ADR-002 (storage), ADR-003 (events), ADR-004 (host contract),
-  ADR-005 (authority), ADR-008 (modeling depth)
+  ADR-005 (authentication and authorization), ADR-008 (modeling depth)
 - Domain exploration: `.pi/domain/exploration/3baf6e5c-e352-4127-af09-a5e7fe0a2d29.md`
 - Engine spec: `docs/spec/execution-governance/03-requirements.md` §L, `docs/spec/terminology.md`
 

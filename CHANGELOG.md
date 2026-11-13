@@ -48,6 +48,16 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **The ADR guard reads both registers.** ADR numbering is tree-local, so
+  `wasm/.pi/architecture/decisions/` is a different set carrying the same numbers — and nothing read
+  it. Measured there: four citations that led nowhere (an `ADR-016` that set does not contain, a
+  crate-relative `@canonical` path that resolves from no root the guard knows, and two labels naming
+  nothing in their target). All are fixed, thirteen crate-relative `@canonical` markers now resolve
+  from the repository root, and `validate-adr-references.sh` checks both registers by default — each
+  with its own labels file, because an engine record must not license a wasm label (#1520).
+  `--adr-dir` still means exactly one, and the exit code is preserved per register so a malformed
+  register cannot read as a violation.
+
 - **The specification's closed vocabularies are compared with their owners in code.** Nothing checked
   the third direction: `GateId::as_str` and `RefusalKind::as_str` are exhaustive and serde-equal by
   compile error inside the code, but a sixteenth kind could compile, serialize and be accepted by

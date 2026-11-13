@@ -65,7 +65,7 @@ Application rules:
 - Guard: `validate-architecture.sh` checks that every module doc has a `**Modeling Depth:**` header and that the header value matches the exploration's `subdomainType`.
 - Reviewer rule: enrichment may add sections but must not rewrite the depth header, delete a `Modeling Depth Note`, or introduce a concept with no trace to an exploration entity/event/invariant.
 
-**Canonical References:** `// @canonical .pi/architecture/decisions/ADR-008-proportional-modeling-depth.md`
+**Canonical References:** `// @canonical wasm/.pi/architecture/decisions/ADR-008-proportional-modeling-depth.md`
 
 ## Validation
 

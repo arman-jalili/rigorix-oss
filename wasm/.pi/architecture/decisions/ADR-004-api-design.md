@@ -89,7 +89,7 @@ Additional rules:
 - `wasm/src/interfaces/dto/*.rs` — `#[serde(deny_unknown_fields)]` DTOs
 - `wasm/src/interfaces/errors.rs` — redacted error projection
 
-**Canonical References:** `// @canonical .pi/architecture/decisions/ADR-004-api-design.md`
+**Canonical References:** `// @canonical wasm/.pi/architecture/decisions/ADR-004-api-design.md`
 
 ## Validation
 

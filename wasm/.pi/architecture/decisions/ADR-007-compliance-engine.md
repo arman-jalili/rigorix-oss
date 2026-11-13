@@ -95,7 +95,7 @@ Hard rules that keep the boundary honest:
 - `wasm/src/domain/artifact/verification_result.rs` — enum with `Unverifiable(reason)`
 - `wasm/src/interfaces/messages.rs` — refusal vocabulary allow-list
 
-**Canonical References:** `// @canonical .pi/architecture/decisions/ADR-007-compliance-engine.md`
+**Canonical References:** `// @canonical wasm/.pi/architecture/decisions/ADR-007-compliance-engine.md`
 
 ## Validation
 

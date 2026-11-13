@@ -91,4 +91,4 @@ is always visible and never looks like permission.*
 - Exploration NFR-004 (rewritten to this tiering), NFR-001, FR-004
 - ADR-005 (no principal; structural authorization), ADR-002 (no persistence)
 - `.pi/scripts/validate-panic-sites.sh`, `.pi/panic-baseline.tsv`
-- engine ADR-009 (error handling) — same vocabulary, different platform constraint
+- engine `engine/.pi/architecture/decisions/ADR-009-error-handling.md` — same vocabulary, different platform constraint
