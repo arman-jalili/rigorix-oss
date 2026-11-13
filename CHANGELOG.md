@@ -70,6 +70,15 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- **Four coverage artifacts were tracked, because a `.gitignore` line was not a pattern.**
+  `.gitignore:96` read `profraw  # coverage artifacts (cargo-llvm-cov)`. `.gitignore` has no inline
+  comments, so that line matched a file literally named `profraw  # coverage artifacts
+  (cargo-llvm-cov)` and ignored nothing — four `.profraw` files were committed through three pull
+  requests before anyone noticed. The pattern is `*.profraw` / `*.profdata` now, the artifacts are
+  removed from the index, and `.pi/scripts/validate-repo-hygiene.sh` (gating) fails on an inline
+  comment in `.gitignore` or on any tracked file that an ignore pattern matches — a pattern that
+  silently matches nothing is the same defect class as a guard that silently reads nothing.
+
 - **A shell script is governed public text.** The public-reference guard governed `.md`, `.tsv`,
   `.yml` and `.yaml`, and excluded "source code" — which left `.sh` classified by neither, and the
   flagship demo's entry point (`demo/anchor-e2e/run.sh`) named the private repository in a `mktemp`

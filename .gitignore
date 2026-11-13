@@ -93,7 +93,11 @@ mcp/.rigorix/
 # CLI runtime state + demo media
 cli/.rigorix/state/
 *.mov
-profraw  # coverage artifacts (cargo-llvm-cov)
+# coverage artifacts (cargo-llvm-cov) — the pattern is `*.profraw`: the previous line read
+# `profraw  # …`, and `.gitignore` has no inline comments, so it matched a file literally named
+# "profraw  # coverage artifacts (cargo-llvm-cov)" and ignored nothing (#1520 follow-up).
+*.profraw
+*.profdata
 
 # wasm packaging output (built by wasm/ci/run-module-smoke.sh)
 wasm/pkg/
