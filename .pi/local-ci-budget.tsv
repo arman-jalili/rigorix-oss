@@ -1,0 +1,20 @@
+# local-ci stage budget (#1551). A ceiling is derived from a measured run, never estimated: the
+# `measured_seconds` column is a warm full run on the machine named beside it, and `ceiling_seconds`
+# is 125% of the larger of that run and the cold run measured the same day — because the ceiling has
+# to clear a tree that legitimately recompiles everything, and twice the warm number is not a cold
+# cache, it is a regression.
+#
+# Cold run, same day, same machine (seconds): lint 1336 · build 547 · test 491 · security 34 ·
+# guards 89 · coverage 250 · docs 29 · integration 1. Warm run: total 8m 26s, 126 checks.
+#
+# `local-ci.sh` fails when a stage exceeds its ceiling. Raise a ceiling with a measurement, the date
+# and the machine — a ceiling nudged to fit the last run is a comment that fails the person next week.
+stage	measured_seconds	ceiling_seconds	measured_on	machine
+lint	95	1670	2026-11-13	8-core (aarch64, macOS)
+build	20	684	2026-11-13	8-core (aarch64, macOS)
+test	115	614	2026-11-13	8-core (aarch64, macOS)
+security	45	57	2026-11-13	8-core (aarch64, macOS)
+guards	56	112	2026-11-13	8-core (aarch64, macOS)
+coverage	290	363	2026-11-13	8-core (aarch64, macOS)
+docs	29	37	2026-11-13	8-core (aarch64, macOS)
+integration	1	2	2026-11-13	8-core (aarch64, macOS)

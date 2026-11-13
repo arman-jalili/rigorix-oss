@@ -19,6 +19,24 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **`local-ci` says what it costs, and refuses to run twice in one tree.** A run now prints every
+  step's duration, times each stage, and ends with a table of stage, steps, pass, fail, duration and
+  share of the run — so a four-minute stage is attributed instead of discovered. A four-minute
+  `cargo llvm-cov` is presented as a four-minute second build graph rather than as "coverage". Stages
+  that share no state (lint, docs, security, guards) run concurrently under `--jobs` (default: the
+  smaller of 4 and the core count); `--jobs 1` is the serial order this runner had before, and the
+  comment in the script records why `build` is deliberately *not* in the concurrent wave — it was
+  measured there first and four cargo invocations contending on one `target/` lock took 43m53s.
+  `.pi/local-ci-budget.tsv` holds a measured warm number and a ceiling per stage (125 % of the larger
+  of that run and the cold run measured the same day); the run fails naming the stage, its time and
+  its ceiling. A run also takes a lock (`mkdir` + pid, portable to macOS) and a second concurrent run
+  in the same tree is refused with the holding pid, because two runs share `target/` and
+  `target/llvm-cov-target/` and a test binary replaced mid-run fails with no test name. A failing
+  step now says *how* it failed — `killed by SIGKILL (exit 137)` rather than `exit: 137` — and the
+  runner's own self-test (`local-ci.sh --self-test`, run inside the guards stage) proves the lock
+  refusal, the release, the status pass-through and the signal names against fixtures in a temporary
+  tree (#1551, #1552).
+
 - **Two `receipt` refusals that could never be produced are gone or given a subject.** `ReceiptRefusal`
   declared twelve variants; ten were reachable. `SealedDigestChanged` was ADR-024 §6's re-seal rule
   with no seal record to compare against — a verdict a caller could branch on and never receive — so
