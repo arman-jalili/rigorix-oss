@@ -46,6 +46,18 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   now runs `cargo audit --deny warnings` too, names the crate and the advisory id, and fails
   (#1522).
 
+### Added
+
+- **The specification's closed vocabularies are compared with their owners in code.** Nothing checked
+  the third direction: `GateId::as_str` and `RefusalKind::as_str` are exhaustive and serde-equal by
+  compile error inside the code, but a sixteenth kind could compile, serialize and be accepted by
+  every verifier while a reader of the specification saw fifteen. `engine/.pi/scripts/validate-spec-vocabulary.sh`
+  compares the §L gate identifiers and the RS-111 wire words against those two accessors, in both
+  directions, naming the word; a code-only kind reports *"a new kind needs a specification version
+  that names it (RS-108), not a table row"*. Six seeds, and the guard is registered gating. The eight
+  `EvidenceKind` variants are **not** compared: RS-108 names the vocabulary but the restructured
+  specification no longer enumerates it — reported, not invented (#1512).
+
 ### Fixed
 
 - **A shell script is governed public text.** The public-reference guard governed `.md`, `.tsv`,
