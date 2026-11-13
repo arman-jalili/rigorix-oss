@@ -1493,6 +1493,7 @@ pub async fn build_real_engine(
         let _ = svc
             .register(RegisterInput {
                 template: rigorix_engine::templates::domain::template::Template {
+                    schema_version: rigorix_engine::templates::domain::SCHEMA_VERSION,
                     id: "default".into(),
                     name: "default".into(),
                     description: "Default catch-all template".into(),
@@ -1524,6 +1525,7 @@ pub async fn build_real_engine(
         let _ = svc
             .register(RegisterInput {
                 template: rigorix_engine::templates::domain::template::Template {
+                    schema_version: rigorix_engine::templates::domain::SCHEMA_VERSION,
                     id: "e2e-test-plan".into(),
                     name: "e2e-test-plan".into(),
                     description: "E2E test template".into(),

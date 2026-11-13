@@ -14,10 +14,10 @@
 //! - All error types wrap TemplateError variants
 //! - Thread-safe (Send + Sync)
 
+pub mod engine_template_parser;
 pub mod filesystem_repository;
 pub mod repository;
-pub mod template_converter_impl;
 
+pub use engine_template_parser::FilesystemTemplateConverter;
 pub use filesystem_repository::FilesystemTemplateRepository;
 pub use repository::TemplateRepositoryConfig;
-pub use template_converter_impl::FilesystemTemplateConverter;

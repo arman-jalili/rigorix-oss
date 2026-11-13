@@ -40,6 +40,19 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// The template document schema this engine writes and reads (#1529).
+///
+/// One integer, monotonically increasing, and **inside the canonical bytes**: two documents that
+/// differ only in their version must have different digests, because a digest that cannot tell
+/// versions apart cannot pin an artifact. An unknown value is refused
+/// (`TemplateError::UnsupportedSchemaVersion`) rather than coerced — tolerating an unknown version
+/// is only safe if every future version is backward compatible, which cannot be known when it is
+/// written. The precedent is the approval consumption ledger, which folds `version` into its MAC.
+pub const SCHEMA_VERSION: u16 = 1;
+
+/// Every schema version this engine can read. The refusal names this set.
+pub const SUPPORTED_SCHEMA_VERSIONS: &[u16] = &[SCHEMA_VERSION];
+
 // ---------------------------------------------------------------------------
 // Template (root aggregate)
 // ---------------------------------------------------------------------------
@@ -49,9 +62,21 @@ use std::collections::HashMap;
 /// The root aggregate that holds metadata, parameter definitions, and
 /// node definitions. Registered in the TemplateEngine for runtime
 /// instantiation into executable TaskGraphs.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Template {
+    /// The document schema this value was read from or will be written as (#1529).
+    ///
+    /// Required: a document without it is refused as `MissingSchemaVersion` **except** in the
+    /// legacy `[[steps]]` dialect, which predates the field — see
+    /// `templates::application::template_document`. It is first in the canonical bytes so a
+    /// version is never a field a reader can skip.
+    pub schema_version: u16,
+
     /// Unique kebab-case identifier (e.g. "read-file", "git-commit").
+    ///
+    /// Defaulted because the legacy `[[steps]]` dialect names its document but not its id; the
+    /// document builder fills it from `name` when absent rather than inventing a second identity.
+    #[serde(default)]
     pub id: String,
 
     /// Human-readable name (e.g. "Read File", "Git Commit").
@@ -82,6 +107,28 @@ pub struct Template {
     /// Optional author metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
+}
+
+impl Default for Template {
+    /// A template at the current schema version.
+    ///
+    /// Hand-written rather than derived: a derived `Default` would put `schema_version: 0` on the
+    /// value, and `0` is not a version this engine reads. Every caller that starts from
+    /// `Template::default()` would otherwise hold a document it cannot serialize back.
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            id: String::new(),
+            name: String::new(),
+            description: String::new(),
+            version: String::new(),
+            parameters: Vec::new(),
+            nodes: Vec::new(),
+            tags: Vec::new(),
+            category: None,
+            author: None,
+        }
+    }
 }
 
 impl Template {
@@ -272,6 +319,24 @@ pub enum TemplateAction {
         env: HashMap<String, String>,
     },
 
+    /// Call a tool by name with a parameter table — the legacy `[[steps]]` dialect (#1529).
+    ///
+    /// The demo form names a tool (`tool = "test_tool"`) and passes a table
+    /// (`[steps.parameters]`), which the host loaded into `TemplateStepDef` and executed through
+    /// `run_from_template`. Representing it as an action of the same node type is what makes "one
+    /// schema" true: a second node type would recreate the drift this issue exists to remove.
+    ToolCall {
+        /// The tool's registry name.
+        tool: String,
+        /// The tool's arguments, exactly as the document wrote them.
+        ///
+        /// Defaulted to an empty table, not to `Null`: TOML has no unit value, so a `Null` here
+        /// would make the canonical bytes unwritable — and the two dialects would then disagree
+        /// about a tool call that takes no arguments.
+        #[serde(default = "empty_parameters")]
+        parameters: serde_json::Value,
+    },
+
     /// Query the LSP for code intelligence (definitions, references, etc.).
     LspQuery {
         /// LSP query type (e.g. "goto-definition", "find-references").
@@ -311,6 +376,11 @@ pub enum TemplateAction {
         #[serde(default)]
         auto_stage: bool,
     },
+}
+
+/// A tool call with no arguments: the empty table, which is what TOML can write.
+fn empty_parameters() -> serde_json::Value {
+    serde_json::Value::Object(serde_json::Map::new())
 }
 
 fn default_run_timeout() -> u64 {
@@ -355,6 +425,29 @@ impl TemplateAction {
             ),
             TemplateAction::RunCommand { command, .. } => command.clone(),
             TemplateAction::LspQuery { file, .. } => file.clone(),
+            // A tool call's arguments are the document's own text; only string values can carry a
+            // placeholder, and walking the tree keeps `referenced_params` honest for the demo form.
+            TemplateAction::ToolCall { parameters, .. } => {
+                fn collect(value: &serde_json::Value, out: &mut Vec<String>) {
+                    match value {
+                        serde_json::Value::String(s) => out.push(s.clone()),
+                        serde_json::Value::Array(items) => {
+                            for item in items {
+                                collect(item, out);
+                            }
+                        }
+                        serde_json::Value::Object(map) => {
+                            for (_, item) in map {
+                                collect(item, out);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let mut parts = Vec::new();
+                collect(parameters, &mut parts);
+                parts.join(" ")
+            }
             TemplateAction::GitRead { command, .. } => command.clone(),
             TemplateAction::GitStage { path } => path.clone(),
             TemplateAction::GitCommit { message, .. } => message.clone(),

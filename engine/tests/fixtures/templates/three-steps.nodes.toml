@@ -1,0 +1,30 @@
+schema_version = 1
+id = "three-steps"
+name = "three-steps"
+description = "The linear case the demo dialect describes, with more than one step"
+version = "1.0.0"
+tags = ["fixture"]
+
+[[nodes]]
+name = "read"
+description = "Read the file"
+tool = "file_read"
+
+[nodes.parameters]
+path = "src/lib.rs"
+
+[[nodes]]
+name = "lint"
+description = "Lint what was read"
+tool = "run_command"
+
+[nodes.parameters]
+command = "cargo clippy"
+
+[[nodes]]
+name = "report"
+description = "Report the outcome"
+tool = "run_command"
+
+[nodes.parameters]
+command = "echo done"

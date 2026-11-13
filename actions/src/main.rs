@@ -647,7 +647,11 @@ async fn build_action_orchestrator(
         for path in files {
             if let Ok(content) = tokio::fs::read_to_string(&path).await
                 && let Ok(template) =
-                    toml::from_str::<rigorix_engine::templates::domain::Template>(&content)
+                    rigorix_engine::templates::application::template_document::parse_document(
+                        &content,
+                        Some(&path.to_string_lossy()),
+                    )
+                    .map(|d| d.template)
             {
                 let input = rigorix_engine::templates::application::dto::RegisterInput {
                     template,

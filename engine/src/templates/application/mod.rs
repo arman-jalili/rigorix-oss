@@ -18,6 +18,7 @@
 pub mod dto;
 pub mod factory;
 pub mod service;
+pub mod template_document;
 pub mod template_engine_impl;
 pub mod template_parser_impl;
 

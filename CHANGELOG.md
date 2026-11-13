@@ -48,6 +48,19 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **One template document schema, with a version.** The word "template" named two artifacts with two
+  parsers: `[[nodes]]` in the engine's registry (with `depends_on`) and `[[steps]]` in the demo
+  documents (`tool` + `[steps.parameters]`), bridged by a converter in the host crate. Neither
+  carried a version, so a field added to one was ignored by the other through `serde(default)` — a
+  drift that read as compatibility. `templates/application/template_document.rs` now owns the one
+  schema: both spellings parse into one `Template` (`[[steps]]` is the linear case), an invocation is
+  exactly one of a typed `action` or a `tool` call, and `schema_version` is required, first in the
+  canonical bytes, with an unknown value refused as `UnsupportedSchemaVersion` naming the supported
+  set. A `[[steps]]` document without a version *is* v1 — the exemption is by dialect and recorded,
+  not a per-field default — so the demo documents parse unmodified. The host-side converter is
+  deleted; the MCP converter now calls the engine parser, and a test asserts no file outside
+  `engine/src/templates/` deserializes a template document with `toml::from_str` (#1529).
+
 - **A caller-supplied plan can carry a dependency graph.** `OrchestratorService::run_from_template`
   executed plans whose steps could not depend on one another: `build_graph_from_steps` chained them
   in list order, so every branching plan was flattened into a line and a host could not express a

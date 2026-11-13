@@ -11,6 +11,12 @@ mod orchestrator {
     #[path = "step_dependencies_test.rs"]
     mod step_dependencies_test;
 }
+#[cfg(not(feature = "portable"))]
+#[path = "templates"]
+mod templates {
+    #[path = "template_schema_test.rs"]
+    mod template_schema_test;
+}
 mod identity {
     mod identityattestationservice {
         mod identityattestationservice_test;

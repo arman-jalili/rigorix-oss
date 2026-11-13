@@ -376,6 +376,11 @@ impl PlanningPipelineImpl {
                     let v = serde_json::json!({"message": message, "auto_stage": auto_stage});
                     ("git_commit", v.to_string())
                 }
+                // The demo form (#1529): the document names the tool and its arguments, so the
+                // node is that tool with that intent — no translation table.
+                TemplateAction::ToolCall { tool, parameters } => {
+                    (tool.as_str(), parameters.to_string())
+                }
                 TemplateAction::LspQuery { query_type, .. } => ("lsp_query", query_type.clone()),
             };
             // add_unchecked validates sealed state and duplicate IDs
@@ -695,13 +700,17 @@ impl PlanningPipelineService for PlanningPipelineImpl {
 
                             // Register the generated template
                             // Parse the TOML content to get real nodes and parameters
-                            let template = match toml::from_str::<crate::templates::domain::Template>(
+                            let template = match crate::templates::application::template_document::parse_document(
                                 &generated.toml_content,
-                            ) {
+                                Some(&generated.suggested_id),
+                            )
+                            .map(|document| document.template)
+                            {
                                 Ok(t) => t,
                                 Err(_) => {
                                     // Fallback: create a minimal template with just metadata
                                     crate::templates::domain::Template {
+                                        schema_version: crate::templates::domain::SCHEMA_VERSION,
                                         id: generated.suggested_id,
                                         name: generated.suggested_name,
                                         description: generated.description,

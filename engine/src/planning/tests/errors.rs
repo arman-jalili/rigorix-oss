@@ -357,6 +357,7 @@ async fn test_symbol_validation_respects_max_invalid() {
         tags: vec![],
         category: None,
         author: None,
+        schema_version: crate::templates::domain::SCHEMA_VERSION,
     };
 
     let input = crate::planning::application::dto::SymbolValidationInput {

@@ -95,6 +95,7 @@ async fn test_symbol_validation_passes_known_symbols() {
         tags: vec![],
         category: None,
         author: None,
+        schema_version: crate::templates::domain::SCHEMA_VERSION,
     };
 
     let input = crate::planning::application::dto::SymbolValidationInput {
@@ -142,6 +143,7 @@ async fn test_symbol_validation_catches_hallucinated_types() {
         tags: vec![],
         category: None,
         author: None,
+        schema_version: crate::templates::domain::SCHEMA_VERSION,
     };
 
     let input = crate::planning::application::dto::SymbolValidationInput {
@@ -190,6 +192,7 @@ async fn test_symbol_validation_detects_any_type() {
         tags: vec![],
         category: None,
         author: None,
+        schema_version: crate::templates::domain::SCHEMA_VERSION,
     };
 
     let input = crate::planning::application::dto::SymbolValidationInput {
@@ -237,6 +240,7 @@ async fn test_symbol_validation_skips_reserved_names() {
         tags: vec![],
         category: None,
         author: None,
+        schema_version: crate::templates::domain::SCHEMA_VERSION,
     };
 
     let input = crate::planning::application::dto::SymbolValidationInput {
@@ -284,6 +288,7 @@ async fn test_symbol_validation_extracts_references() {
         tags: vec![],
         category: None,
         author: None,
+        schema_version: crate::templates::domain::SCHEMA_VERSION,
     };
 
     let refs = validator
@@ -327,6 +332,7 @@ async fn test_symbol_validation_flags_any_without_flagging() {
         tags: vec![],
         category: None,
         author: None,
+        schema_version: crate::templates::domain::SCHEMA_VERSION,
     };
 
     let input = crate::planning::application::dto::SymbolValidationInput {
@@ -373,6 +379,7 @@ async fn test_symbol_validation_extracts_from_parameters() {
         tags: vec![],
         category: None,
         author: None,
+        schema_version: crate::templates::domain::SCHEMA_VERSION,
     };
 
     let refs = validator
@@ -437,6 +444,7 @@ async fn test_symbol_validation_multiple_hallucinated_types() {
         tags: vec![],
         category: None,
         author: None,
+        schema_version: crate::templates::domain::SCHEMA_VERSION,
     };
 
     let refs = validator
@@ -478,6 +486,7 @@ async fn test_symbol_validation_does_not_flag_lowercase_names() {
         tags: vec![],
         category: None,
         author: None,
+        schema_version: crate::templates::domain::SCHEMA_VERSION,
     };
 
     let refs = validator

@@ -50,14 +50,25 @@ impl<R: TemplateRepository + Send + Sync> TemplateParserService for TemplatePars
 
     #[tracing::instrument(skip_all)]
     async fn parse_str(&self, input: ParseStrInput) -> Result<ParseOutput, TemplateError> {
-        // Attempt TOML deserialization
-        let template: Template = match toml::from_str(&input.toml_content) {
-            Ok(t) => t,
+        // One parser for both dialects (#1529). The version refusals are typed and returned, not
+        // collected as strings: a caller that cannot tell "no version" from "a syntax error" cannot
+        // report either one usefully.
+        let template: Template = match super::template_document::parse_document(
+            &input.toml_content,
+            input.source.as_deref(),
+        ) {
+            Ok(document) => document.template,
+            Err(
+                e @ (TemplateError::MissingSchemaVersion { .. }
+                | TemplateError::UnsupportedSchemaVersion { .. }
+                | TemplateError::AmbiguousDialect { .. }
+                | TemplateError::InvalidInvocation { .. }),
+            ) => return Err(e),
             Err(e) => {
                 return Ok(ParseOutput {
                     template: Template::default(),
                     valid: false,
-                    errors: vec![format!("TOML parse error: {}", e)],
+                    errors: vec![e.to_string()],
                     warnings: vec![],
                 });
             }
@@ -415,6 +426,7 @@ mod tests {
     #[tracing::instrument(skip_all)]
     fn valid_template_toml() -> &'static str {
         r#"
+schema_version = 1
 id = "test-template"
 name = "Test Template"
 description = "A test template"
@@ -425,6 +437,7 @@ name = "target_file"
 description = "File to modify"
 required = true
 param_type = "path"
+
 
 [[nodes]]
 id = "read-file"
@@ -493,6 +506,7 @@ content = "updated content"
         let parser = TemplateParserImpl::new(repo);
 
         let toml = r#"
+schema_version = 1
 id = "minimal"
 name = "Minimal"
 description = "Minimal template"
@@ -518,6 +532,7 @@ version = "0.1.0"
         let parser = TemplateParserImpl::new(repo);
 
         let toml = r#"
+schema_version = 1
 name = "No ID"
 description = "Missing ID template"
 version = "1.0.0"
@@ -533,9 +548,15 @@ version = "1.0.0"
             .unwrap();
 
         assert!(!output.valid, "Expected invalid, got valid");
+        // The refusal moved from serde ("missing field `id`") to the structural validator, because
+        // `id` now defaults: the legacy `[[steps]]` dialect names its document and not its steps'
+        // parent. The *rule* is unchanged — a template without an id is not a template.
         assert!(
-            output.errors.iter().any(|e| e.contains("missing field")),
-            "Expected missing field error, got: {:?}",
+            output
+                .errors
+                .iter()
+                .any(|e| e.to_lowercase().contains("id")),
+            "Expected an id error, got: {:?}",
             output.errors
         );
     }
@@ -546,10 +567,12 @@ version = "1.0.0"
         let parser = TemplateParserImpl::new(repo);
 
         let toml = r#"
+schema_version = 1
 id = "dup-nodes"
 name = "Duplicate Nodes"
 description = "Has duplicate node IDs"
 version = "1.0.0"
+
 
 [[nodes]]
 id = "same-id"
@@ -585,10 +608,12 @@ path = "file2.txt"
         let parser = TemplateParserImpl::new(repo);
 
         let toml = r#"
+schema_version = 1
 id = "missing-dep"
 name = "Missing Dependency"
 description = "Has a dependency that doesn't exist"
 version = "1.0.0"
+
 
 [[nodes]]
 id = "node-b"
@@ -618,10 +643,12 @@ path = "test.txt"
         let parser = TemplateParserImpl::new(repo);
 
         let toml = r#"
+schema_version = 1
 id = "cycle-template"
 name = "Cycle Test"
 description = "Has a cycle"
 version = "1.0.0"
+
 
 [[nodes]]
 id = "node-a"
@@ -674,10 +701,12 @@ path = "b.txt"
         let parser = TemplateParserImpl::new(repo);
 
         let toml = r#"
+schema_version = 1
 id = "param-ref"
 name = "Param Reference"
 description = "Has undefined param reference"
 version = "1.0.0"
+
 
 [[nodes]]
 id = "read-file"
@@ -731,6 +760,7 @@ path = "{{ undefined_param }}"
         repo.add_builtin(
             "read-file",
             r#"
+schema_version = 1
 id = "read-file"
 name = "Read File"
 description = "Read a file from disk"
@@ -741,6 +771,7 @@ name = "path"
 description = "File path"
 required = true
 param_type = "path"
+
 
 [[nodes]]
 id = "read"

@@ -62,7 +62,9 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- TemplateConverter ---"
-if grep -q 'impl TemplateConverter for FilesystemTemplateConverter' "${INFRA}/template_converter_impl.rs" 2>/dev/null; then
+# #1529: the converter module is `engine_template_parser.rs` — the TOML path now calls the engine's
+# one parser, so the host no longer deserializes a template document itself.
+if grep -q 'impl TemplateConverter for FilesystemTemplateConverter' "${INFRA}/engine_template_parser.rs" 2>/dev/null; then
     pass "TemplateConverter trait → FilesystemTemplateConverter"
 else
     fail "TemplateConverter trait: no impl TemplateConverter for ... found"
