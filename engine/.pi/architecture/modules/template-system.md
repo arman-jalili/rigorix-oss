@@ -11,6 +11,23 @@ Module version: 2.0.0
 
 Manages workflow template definitions stored as TOML files. Handles parsing, schema validation, template engine instantiation (TOML → executable graph), and loading of built-in templates.
 
+## The document schema (#1529)
+
+One artifact, one parser, one version. `templates/application/template_document.rs` owns it:
+
+| concern | rule |
+|---|---|
+| spelling | `[[nodes]]` (engine) and `[[steps]]` (the demo form) are two spellings of one document; `[[steps]]` is the linear case — same node, no `depends_on`, invocation written as `tool` + `parameters` |
+| invocation | one per node: a typed `action` **or** a `tool` call. Both is `InvalidInvocation`; neither is `InvalidInvocation` |
+| version | `schema_version: u16`, required, first in the canonical bytes, unknown ⇒ `UnsupportedSchemaVersion` naming the supported set |
+| legacy | a `[[steps]]` document with no version **is** v1 — the exemption is by dialect and recorded, never a per-field default |
+| canonical | `canonical_bytes` — what a digest is taken over (ADR-024 §4) |
+
+The host-side converter that parsed a second time is gone
+(`mcp/src/template_tools/infrastructure/engine_template_parser.rs` calls the engine's parser), and a
+unit test asserts that no file outside this module deserializes a template document with
+`toml::from_str`.
+
 ## Responsibilities
 
 - Parse and validate TOML template files against schema

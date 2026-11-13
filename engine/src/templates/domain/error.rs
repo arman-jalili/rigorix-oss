@@ -14,17 +14,70 @@
 
 use thiserror::Error;
 
+/// `" in 'path'"` when there is a path, `""` when there is not — never `"None"`.
+fn path_suffix(path: Option<&str>) -> String {
+    path.map_or_else(String::new, |p| format!(" in '{p}'"))
+}
+
+/// `" at line N"` when there is a line, `""` when there is not.
+fn line_suffix(line: Option<u32>) -> String {
+    line.map_or_else(String::new, |l| format!(" at line {l}"))
+}
+
 /// Errors that can occur during template parsing, validation, and engine operations.
 #[derive(Debug, Error)]
 pub enum TemplateError {
     /// Failed to parse TOML content into a Template struct.
-    #[error("Failed to parse template: {detail}")]
+    #[error("Failed to parse template{file}{line}: {detail}",
+        file = path_suffix(.path.as_deref()),
+        line = line_suffix(*.line))]
     Parse {
         /// Human-readable parse error description.
         detail: String,
         /// Source line number if available.
         line: Option<u32>,
         /// Path to the file that failed to parse, if applicable.
+        path: Option<String>,
+    },
+
+    /// A `[[nodes]]` document declares no `schema_version` (#1529, ADR-024 §4 D3).
+    ///
+    /// A document that does not say which schema it is written in cannot be read: a later version's
+    /// field would be ignored by `serde(default)` and the document would silently mean something
+    /// else. The legacy `[[steps]]` dialect is exempt by definition — it *is* version 1 — and that
+    /// exemption is decided by the dialect, not by a per-field default.
+    #[error("Template document{file} has no 'schema_version'; add 'schema_version = 1'", file = path_suffix(.path.as_deref()))]
+    MissingSchemaVersion {
+        /// The file the document came from, when the caller had one.
+        path: Option<String>,
+    },
+
+    /// A document names a schema version this engine does not read (#1529).
+    #[error("Template document{file} declares schema_version = {found}, which this engine does not read (supported: {supported:?}); an unknown version is refused, never coerced", file = path_suffix(.path.as_deref()))]
+    UnsupportedSchemaVersion {
+        /// The version the document named.
+        found: u16,
+        /// The versions this engine reads.
+        supported: Vec<u16>,
+        /// The file the document came from.
+        path: Option<String>,
+    },
+
+    /// A document carries both `[[nodes]]` and `[[steps]]`, so it says two things (#1529).
+    #[error("Template document{file} carries both [[nodes]] and [[steps]]; one document has one dialect", file = path_suffix(.path.as_deref()))]
+    AmbiguousDialect {
+        /// The file the document came from.
+        path: Option<String>,
+    },
+
+    /// A node's invocation is not exactly one of the two spellings (#1529).
+    #[error("Template node '{node}' in{file} has an invalid invocation: {reason}", file = path_suffix(.path.as_deref()))]
+    InvalidInvocation {
+        /// The node's name, so the author can find it.
+        node: String,
+        /// What is wrong.
+        reason: String,
+        /// The file the document came from.
         path: Option<String>,
     },
 

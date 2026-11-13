@@ -69,3 +69,23 @@ path = "{{ target_file }}"
 ---
 
 *Decision date: 2026-06-13*
+
+---
+
+## Amendment — one document, one version (#1529)
+
+The language was decided here; the *schema* was not, and it drifted into two: `[[nodes]]` in the
+engine's registry and `[[steps]]` in every demo document, bridged by a converter in the host crate,
+neither carrying a version. `serde(default)` on both sides made the drift read as compatibility: a
+field added to one was ignored by the other.
+
+The schema now lives in exactly one place — `engine/src/templates/application/template_document.rs`
+— with ADR-024 §4 D3's version policy: **one integer, inside the canonical bytes, unknown = refuse**,
+following the approval consumption ledger, which folds its `version` into the MAC so a version change
+*fails* verification. The demo dialect is the linear case of the same document, not a second one; it
+carries version 1 by definition, and the parser records which dialect it read so no caller has to
+infer it.
+
+Consequences accepted: a `[[nodes]]` document without `schema_version` is refused, so in-tree
+documents and the generation prompt now emit it; and the host no longer has a template TOML parser
+of its own.

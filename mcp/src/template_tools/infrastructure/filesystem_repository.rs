@@ -306,18 +306,24 @@ impl TemplateRepository for FilesystemTemplateRepository {
             ))
         })?;
 
-        // Try PlanTemplate ([[steps]] format) first, then fall back to EngineTemplate ([[nodes]] format)
+        // Try PlanTemplate ([[steps]] format) first, then fall back to the engine's document
+        // parser (#1529): the version rule, the two dialects and the refusals are decided there,
+        // and a document the engine refuses is refused here for the same reason and in the same
+        // words, rather than by a second deserializer that could disagree with it.
         match PlanTemplate::from_json(json_value.clone()) {
             Ok(pt) => return Ok(pt),
             Err(_) => {
-                // Not a [[steps]] template — try [[nodes]] format via engine Template
-                let engine_tmpl: EngineTemplate = toml::from_str(&content).map_err(|e| {
+                let document = rigorix_engine::templates::application::template_document::parse_document(
+                    &content,
+                    Some(name),
+                )
+                .map_err(|e| {
                     TemplateError::DeserializationFailed(format!(
-                        "Template '{}' is neither [[steps]] nor [[nodes]] format: {}",
-                        name, e
+                        "Template '{}' is neither a plan template nor an engine template document: {e}",
+                        name
                     ))
                 })?;
-                return engine_template_to_plan_template(&engine_tmpl);
+                return engine_template_to_plan_template(&document.template);
             }
         }
     }
@@ -693,6 +699,7 @@ mod tests {
         // migration runbook can gate its destructive step (migrate → ALTER
         // TABLE) behind human sign-off.
         let engine_tmpl = EngineTemplate {
+            schema_version: 1,
             id: "db-migration".to_string(),
             name: "db-migration".to_string(),
             description: "Migration runbook".to_string(),

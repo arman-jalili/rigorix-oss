@@ -207,7 +207,7 @@ fn test_stdio_list_resources() {
     std::fs::create_dir_all(tmp.join(".rigorix/templates")).unwrap();
     std::fs::write(
         tmp.join(".rigorix/templates/echo-template.toml"),
-        "id = \"echo-template\"\nname = \"Echo template\"\ndescription = \"test\"\nversion = \"1.0.0\"\n\n[[nodes]]\nid = \"echo\"\nname = \"Echo\"\n[nodes.action]\ntype = \"run_command\"\ncommand = \"echo hi\"\n",
+        "schema_version = 1\nid = \"echo-template\"\nname = \"Echo template\"\ndescription = \"test\"\nversion = \"1.0.0\"\n\n[[nodes]]\nid = \"echo\"\nname = \"Echo\"\n[nodes.action]\ntype = \"run_command\"\ncommand = \"echo hi\"\n",
     )
     .unwrap();
 

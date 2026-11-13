@@ -1,0 +1,18 @@
+created_at = "2026-07-12T00:00:00Z"
+description = "End-to-end test plan"
+name = "e2e-test-plan"
+tags = []
+updated_at = "2026-07-12T00:00:00Z"
+version = "1.0.0"
+
+[metadata]
+
+[[steps]]
+description = "Test step"
+evaluate_score = false
+name = "step-1"
+require_identity = false
+requires_approval = false
+tool = "test_tool"
+
+[steps.parameters]

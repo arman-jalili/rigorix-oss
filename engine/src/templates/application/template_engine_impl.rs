@@ -324,6 +324,31 @@ fn substitute_params_in_action(
             timeout_secs: *timeout_secs,
             env: env.clone(),
         },
+        crate::templates::domain::TemplateAction::ToolCall { tool, parameters } => {
+            // A tool call's parameters are the document's text; placeholders in string values are
+            // substituted exactly as they are for a typed action's fields (#1529).
+            fn walk(
+                value: &serde_json::Value,
+                substitute: &dyn Fn(&str) -> String,
+            ) -> serde_json::Value {
+                match value {
+                    serde_json::Value::String(s) => serde_json::Value::String(substitute(s)),
+                    serde_json::Value::Array(items) => serde_json::Value::Array(
+                        items.iter().map(|item| walk(item, substitute)).collect(),
+                    ),
+                    serde_json::Value::Object(map) => serde_json::Value::Object(
+                        map.iter()
+                            .map(|(k, v)| (k.clone(), walk(v, substitute)))
+                            .collect(),
+                    ),
+                    other => other.clone(),
+                }
+            }
+            crate::templates::domain::TemplateAction::ToolCall {
+                tool: tool.clone(),
+                parameters: walk(parameters, &substitute),
+            }
+        }
         crate::templates::domain::TemplateAction::LspQuery {
             query_type,
             file,
@@ -435,6 +460,7 @@ mod tests {
             tags: vec![],
             category: None,
             author: None,
+            schema_version: crate::templates::domain::SCHEMA_VERSION,
         }
     }
 
@@ -600,6 +626,7 @@ mod tests {
             tags: vec![],
             category: None,
             author: None,
+            schema_version: crate::templates::domain::SCHEMA_VERSION,
         };
 
         engine
@@ -659,6 +686,7 @@ mod tests {
             tags: vec![],
             category: None,
             author: None,
+            schema_version: crate::templates::domain::SCHEMA_VERSION,
         };
 
         engine
@@ -748,6 +776,7 @@ mod tests {
             tags: vec![],
             category: None,
             author: None,
+            schema_version: crate::templates::domain::SCHEMA_VERSION,
         };
 
         engine

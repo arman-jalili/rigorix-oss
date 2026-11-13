@@ -1,0 +1,28 @@
+name = "three-steps"
+description = "The linear case the demo dialect describes, with more than one step"
+version = "1.0.0"
+tags = ["fixture"]
+
+[[steps]]
+name = "read"
+description = "Read the file"
+tool = "file_read"
+
+[steps.parameters]
+path = "src/lib.rs"
+
+[[steps]]
+name = "lint"
+description = "Lint what was read"
+tool = "run_command"
+
+[steps.parameters]
+command = "cargo clippy"
+
+[[steps]]
+name = "report"
+description = "Report the outcome"
+tool = "run_command"
+
+[steps.parameters]
+command = "echo done"

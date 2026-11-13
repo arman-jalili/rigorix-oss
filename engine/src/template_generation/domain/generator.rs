@@ -592,6 +592,7 @@ of operations.
 TEMPLATE SCHEMA (example — adapt as needed):
 
 === EXAMPLE 1: Read-only analysis (lint, review, audit) — NO parameters, NO test steps ===
+schema_version = 1
 id = "analyze-code-quality"
 name = "Analyze Code Quality"
 description = "Run linters and static analysis on the codebase"
@@ -614,6 +615,7 @@ type = "run_command"
 command = "npx eslint src/ --format=compact"
 
 === EXAMPLE 2: Code-writing template (WITH parameters) ===
+schema_version = 1
 id = "add-method"
 name = "Add Method"
 description = "Add a method to an existing class"
