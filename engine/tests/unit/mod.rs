@@ -3,6 +3,9 @@
 //! Each is preserved with its Guardian TDD structure and corrected to
 //! exercise the real implementation. Runs under `cargo test --test unit`.
 
+// The orchestrator is excluded from the portable slice (engine/.pi/portable-inventory.tsv:51), so its unit tests
+// are gated the same way the other non-portable modules in this file are.
+#[cfg(not(feature = "portable"))]
 #[path = "orchestrator"]
 mod orchestrator {
     #[path = "step_dependencies_test.rs"]

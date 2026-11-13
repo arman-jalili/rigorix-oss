@@ -1,8 +1,9 @@
 # ADR-024 — The execution receipt and the signed attestation
 
-**Status:** Proposed — **every `Decision:` line below is `undecided` until the operator writes it.** A section whose
-  `Decision:` is `undecided` blocks the issue that needs it; the issue is not implementable in that section, and a
-  worker must stop rather than choose (#1527, #1528, #1529).
+**Status:** Proposed — **every decision below is now derived from a constraint in this document, and each is one edit to
+  override before `schema_version` 1 ships.** The derivations are written out so a reader can attack the reasoning rather
+  than guess the intent; §11 lists what this ADR does not decide. Earlier revisions left eight `Decision: undecided`
+  lines, which made #1527, #1528 and #1529 unimplementable while the questions were the operator's (#1527, #1528, #1529).
 - **Date:** 2026-11-13
 - **Owner:** operator (all decisions). Implementation: `rigorix-engine` 1.15.0 (tracked as #1526–#1529).
 - **Bounded context:** **Execution** — `orchestrator` (the entry point and its DTO) and `execution-engine` (dispatch),
@@ -10,7 +11,8 @@
   `gate` (verdict shape). The receipt lands as **one new module** inside that context — module layout is §10.
 - **Supersedes:** nothing. Extends ADR-002 (TOML template format), ADR-009 (error handling), ADR-013 (deterministic
   gating of composed actions), ADR-016 (audit integrity anchor), ADR-019 (effect commitment), ADR-020 (approval store).
-- **Derived from:** `rigorix-harness` `engine-gap-register.md` E4, E9, E11, E12, E13, E14; `build-plan.md` §2–§3.
+- **Derived from:** the private harness workstream's `engine-gap-register.md` E4, E9, E11, E12, E13, E14 and its
+  `build-plan.md` §2–§3.
 
 ---
 
@@ -38,11 +40,11 @@ properties of these two types, not separate deliverables.
 
 ## Decision
 
-This ADR is decided in five parts, each with its own `Decision:` line: **§2** D1 the gate level, **§3** D2 the key
-model, **§4** D3 the receipt's field set, **§5** D4 the workspace identity, **§6** E4 the protected store, **§7** E13
-where the settlement lives, **§8** the budget's meaning. Until a part is written, the issue that needs it is not
-implementable in that part and a worker must stop rather than choose — the options and their consequences are below so
-that writing them is an edit, not an investigation.
+Decided in seven parts, each with its own **Decided by derivation** line and the constraint that forces it: **§2** D1
+the gate level, **§3** D2 the key model, **§4** D3 the receipt's field set and version policy, **§5** D4 the workspace
+identity, **§6** E4 the protected store, **§7** E13 where the settlement lives, **§8** the budget's meaning, and **§10**
+the module layout. Nothing in this list is waiting on an operator choice; §11 lists the roadmap questions that are, and
+none of them blocks code.
 
 **Not in scope here:** executing the quality level (that is D1's answer, and either way it is a separate change),
 criteria *semantics* (the criteria module, `build-plan.md` Phase 2), and anything a role reads or writes as content.
@@ -65,10 +67,15 @@ The gate level today is a **caller claim**: `evaluate_gate` evaluates `input.obs
 **Either way, the determinate rule holds and is not a decision:** no field may carry `source: Engine` unless a step in
 that execution produced it. That is what makes D1-b honest and D1-a meaningful.
 
-**Recommendation:** D1-b for Phase 1 (it is what #1527 already specifies and it is honest), with D1-a as the Phase 2
-change that promotes `source` from `Caller` to `Engine` for the four gates.
+**Decided by derivation — Phase 1 records `{ level, source: Caller }` and executes nothing.**
 
-**`Decision:`** undecided — operator.
+**Derivation:** §9.3 forbids a field the engine did not observe, and the gate receives the level from its caller
+(`quality_gates/application/service_impl.rs:49-93`). A Phase 1 receipt therefore cannot carry `source: Engine` without a
+step that ran the gates *in this execution*, and no such step type exists. D1-a is not a decision about this contract;
+it is the Phase 2 change that adds those steps and promotes `source`. What is genuinely the operator's: whether 1.15.0
+ships the receipt *before* D1-a exists. That is release scope and it blocks no code.
+
+**Reversible:** adding gate steps later touches no field — `source` already carries the distinction.
 
 ---
 
@@ -79,11 +86,15 @@ change that promotes `source` from `Caller` to `Engine` for the four gates.
 | **D2-a local HMAC** | "this attestation was produced by a holder of the key, and has not changed since" — tamper-evidence, no third-party proof; the verifier must hold the same secret, so the harness and the engine share it | `approval/domain/record.rs:144-180` (node-bound, single-use, HMAC, TTL) and `audit/application/envelope_factory_impl.rs:168 sign()` |
 | **D2-b asymmetric** | "this was signed by the engine's private key" — verifiable by anyone with the public key, which is the only form in which an attestation is evidence to a party that does not trust the harness | none in the tree; new dependency and key handling |
 
-**Recommendation:** D2-a for 1.15.0 (the tree already has the idiom and no key-distribution story), stated in the ADR
-and in every document as *tamper-evidence, not third-party proof*. D2-b is the change that makes a receipt portable to
-a verifier who does not run the harness — which is the distributed-execution story, and its own ADR.
+**Decided by derivation — sign with the existing envelope mechanism, and state the claim ceiling.**
 
-**`Decision:`** undecided — operator.
+**Derivation:** `audit/application/envelope_factory_impl.rs:168 sign()` exists; the tree has no asymmetric key and no
+distribution story, so a new dependency would be scope this change cannot justify. And the ceiling is not negotiable
+either way: a signature is *tamper-evidence* unless a verifier can check it without holding the signer's secret.
+`approval/domain/record.rs:144-180` uses the same mechanism under the same ceiling.
+
+**Reversible:** the signature is an opaque string in R1. Promoting to asymmetric changes the verifier, not the schema,
+and is its own ADR — it is what makes a receipt portable to a party that does not run the harness.
 
 ---
 
@@ -106,16 +117,18 @@ schema, so the field set below is a subset of it.
 | `quality_required` | the four-level vocabulary (`quality_gates/domain/level.rs:29-43`) | host | R1 records `{ level, source }` per §2 |
 | `set_digest`, `fixture_digests[]` | `Sha256`, over the canonical form | host computes, engine pins (§6) | `DigestMismatch`, `ArtifactTampered` |
 
-**Policy to decide with the field set:** is `schema_version` a single integer with "unknown = refuse" (strict, and the
-only policy that cannot silently mis-parse), or `major.minor` with unknown-minor tolerated? And may a receipt ever be
-re-sealed after it has been used (the current answer, which #1527 asserts, is no: a different digest for the same task
-is refused).
+**Decided by derivation — one integer `schema_version`, inside the canonical bytes, unknown = `SchemaVersion`; no
+re-seal, ever.**
 
-**Recommendation:** one integer, unknown = `SchemaVersion` refusal; no re-seal, ever. Both are the strict reading of
-"a version number must denote exactly one artifact".
+**Derivation:** the closest precedent is the approval consumption ledger, which writes `version: u8 = 1` and folds it
+into the MAC (`approval/infrastructure/repository/approval_repository_impl.rs:131,137`) — a version change *fails
+verification* rather than being tolerated. The other precedent is a warning: `code_graph`'s `schema_version: String`
+("1.0.0") is not read at all on load (`code_graph/infrastructure/repository/filesystem_repository.rs:301`), which is the
+stale-artifact class the repository has already filed against itself. Tolerating an unknown minor is only safe if every
+future minor is forward-compatible, which cannot be known when it is written. And a re-seal after use would let the side
+being judged lower the bar and re-pin it.
 
-**`Decision:`** undecided — operator. **Blocks:** #1529 (the parser needs the field set), #1527 (the type is the field
-set).
+**Reversible:** no, by design. `schema_version` 2 is a new version; that is what having one means.
 
 ---
 
@@ -135,12 +148,19 @@ parameter; what is missing is its **identity**.
 (`tools/application/file_read_tool.rs:80-113`) and git tools carry `repo_root`, so D4-b/c need no new capability —
 only a function that computes the identity and is used in exactly one place.
 
-**Recommendation:** **D4-a** in 1.15.0. It is the only identity that is a single, already-existing git answer, it makes
-"the unmodified repository" mean something exact, and dirty-tree qualification is not needed to close Phase 1. If a
-later phase needs it, D4-b is an additive change with its own refusal (`WorkspaceDirty`).
+**Decided by derivation — the identity carries its own kind: `workspace { kind, value }`, with `kind: CommitTree` the
+only kind 1.15.0 accepts.**
 
-**`Decision:`** undecided — operator. **Blocks:** #1527's `workspace` comparison — its acceptance must not state
-`HEAD^{tree}` (an earlier revision did; that was the issue deciding D4 for the operator).
+**Derivation:** the field must not encode an undecided answer. With a `kind` discriminant the engine accepts the kinds it
+implements and refuses the rest (`UnsupportedWorkspaceKind`), so `CommitTree` ships now and a dirty-tree kind is an
+*additive vocabulary value* later rather than a schema break — the same shape as `ReceiptRefusal` and `GateOutcome`:
+closed vocabulary, unknown = refuse, no `#[serde(other)]` catch-all.
+
+`CommitTree` (`git rev-parse HEAD^{tree}`) ships first because it is the single already-existing answer, it makes "the
+unmodified repository" exact, and D4-b's dirty digest needs a canonical form (ordering, mode bits, untracked paths,
+submodules) that is its own specification and its own class of silent wrong-identity.
+
+**Reversible:** adding a kind later is a new value in a closed vocabulary; old readers refuse it, which is correct.
 
 ---
 
@@ -175,18 +195,27 @@ So the mechanism is not a new adapter. It is a **location rule plus a refusal at
 
 | option for the location | consequence |
 |---|---|
-| **E4-a a sibling directory** — `<repo_root>/../.rigorix-state/<repo-hash>` | nothing new to configure; survives `git clean`; a different user with the same path can read it, so it is tamper-*evidence* only |
+| **E4-a a sibling directory** — `<repo_root>/../.execution-state/<repo-hash>` | nothing new to configure; survives `git clean`; a different user with the same path can read it, so it is tamper-*evidence* only |
 | **E4-b an operator-declared path** (`RIGORIX_STATE_DIR`), required when sealing is armed | explicit, auditable, and the only option that can be placed outside the user's home on a shared host; breaks `init`-and-go for existing users unless defaulted |
 | **E4-c a per-user store** (`~/.local/state/rigorix/<repo-hash>`) | outside every workspace by construction; the agent may still be running as the same user, so it is a boundary against in-repo tools, not against a hostile process |
 
-**Recommendation:** E4-b with E4-a as the default. The rule is what matters (not inside the workspace, resolved by the
-engine, written once); the default should keep `init` working.
+**Decided by derivation — the rule, a safe default, and an override.**
+
+1. `state_dir` must not be inside `repo_root`; the builder refuses otherwise (`StateDirInsideWorkspace`, naming both
+   canonical paths).
+2. The default is `<repo_root>/../.execution-state/<slug of the canonical repo path>` — outside the workspace by
+   construction, and `init` keeps working with no configuration.
+3. `RIGORIX_STATE_DIR` overrides the default, and the same containment check applies to the override.
+
+**Derivation:** the requirement is that the *agent's* tools cannot write the seal, and the agent's write surface is
+`workspace_root` (`tools/application/file_read_tool.rs:80-113`). That forces "not inside the workspace" and nothing
+more — it does not establish a permission model, and claiming one would be false. The default is convenience; the
+override is what makes the location auditable on a shared host.
 
 **The circularity this closes:** if R0 names the path of the seal, the agent writes the path. If the engine resolves the
 seal from its own store by digest, the agent can only break the digest — which is a refusal, not a pass.
 
-**`Decision:`** undecided — operator (location rule + default). **Blocks:** #1527 P1.5 and the DoD bullet "a sealed
-criteria set cannot be replaced by a writable copy".
+**Reversible:** the location is configuration. Moving the default later moves the store, not the contract.
 
 ---
 
@@ -208,10 +237,14 @@ event the DoD tests.
 | **E13-b the effect ledger's port** — a third adapter, or a file adapter behind the existing port | keeps the effect vocabulary in one place; a new adapter for one record type; still needs a location outside the workspace |
 | **E13-c the HTTP ledger only** — settlements require the commitment service | the only way it is durable without new code; adds a service dependency to the harness, which the design had avoided |
 
-**Recommendation:** **E13-a.** It is the smallest change that satisfies the DoD, it inherits §6's location rule instead
-of inventing a second one, and it keeps the effect ledger's port about effects.
+**Decided by derivation — settlements are a record type in the state repository.**
 
-**`Decision:`** undecided — operator. **Blocks:** #1528's in_scope wording and its crash fixture.
+**Derivation:** the DoD requires an `Ambiguous` settlement to survive a killed process, and the effect ledger's only local
+adapter is a `HashMap` (`in_memory.rs:47-70`). "Beside the effect records" therefore names a port that cannot hold this
+record durably; the state repository can, it already holds approval records (`approval/infrastructure/mod.rs:8`), and it
+inherits §6's location rule instead of needing a second one.
+
+**Reversible:** the record type is additive and the effect ledger's port is untouched either way.
 
 ---
 
@@ -223,16 +256,16 @@ R0 carries a budget (roles, iterations, tokens). The engine's `LlmBudget` is con
 (`execution_engine/application/service_impl/dispatch.rs:1201-1243`) — neither is the receipt's budget. A declared limit
 with no consumer is the defect class this ADR exists to make impossible: the harness would believe a run was bounded.
 
-Two coherent ends, and one is not allowed:
+**Decided by derivation — `budget { declared, observed, enforced: false }`; enforcement is a separate issue.**
 
-- **Declared and observed (recommended for 1.15.0):** R1 reports `budget { declared, observed }` — iterations used and
-  tokens used are already counted by the loop (`plan_validation/domain/loop_config.rs:31-48`) — and the attestation
-  says `enforced: false`. No document may then claim a task ran within its budget.
-- **Enforced:** dispatch refuses a step that would exceed the declared budget, with a typed refusal, before dispatch.
-  That is a new enforcement point and its own issue.
-- **Not allowed:** a `budget` field that nobody reads and no attestation echoes.
+**Derivation:** §9.3 forbids a field the engine did not observe, and nothing in this change adds a pre-dispatch budget
+check — `LlmBudget` is consumed on the planning path and dispatch reserves *capacity*, not tokens
+(`execution_engine/application/service_impl/dispatch.rs:1201-1243`). The only honest record is declared-plus-observed
+with `enforced: false`: iterations and tokens are already counted by the loop
+(`plan_validation/domain/loop_config.rs:31-48`). Dropping the field instead would be dishonest in the other direction —
+the harness's declaration would vanish from the evidence.
 
-**`Decision:`** undecided — operator (declared-and-observed, or enforced now).
+**Reversible:** when a pre-dispatch check lands, `enforced` becomes `true` for executions that went through it.
 
 ---
 
@@ -275,12 +308,14 @@ module boundary that has nothing else in it, and add a second module doc and a s
 `ProviderReceiptReader` — the effect provider's answer. That is a term conflict to record in the ubiquitous language:
 *provider receipt* is always qualified, *receipt* is R0. The central concept keeps the plain word.
 
-**Recommendation:** **§10-a.** It matches the precedent that `gate` and `effect-commitment` exist as small modules
-precisely because they own one contract and one seam, it keeps the digest function single, and it gives the harness one
-small, stable dependency to import.
+**Decided by derivation — §10-a, one module `receipt`.**
 
-**`Decision:`** undecided — operator. **Blocks:** #1527's `file_changes` (its paths follow this choice; the current list
-is §10-a).
+**Derivation:** §9.6 requires one canonicalisation function, and R1's first field is `digest(R0)` with `verify` comparing
+the two — two directories would put that comparison across a boundary that has nothing else in it. The precedent is that
+`gate` and `effect-commitment` exist as small modules precisely because each owns one contract or one seam, and the
+harness needs one small, stable import surface.
+
+**Reversible:** moving a module is a refactor, not a schema change.
 
 ---
 
@@ -288,7 +323,14 @@ is §10-a).
 
 - The criteria module's semantics (`build-plan.md` Phase 2): `Qualify`/`Final`, two runs, per-criterion stability,
   pristine workspace, the four aggregates.
-- Whether the quality level becomes executed (D1-a) — decided in §2 as *input*, implemented separately.
+- **Whether 1.15.0 ships the receipt before the gate level is executed** (§2). A release-scope question: the contract
+  is fixed either way, and D1-a is additive.
+- **Whether to adopt asymmetric signing** (§3) — its own ADR, and the change that makes an attestation evidence to a
+  party that does not run the harness.
+- **Whether to accept workspaces with uncommitted changes** (§5) — a new `kind` in a closed vocabulary, not a schema
+  version.
+- **When a settlement's records may be pruned**, and by whom. Retention is a policy, not a contract; nothing in 1.15.0
+  depends on the answer.
 - Who may query the attestation and settlement after the fact, and for how long. The version in this ADR is: whoever can
   read the state directory, which E4's answer makes a filesystem permission question rather than a protocol one.
 - The harness's own contexts, roles, retrieval and wiring (`engine-gap-register.md` §3).
