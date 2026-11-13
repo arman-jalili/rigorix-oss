@@ -439,6 +439,7 @@ mod tests {
             history_integrity: None,
             anchor_head: None,
             history_policy: None,
+            ..Default::default()
         }
     }
 

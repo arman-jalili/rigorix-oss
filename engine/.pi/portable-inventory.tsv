@@ -24,7 +24,7 @@ dependency	ed25519-dalek	crate	anchor signature verification (ADR-016 Phase C); 
 dependency	tokio	features pinned to sync/macros/rt/time/io-util	mio and the reactor do not exist on wasm32-unknown-unknown	those five features	—
 dependency	rand	crate	jitter on audit retry backoff	no delivery path to jitter	1
 #
-# ── modules excluded wholesale (20 of 39 public modules) ─────────────────────────────
+# ── modules excluded wholesale (20 of 40 public modules) ─────────────────────────────
 # direct: excluded because the module itself references a crate above.
 module	code_gen	whole module	tree_sitter	syntax gate not evaluated in the browser	5
 module	repo_engine	whole module	tree_sitter	no repository indexing in the slice	8
@@ -82,7 +82,7 @@ item	error	14 of the root enum's variants + their `use`/match arms	names exclude
 #
 # ── summary ──────────────────────────────────────────────────────────────────────────
 # 6 forbidden crates + 3 crates with no wasm support + 1 narrowed feature set
-# 20 of the crate's 39 public modules are excluded wholesale (#1361, corrected by #1374, narrowed by #1443). Counted from the rows,
+# 20 of the crate's 40 public modules are excluded wholesale (#1361, corrected by #1374, narrowed by #1443). Counted from the rows,
 # not estimated — re-derive with:
 #   awk -F'\t' '$1=="module"{ if ($4 ~ /tree_sitter|reqwest|prometheus/) d++;
 #                                 else if ($4 ~ /tokio/) t++; else c++ }

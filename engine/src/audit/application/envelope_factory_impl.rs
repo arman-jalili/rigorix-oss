@@ -241,6 +241,13 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             requirement_findings: Self::requirement_findings_from_events(&input.events),
             precondition_findings: Self::precondition_findings_from_events(&input.events),
             decision_context_ref: Self::decision_context_ref_from_events(&input.events),
+            // #1527/#1528: additive references to the run's own artifacts. `None` never appears in
+            // the canonical bytes, so an envelope written before these fields existed verifies
+            // unchanged — and when they are present the signature covers them.
+            settlement_id: None,
+            settlement_digest: None,
+            receipt_digest: None,
+            attestation_digest: None,
             signature: None,
             // GAP-M-12: an unsigned run is explicitly degraded evidence.
             // Approval-bearing runs must request signing; this marker makes

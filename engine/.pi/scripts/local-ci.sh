@@ -226,6 +226,28 @@ if should_run "build"; then
 fi
 
 # ═════════════════════════════════════════════════════════════════
+# Stage 2b: Portable slice
+# ═════════════════════════════════════════════════════════════════
+# #1536 merged green here and red in the pipeline: `engine/tests/unit/mod.rs` gained a module
+# without the `#[cfg(not(feature = "portable"))]` gate its siblings carry, and nothing in this
+# script ever compiled `--features portable`. The run said 120/0 and was true about a *different
+# subject* than the job that failed — the same class as a guard that reads nothing (#1514, #1530).
+# The pipeline's own two commands are repeated here verbatim, and the target check announces
+# itself when it cannot run, because a silent skip is how this recurs.
+if should_run "build" && [[ " ${CRATES[*]} " == *" engine "* ]]; then
+    header "Stage 2b: Portable slice"
+    run_cmd "cargo test -p rigorix-engine --features portable --tests" \
+        cargo test --locked -p rigorix-engine --features portable --tests
+    if rustup target list --installed 2>/dev/null | grep -qx "wasm32-unknown-unknown"; then
+        run_cmd "cargo check -p rigorix-engine --features portable (wasm32)" \
+            cargo check --locked -p rigorix-engine --features portable --target wasm32-unknown-unknown
+    else
+        echo "  ⚠️  wasm32-unknown-unknown not installed — the portable *type* check cannot run here."
+        echo "      install: rustup target add wasm32-unknown-unknown   (the slice's tests above still ran)"
+    fi
+fi
+
+# ═════════════════════════════════════════════════════════════════
 # Stage 3: Test (cargo nextest + doctests + all proofing scripts)
 # ═════════════════════════════════════════════════════════════════
 if should_run "test"; then

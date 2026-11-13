@@ -19,6 +19,7 @@
 
 pub mod filesystem_execution_record_repository;
 pub mod filesystem_graph_repository;
+pub mod filesystem_settlement_store;
 pub mod filesystem_state_repository;
 pub mod repository;
 

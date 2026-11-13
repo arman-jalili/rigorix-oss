@@ -291,6 +291,7 @@ pub fn sign(attestation: &mut Attestation, key: &[u8]) -> Result<(), String> {
 /// it — and the ADR says so rather than implying a permission model this does not have.
 #[must_use]
 pub fn default_state_dir(repo_root: &str) -> std::path::PathBuf {
+    // sink: receipt:state-dir-env
     if let Ok(declared) = std::env::var("RIGORIX_STATE_DIR")
         && !declared.trim().is_empty()
     {

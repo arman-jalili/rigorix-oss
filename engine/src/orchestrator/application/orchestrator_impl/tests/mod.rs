@@ -56,6 +56,7 @@ impl audit_app::AuditService for CapturingAuditService {
                 history_integrity: None,
                 anchor_head: None,
                 history_policy: None,
+                ..Default::default()
             },
             signed: false,
             event_count: 0,
