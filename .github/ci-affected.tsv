@@ -51,7 +51,7 @@ rust-toolchain.toml	ALL	the pinned toolchain compiles every crate
 clippy.toml	lint	the lints every crate is checked against
 action.yml	ALL	the published action's identity; it names the crates it invokes
 guardian-manifest.json	ALL	the manifest the guards and the pipeline are generated from
-.gitignore	none	it changes what is tracked, not what is built
+.gitignore	audit	it changes what is tracked, not what is built — and `validate-repo-hygiene.sh` reads it: a pattern that matches nothing ignored four coverage artifacts through three pull requests (#1520 follow-up)
 LICENSE-*	none	not read by any gate
 **/LICENSE-*	none	not read by any gate
 .config/**	ALL	the test runner's configuration changes how every binary runs
