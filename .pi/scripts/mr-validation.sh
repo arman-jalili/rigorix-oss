@@ -174,6 +174,29 @@ if [ -f ".pi/scripts/validate-security.sh" ]; then
 	bash .pi/scripts/validate-security.sh 2>&1 | tail -5
 fi
 
+# A delivery record is a statement about the repository, so its nouns have to resolve (#1549). The
+# moment a record exists is the moment it is created — this PR's body — so the check runs here
+# rather than being remembered. Without a PR number there is no record to read, so the check is
+# exercised on its own fixtures instead of being skipped: a validator that only runs when invoked
+# deliberately is a default of "ignore".
+if [ -f ".pi/scripts/validate-delivery-record.sh" ]; then
+	if [ -n "$PR_NUMBER" ] && command -v gh &>/dev/null; then
+		# The status has to be the validator's, not `tail`'s: a pipeline reports the last command,
+		# so `… | tail -6; then` passes whenever tail can read.
+		if RECORD_OUT=$(bash .pi/scripts/validate-delivery-record.sh --pr "$PR_NUMBER" 2>&1); then
+			printf '%s\n' "$RECORD_OUT" | tail -6
+			pass "Delivery record resolves (PR #$PR_NUMBER)"
+		else
+			printf '%s\n' "$RECORD_OUT" | tail -6
+			fail "Delivery record has an unresolvable claim (PR #$PR_NUMBER)"
+		fi
+	elif bash .pi/scripts/validate-delivery-record.sh --self-test >/dev/null 2>&1; then
+		pass "Delivery-record check self-test (no PR number, so the fixtures ran)"
+	else
+		fail "Delivery-record check self-test failed"
+	fi
+fi
+
 # ---------------------------------------------------------------------------
 # Architecture Check
 # ---------------------------------------------------------------------------
