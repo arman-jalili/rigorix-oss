@@ -12,6 +12,18 @@ mod orchestrator {
     mod step_dependencies_test;
 }
 #[cfg(not(feature = "portable"))]
+#[path = "receipt"]
+mod receipt {
+    #[path = "receipt_verification_test.rs"]
+    mod receipt_verification_test;
+}
+#[cfg(not(feature = "portable"))]
+#[path = "attestation"]
+mod attestation {
+    #[path = "attestation_verification_test.rs"]
+    mod attestation_verification_test;
+}
+#[cfg(not(feature = "portable"))]
 #[path = "templates"]
 mod templates {
     #[path = "template_schema_test.rs"]

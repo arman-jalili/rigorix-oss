@@ -48,6 +48,26 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **An execution receipt the engine can check, and an attestation it can sign.** A host that submits
+  an execution declares what it expects; until now the engine had nothing to compare that against
+  and nothing it could sign, so "the execution did what was asked" was a claim made by the side that
+  asked. `receipt::domain::Receipt` is the declaration — steps with their dependencies, declared
+  effect paths and content digests, expectations, `workspace { kind, value }`, a sandbox whose
+  `none` regime is deliberately unrepresentable, roles and a declared-only budget — pinned by a
+  digest over one canonical form. `verify` returns a `VerifiedReceipt` or every refusal it met
+  (`SchemaVersion`, `DigestMismatch`, `WorkspaceMismatch`, `UnknownStep`, `DependencyCycle`,
+  `SandboxMissing`, `SecretInParameters`, `UndeclaredWrite`, `ContentDigestMismatch`), and a
+  credential in a parameter is refused at construction, quoting the path and never the value.
+  `Attestation` is the observation and has no `Default`, no public constructor and no `Deserialize`
+  — the only path from bytes to a value is `verify_attestation`, which checks the HMAC first; a
+  quality level is recorded as `source: Engine { step_id }` only when a step in that execution
+  established it above the caller's claim, and otherwise stays `source: Caller` with no field
+  reading as passed. The durable store also moves **out of the workspace**
+  (`<repo>/../.execution-state/<repo>`, `RIGORIX_STATE_DIR` overrides), because the agent's write
+  tools are contained to `workspace_root` and a seal the agent can rewrite is not a seal; existing
+  `.rigorix/state` content is not migrated, and the rule compares resolved paths so a `sub/../`
+  spelling does not escape it (#1527).
+
 - **One template document schema, with a version.** The word "template" named two artifacts with two
   parsers: `[[nodes]]` in the engine's registry (with `depends_on`) and `[[steps]]` in the demo
   documents (`tool` + `[steps.parameters]`), bridged by a converter in the host crate. Neither

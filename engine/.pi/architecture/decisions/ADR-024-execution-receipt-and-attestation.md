@@ -1,9 +1,10 @@
 # ADR-024 — The execution receipt and the signed attestation
 
-**Status:** Proposed — **every decision below is now derived from a constraint in this document, and each is one edit to
-  override before `schema_version` 1 ships.** The derivations are written out so a reader can attack the reasoning rather
-  than guess the intent; §11 lists what this ADR does not decide. Earlier revisions left eight `Decision: undecided`
-  lines, which made #1527, #1528 and #1529 unimplementable while the questions were the operator's (#1527, #1528, #1529).
+**Status:** Accepted — every decision below is derived from a constraint in this document, and each is one edit to
+  override. The derivations are written out so a reader can attack the reasoning rather than guess the intent; §11 lists
+  what this ADR does not decide. Accepted when #1527 landed the receipt module and #1529 the schema it rests on: an ADR
+  whose sections are implemented is not a proposal, and leaving it `Proposed` would let the code drift from a document
+  nobody treats as binding.
 - **Date:** 2026-11-13
 - **Owner:** operator (all decisions). Implementation: `rigorix-engine` 1.15.0 (tracked as #1526–#1529).
 - **Bounded context:** **Execution** — `orchestrator` (the entry point and its DTO) and `execution-engine` (dispatch),

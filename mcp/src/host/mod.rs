@@ -1666,9 +1666,8 @@ pub async fn build_real_engine(
     );
 
     // ── State manager ──
-    let state_dir = std::path::PathBuf::from(repo_root)
-        .join(".rigorix")
-        .join("state");
+    // ADR-024 §6 (via #1527): outside the workspace, or the agent can rewrite the seal.
+    let state_dir = rigorix_engine::receipt::application::service::default_state_dir(repo_root);
     let state_repo = Box::new(FileSystemStateRepository::new(state_dir).await?);
     let state_manager: Arc<dyn StateManagerService> =
         Arc::new(FileSystemStateManager::new(state_repo));
