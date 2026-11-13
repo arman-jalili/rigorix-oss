@@ -48,10 +48,10 @@ share	68.41 %	code_shipped	engine_shipped	68.41 % of the 1 349 900 B shipped eng
 share	31.00 %	data_shipped	engine_shipped	31.00 % of the 1 349 900 B shipped engine-linked module	evidence table: the remaining size lever — the correction in #1363, re-derived on #1385
 share	31.00 %	data_shipped	engine_shipped	31.00 % of the shipped module	Consequences § Negative, same operands
 growth	25 %	seam_empty_budget	seam_empty_shipped	25 % over the measured 169 250 B	ADR-014 evidence table (the empty-seam row) and the derivation table's last row
-count	20 of 40	mods	declared	20 of 40 public modules excluded	Decision §1
-count	20 of 40	mods	declared	20 of 40 public modules (8 forbidden crate	evidence table
-count	12 of 20	excluded_closure_and_narrow	excluded_total	12 of 20 leave for something	Decision §1: the 6 narrowed + 6 closure modules
-count	8 of 20	excluded_crate	excluded_total	reaches only 8 of 20	Decision §1: a dependency list describes 10 of the 22
-count	6 of 20	excluded_closure	excluded_total	6 of 20 module exclusions follow	Consequences § Negative
-total	29 inner items	items	-	29 inner items	evidence table: items gated inside the 20 modules that remain (#1365, re-derived by #1374, #1381 and #1443)
+count	21 of 40	mods	declared	21 of 40 public modules excluded	Decision §1
+count	21 of 40	mods	declared	21 of 40 public modules (8 forbidden crate	evidence table
+count	13 of 21	excluded_closure_and_narrow	excluded_total	13 of 21 leave for something	Decision §1: the 6 narrowed + 6 closure modules
+count	8 of 21	excluded_crate	excluded_total	reaches only 8 of 21	Decision §1: a dependency list describes 10 of the 22
+count	7 of 21	excluded_closure	excluded_total	7 of 21 module exclusions follow	Consequences § Negative
+total	29 inner items	items	-	29 inner items	evidence table: items gated inside the 19 modules that remain (#1365, re-derived by #1374, #1381 and #1443)
 total	9 dependencies	deps	-	9 dependencies	Decision §1: the dependency rows of the manifest (#1365)

@@ -24,7 +24,7 @@ dependency	ed25519-dalek	crate	anchor signature verification (ADR-016 Phase C); 
 dependency	tokio	features pinned to sync/macros/rt/time/io-util	mio and the reactor do not exist on wasm32-unknown-unknown	those five features	—
 dependency	rand	crate	jitter on audit retry backoff	no delivery path to jitter	1
 #
-# ── modules excluded wholesale (20 of 40 public modules) ─────────────────────────────
+# ── modules excluded wholesale (21 of 40 public modules) ─────────────────────────────
 # direct: excluded because the module itself references a crate above.
 module	code_gen	whole module	tree_sitter	syntax gate not evaluated in the browser	5
 module	repo_engine	whole module	tree_sitter	no repository indexing in the slice	8
@@ -51,6 +51,7 @@ module	code_graph	whole module	tokio::fs (1)	no code graph in the slice	1
 module	orchestrator	whole module	tokio::fs (4) + names every module above	the aggregate replaces it (FR-011)	4
 module	plan_validation	whole module	names planning/quality_gates/templates	plan validation is a server/CLI concern	0
 module	quality_gates	whole module	named by plan_validation	—	0
+module	receipt	whole module	named by the gate level, which the slice removes	no gate level in the slice	3
 module	recovery_recipes	whole module	named by the root error type only	—	0
 module	failure_parser	whole module	named by plan_validation	—	0
 item	event_system::domain::event	event_info_status	`event_info_status` projects onto an orchestrator DTO	the events themselves stay	1
@@ -82,17 +83,16 @@ item	error	14 of the root enum's variants + their `use`/match arms	names exclude
 #
 # ── summary ──────────────────────────────────────────────────────────────────────────
 # 6 forbidden crates + 3 crates with no wasm support + 1 narrowed feature set
-# 20 of the crate's 40 public modules are excluded wholesale (#1361, corrected by #1374, narrowed by #1443). Counted from the rows,
+# 21 of the crate's 40 public modules are excluded wholesale (#1361, corrected by #1374, narrowed by #1443). Counted from the rows,
 # not estimated — re-derive with:
 #   awk -F'\t' '$1=="module"{ if ($4 ~ /tree_sitter|reqwest|prometheus/) d++;
 #                                 else if ($4 ~ /tokio/) t++; else c++ }
 #                 END {print "forbidden-crate:", d, "narrowed-tokio:", t, "closure:", c, "total:", d+t+c}' \
 #     engine/.pi/portable-inventory.tsv
 #   grep -cE '^pub mod' engine/src/lib.rs
-# → 8 for a forbidden crate + 6 for the narrowed tokio feature set = 14 direct, 6 by closure,
-#   20 total, of 39 (`pub mod` in `lib.rs`; the denominator was documented as 40 and has never
-#   been right — it was 38 until #1381 added `gate`, which the slice keeps). The item rows that
-#   follow are counted separately: `grep -cE '^item' engine/.pi/portable-inventory.tsv` = 29.
+# → 8 for a forbidden crate + 6 for the narrowed tokio feature set = 14 direct, 7 by closure,
+#   21 total, of 40 (`pub mod` in `lib.rs`). The item rows that follow are counted separately:
+#   `grep -cE '^item' engine/.pi/portable-inventory.tsv` = 29.
 #   `validate-portable-inventory.sh` recomputes all of it.
 #
 # #1374 corrected three rows that claimed `whole module` for modules the build does not remove:
@@ -102,6 +102,6 @@ item	error	14 of the root enum's variants + their `use`/match arms	names exclude
 # submodule goes, the logging does not). They are item rows now; `--gates` compares the
 # manifest with `cfg(not(feature = "portable"))` in both directions, so a row cannot claim an
 # exclusion the code does not perform.
-# 29 items gated inside the 20 modules that remain (one of them is gate::infrastructure, #1406)
+# 29 items gated inside the 19 modules that remain (one of them is gate::infrastructure, #1406)
 # `cargo check -p rigorix-engine --features portable --target wasm32-unknown-unknown` → exit 0
 # normal+build tree: 74 crates, none of tree-sitter/reqwest/ring/libc/prometheus/tracing-appender
