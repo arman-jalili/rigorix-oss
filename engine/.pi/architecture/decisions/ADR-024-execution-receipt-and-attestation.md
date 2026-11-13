@@ -206,6 +206,9 @@ So the mechanism is not a new adapter. It is a **location rule plus a refusal at
 2. The default is `<repo_root>/../.execution-state/<slug of the canonical repo path>` — outside the workspace by
    construction, and `init` keeps working with no configuration.
 3. `RIGORIX_STATE_DIR` overrides the default, and the same containment check applies to the override.
+4. Existing content under `<repo_root>/.rigorix/state` is **not migrated**: the hosts' default moves, and an operator who
+   wants that history points `RIGORIX_STATE_DIR` at it. Migrating it silently would move a durable store behind the
+   operator's back.
 
 **Derivation:** the requirement is that the *agent's* tools cannot write the seal, and the agent's write surface is
 `workspace_root` (`tools/application/file_read_tool.rs:80-113`). That forces "not inside the workspace" and nothing
