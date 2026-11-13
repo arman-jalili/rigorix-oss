@@ -140,6 +140,24 @@ describe_exit() {
     fi
 }
 
+# A scheduled stage that leaves no result file did not run, and a stage that does not run cannot
+# fail. This is a function rather than four inline lines because the run needs it and the self-test
+# needs to prove it bites (#1551): the first version of these waves dropped `build` entirely — 111
+# checks instead of 126 — and reported a green run, because the summary only described the stages
+# that had written something.
+missing_stages() {  # $1 results dir, then the keys that were scheduled; prints the missing ones
+    local dir="$1"; shift
+    local key missing=()
+    for key in "$@"; do
+        [[ -f "$dir/$key.start" ]] || missing+=("$key")
+    done
+    if [[ "${#missing[@]}" -gt 0 ]]; then
+        printf '%s\n' "${missing[@]}"
+        return 1
+    fi
+    return 0
+}
+
 # ── self-test: the fixtures #1552 is proved with ─────────────────────────────
 # The lock's test does not depend on this repository being idle: the fixture builds the state a
 # running run leaves behind (`mkdir` + pid) and asserts the refusal names it. That is the property
@@ -190,6 +208,16 @@ if [[ "$SELF_TEST" == "true" ]]; then
     else
         check "the lock is released on exit" "gone" "gone"
     fi
+
+    # A scheduled stage that wrote nothing is not a pass. The fixture is the exact state the bug
+    # left behind: `lint` ran, `build` never did.
+    mkdir -p "$tmp/results"
+    date +%s > "$tmp/results/lint.start"
+    out="$(missing_stages "$tmp/results" lint build 2>&1)" && code=0 || code=$?
+    check "a scheduled stage with no result fails the run" "$code" "1"
+    check "it names the stage that did not run" "$out" "build"
+    out="$(missing_stages "$tmp/results" lint 2>&1)" && code=0 || code=$?
+    check "a fully scheduled run passes the same check" "$code" "0"
 
     # The probe's own exit status is passed through, with its name.
     out="$(bash "$0" --lock-file "$tmp/free" --probe-exit 9 2>&1)" && code=0 || code=$?
@@ -379,6 +407,16 @@ run_root_script() {
 }
 
 should_run() { [[ -z "$STAGE" || "$STAGE" == "$1" ]]; }
+
+# A per-stage ceiling measures a stage *inside* a run, not alone (#1551). On a tree that has not been
+# built, the first stage to touch each crate pays for the whole compile and reads as a regression:
+# measured after a mutation invalidated `target/`, `--stage guards` cost 2m13s against a 112s ceiling,
+# against 43s warm. Recorded here, before any stage runs, so a budget failure can say so instead of
+# implying the stage got slower.
+COLD_START=false
+if [[ ! -d target/debug/deps ]] || [[ -z "$(ls -A target/debug/deps 2>/dev/null || true)" ]]; then
+    COLD_START=true
+fi
 
 # ── List Mode ───────────────────────────────────────────────────
 if [[ "$LIST_ONLY" == "true" ]]; then
@@ -664,10 +702,15 @@ run_wave() {  # $@ keys
     return 0
 }
 
+# What this run promised to do. The summary checks it afterwards: a stage that was scheduled and
+# produced no result is not a pass, it is a gate that stopped running (#1551).
+SCHEDULED=()
 if [[ -n "$STAGE" ]]; then
+    SCHEDULED=("$STAGE")
     run_stage "$STAGE"
 elif [[ "$JOBS" -eq 1 ]]; then
     # Serial, in the order this runner used before the stages were separable.
+    SCHEDULED=("${STAGE_ORDER[@]}")
     for key in "${STAGE_ORDER[@]}"; do run_stage "$key"; done
 else
     # Waves. lint/docs/security/guards share no readable or writable state. `build` is deliberately
@@ -675,7 +718,12 @@ else
     # invocations contend on the same `target/` lock and the run took 43m53s instead of speeding
     # up. Cargo already serialises on that directory; adding callers to the queue does not add
     # throughput. What waves buy is the non-cargo stages overlapping, which is what they do.
+    SCHEDULED=(lint docs security guards build test coverage integration)
     run_wave lint docs security guards
+    # `build` gets its own wave: the portable slice and the wasm32 check live in it, and it was
+    # silently absent from this path once already — 111 checks instead of 126, and nothing failed,
+    # because the summary only ever described the stages that wrote a result file.
+    run_wave build
     run_wave test
     run_wave coverage
     run_wave integration
@@ -698,27 +746,60 @@ for key in "${STAGE_ORDER[@]}"; do
     done < <(grep '^FAIL' "$RESULTS_DIR/$key.tsv" 2>/dev/null || true)
 done
 
+# Every scheduled stage must have been started. Absence is the failure mode this check exists for:
+# a run that drops a stage reports fewer checks and a green verdict, which is worse than a red one.
+SILENT_MISSES=()
+while IFS= read -r key; do
+    [[ -z "$key" ]] && continue
+    SILENT_MISSES+=("$key")
+    FAILURES+=("$key — scheduled and produced no result: a stage that does not run cannot fail")
+    FAILED=$((FAILED + 1))
+done < <(missing_stages "$RESULTS_DIR" "${SCHEDULED[@]+"${SCHEDULED[@]}"}" 2>/dev/null || true)
+
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════╗"
 echo -e "║                     Final Results                        ║"
 echo -e "╚══════════════════════════════════════════════════════════╝${NC}"
 printf '  %-12s %6s %6s %6s %10s %7s\n' stage steps pass fail duration share
+# The denominator is summed in a first pass. Computing it as the table is printed made the first
+# stage 100% of itself — the shares read 100, 8, 53, 12 … and summed to 244.
 TABLE_TOTAL=0
 for key in "${STAGE_ORDER[@]}"; do
     [[ -f "$RESULTS_DIR/$key.end" ]] || continue
     start="$(cat "$RESULTS_DIR/$key.start" 2>/dev/null || echo 0)"
     end="$(cat "$RESULTS_DIR/$key.end" 2>/dev/null || echo 0)"
+    TABLE_TOTAL=$((TABLE_TOTAL + end - start))
+done
+for key in "${STAGE_ORDER[@]}"; do
+    [[ -f "$RESULTS_DIR/$key.end" ]] || continue
+    start="$(cat "$RESULTS_DIR/$key.start" 2>/dev/null || echo 0)"
+    end="$(cat "$RESULTS_DIR/$key.end" 2>/dev/null || echo 0)"
     secs=$((end - start))
-    TABLE_TOTAL=$((TABLE_TOTAL + secs))
     p="$(grep -c '^PASS' "$RESULTS_DIR/$key.tsv" 2>/dev/null || true)"; p=${p:-0}
     f="$(grep -c '^FAIL' "$RESULTS_DIR/$key.tsv" 2>/dev/null || true)"; f=${f:-0}
     s="$(grep -c '^SKIP' "$RESULTS_DIR/$key.tsv" 2>/dev/null || true)"; s=${s:-0}
+    # Share is of the sum of stage durations, not of the wall clock: when four stages run in one
+    # wave their durations overlap, and shares of the wall clock summed to 114%. The number a
+    # contributor lives in is the wall clock, so that is printed on its own row beneath — the two
+    # are different facts and the table says which is which.
     share=0
-    [[ "$DURATION" -gt 0 ]] && share=$((secs * 100 / DURATION))
+    [[ "$TABLE_TOTAL" -gt 0 ]] && share=$((secs * 100 / TABLE_TOTAL))
     printf '  %-12s %6s %6s %6s %10s %6s%%\n' "$key" "$((p + f + s))" "$p" "$f" "$(fmt_dur "$secs")" "$share"
 done
 echo "  ────────────────────────────────────────────────────────────"
-printf '  %-12s %6s %6s %6s %10s\n' "total" "$((PASSED + FAILED + SKIPPED))" "$PASSED" "$FAILED" "$(fmt_dur "$DURATION")"
+# Two totals, because a run has two costs. `stage time` is the work done and is what the shares are
+# of; `wall clock` is what the contributor waited. They are equal in serial mode and differ by the
+# overlap when stages run in waves — printing one and calling it both is how 11m31 and 20m both read
+# as true. A single `--stage` is not a run, so it prints one row and no share.
+printf '  %-12s %6s %6s %6s %10s' "stage time" "$((PASSED + FAILED + SKIPPED))" "$PASSED" "$FAILED" "$(fmt_dur "$TABLE_TOTAL")"
+if [[ -z "$STAGE" ]]; then printf ' %6s%%' 100; fi
+echo ""
+if [[ -z "$STAGE" ]]; then
+    printf '  %-12s %6s %6s %6s %10s\n' "wall clock" "" "" "" "$(fmt_dur "$DURATION")"
+    if [[ "$TABLE_TOTAL" -gt "$DURATION" ]]; then
+        echo "  (the $(fmt_dur $((TABLE_TOTAL - DURATION))) between them is concurrency: stages in one wave overlap)"
+    fi
+fi
 echo ""
 
 # ── the budget (#1551) ───────────────────────────────────────────────────────
@@ -731,10 +812,20 @@ if [[ -f "$BUDGET_FILE" ]]; then
     while IFS=$'\t' read -r key _measured ceiling _on _machine; do
         [[ "$key" =~ ^# ]] && continue
         [[ -z "${key:-}" || -z "${ceiling:-}" ]] && continue
-        [[ -f "$RESULTS_DIR/$key.end" ]] || continue
-        start="$(cat "$RESULTS_DIR/$key.start" 2>/dev/null || echo 0)"
-        end="$(cat "$RESULTS_DIR/$key.end" 2>/dev/null || echo 0)"
-        secs=$((end - start))
+        # `total` is the one row that bounds the run rather than a stage: eight stages each inside
+        # their ceiling can still be a run nobody would accept, and that is the number a contributor
+        # actually experiences. It is skipped for `--stage`, which measures one stage and reports
+        # that stage — comparing a 43-second guards run against a run ceiling would be a budget
+        # answering a different question than the one asked (#1551).
+        if [[ "$key" == "total" ]]; then
+            if [[ -n "$STAGE" ]]; then continue; fi
+            secs="$DURATION"
+        else
+            [[ -f "$RESULTS_DIR/$key.end" ]] || continue
+            start="$(cat "$RESULTS_DIR/$key.start" 2>/dev/null || echo 0)"
+            end="$(cat "$RESULTS_DIR/$key.end" 2>/dev/null || echo 0)"
+            secs=$((end - start))
+        fi
         if [[ "$secs" -gt "$ceiling" ]]; then
             OVER_BUDGET+=("$key: $(fmt_dur "$secs") > ceiling $(fmt_dur "$ceiling")")
         fi
@@ -742,8 +833,25 @@ if [[ -f "$BUDGET_FILE" ]]; then
 fi
 if [[ "${#OVER_BUDGET[@]}" -gt 0 ]]; then
     echo -e "${RED}stage(s) over the measured budget ($BUDGET_FILE):${NC}"
-    for o in "${OVER_BUDGET[@]}"; do echo -e "  ${RED}❌${NC} $o"; done
+    for o in "${OVER_BUDGET[@]}"; do
+        echo -e "  ${RED}❌${NC} $o"
+        # Where the seconds went, from the stage's own step records: "guards took 2m13s" is a
+        # number, "guards took 2m13s and 1m40s of it was `cargo check`" is a finding (#1551).
+        stage_key="${o%%:*}"
+        if [[ -f "$RESULTS_DIR/$stage_key.tsv" ]]; then
+            while IFS=$'\t' read -r secs label; do
+                [[ -z "${secs:-}" ]] && continue
+                # The label already ends in its own duration (`run_cmd` prints it, `pass` records
+                # that string), so printing the label is printing the measurement once.
+                echo -e "      ↳ ${label}"
+            done < <(awk -F'\t' '$1=="PASS"||$1=="FAIL"{print $3 "\t" $2}' "$RESULTS_DIR/$stage_key.tsv" 2>/dev/null | sort -rn | head -3)
+        fi
+    done
     echo "  Raise a ceiling with a measurement (and the date and machine), never by nudging it."
+    if [[ "$COLD_START" == true ]]; then
+        echo "  ℹ this tree had no build cache when the run started: compilation is charged to whichever stage"
+        echo "    touches each crate first, so a stage can pass its warm ceiling on a tree that is merely unbuilt."
+    fi
     FAILED=$((FAILED + ${#OVER_BUDGET[@]}))
 fi
 
