@@ -19,6 +19,20 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **`local-ci` runs the gating guard set, and refuses to disagree with the pipeline about whether a
+  gate exists.** The local runner executed fmt, clippy, builds, tests, doctests, `cargo audit` and the
+  security validator — and none of the eighteen scripts `.pi/guards.tsv` marks `gating` with
+  `run_here=yes`. So `0 failed` locally and a red `🔒 Audit` job were both true at once, and that
+  happened on five commits in two sessions while the report said "all gating guards passed". A new
+  `guards` stage (Stage 4c) runs `validate-guards.sh`, its self-test and `--coverage`; the stage is
+  not behind a flag, because an opt-in gate is a default of "ignore". `validate-guards.sh --coverage`
+  reads the registry and the runner and fails naming any gating row no local run executes — matching
+  whole paths, so `engine/.pi/scripts/validate-adr-references.sh` cannot be covered by a root script
+  of the same name — and its own self-test builds a fixture registry and a fixture runner to prove
+  the check bites, with a control fixture that must pass. Every gating guard is now reported with its
+  name and verdict (`✅ [sink-register] …`), and a failing stage's one-line summary quotes the failure
+  rather than the tail of the log, which used to end in the last guard that passed (#1546).
+
 - **A check that public text names only published repositories.** `.pi/scripts/validate-public-references.sh`
   reads every repository-shaped token in governed text (`.md`, `.tsv`, `.yml`, `.yaml`, workflows
   included) and requires it in `.pi/public-repositories.tsv`, where each name carries its kind and
