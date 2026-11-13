@@ -48,14 +48,23 @@
 # script or job named is not evidence — it is a sentence about a subject nobody identified, which is
 # exactly how one guard's self-test count became the suite's result.
 #
-# # Prose is the record's assertion; a fenced block is output
+# # Prose is the record's assertion; a fenced block is a quotation or a result
 #
-# A record asserts in its prose and its tables. Inside a fenced block it is quoting what a command
-# printed, so the block is checked for the one thing that makes the quote evidence — the invocation
-# on its first line — and its contents are not re-scanned as the record's own claims. Without that,
-# a record could not show this check refusing anything: the pasted refusal would read as an
-# assertion. An output block with no command is a finding, so nothing is hidden by fencing; and a
-# record that names a command which did not print the block is a different and visible lie.
+# A record asserts in its prose and its tables. A fenced block is either a **result** — output of a
+# command, whose first line names the invocation — or a **quotation** of a document: an issue
+# template, a spec section, an ADR excerpt, a policy file.
+#
+# A result's contents are not re-scanned as the record's claims: a record must be able to show this
+# check refusing something, and a pasted refusal is not an assertion of the record. A quotation
+# asserts nothing either, but it is not simply dropped: a claim inside a fence is still judged by the
+# same rule as prose, so `merged at deadbeef` cannot be laundered through a fence — only the
+# invocation decides whether the block is a claim *about a command*. A quoted block that contains no
+# claim is skipped, and the skip is printed (`N block(s) skipped`), because a silent skip is a hole a
+# reader cannot see.
+#
+# The first version refused every block without an invocation, which read a quoted template as a
+# false claim and, because mr-validation.sh treats a refusal as a failed step, stopped merges on
+# bodies that asserted nothing (#1558).
 #
 # A record with nothing to verify is not a record: 0 claims is exit 1 unless --allow-empty is passed
 # explicitly. A stage that is silently absent reports green; so does a check with no subject.
@@ -167,13 +176,38 @@ The run landed at $MAIN_SHA."
   expect_word "bare count" "names no subject"
 
   case_ "a count that names its producer passes" 0 "18/18 (validate-guards.sh --coverage)"
-  case_ "an output block with no command is refused" 1 "The run printed:
+  case_ "a quotation's contents are judged by the prose rule" 1 "The run printed:
 
 \`\`\`
 126 checks, 0 failed
 \`\`\`
 "
-  expect_word "fence-without-command" "names no command"
+  expect_word "quotation-content" "names no subject"
+
+  case_ "a quoted template with no claim is skipped, not refused" 0 "Merged at $MAIN_SHA.
+
+The issue body it implements:
+
+\`\`\`yaml
+id: x
+title: y
+\`\`\`
+"
+  expect_word "quoted-template" "1 block(s) skipped"
+
+  case_ "a claim inside a fence is still a claim" 1 "Quoting the bad record:
+
+\`\`\`
+merged at deadbeefdeadbeef
+\`\`\`
+"
+  expect_word "fence-cannot-launder" "never pushed"
+
+  case_ "a result block's contents are not re-scanned" 0 "\`\`\`
+\$ bash .pi/scripts/validate-delivery-record.sh --pr 1555
+❌ PR #1555 body: 3 unresolved, merged at deadbeefdeadbeef
+\`\`\`
+"
 
   case_ "a prose digest is not a claim, and a fenced block is output" 0 "The release digest is \
 sha256:ab77bb82 in prose, and the block below names its command:
@@ -362,10 +396,12 @@ if not has_commit("HEAD") or not git("rev-parse", "--verify", "main")[0]:
           f" check with no subject is not a pass{RESET}", file=sys.stderr)
     sys.exit(2)
 
-# A claim is the record's own assertion, and the record makes assertions in its prose. Inside a
-# fenced block it is quoting what a command printed, and the thing to check is that the block names
-# the command — otherwise pasting a refusal would read as a claim, and a record could never show the
-# check failing. An output block with no producer is a finding, so nothing can be hidden by fencing.
+# A fenced block is a result (its first line names the invocation that printed it) or a quotation
+# (a template, a spec section, an ADR excerpt). A result is one claim — "this command printed this" —
+# and its contents are not re-scanned, so a record can show this check refusing something. A
+# quotation asserts nothing, but its contents are judged by the same rule as prose, because a fence
+# must not launder `merged at deadbeef`; a quotation with no claim inside is skipped and counted, so
+# the skip is visible (#1558).
 in_fence = [False] * len(lines)
 blocks = []
 fence_start = None
@@ -382,21 +418,29 @@ for i, line in enumerate(lines):
 if fence_start is not None:
     blocks.append((fence_start, len(lines)))
 
-for start, end in blocks:
-    claims += 1
-    if any(PRODUCER.search(b) for b in lines[start + 1 : end]):
+scan_line = [True] * len(lines)
+block_of = {}
+block_claims = {}
+for b, (start, end) in enumerate(blocks):
+    for i in range(start, min(end + 1, len(lines))):
+        block_of[i] = b
+    if any(PRODUCER.search(body) for body in lines[start + 1 : end]):
+        claims += 1
         resolved += 1
+        for i in range(start, min(end + 1, len(lines))):
+            scan_line[i] = False  # a result's contents are what the command printed
     else:
-        excerpt = lines[start + 1] if start + 1 < len(lines) else ""
-        findings.append((start + 1, excerpt,
-                         "output block names no command: a pasted result without the invocation that "
-                         "printed it is not evidence — put the command on the block's first line"))
+        scan_line[start] = False  # the delimiters are not the quotation
+        if end < len(lines):
+            scan_line[end] = False
+        block_claims[b] = 0
 
 for index, line in enumerate(lines):
-    if not line.strip() or in_fence[index]:
+    if not line.strip() or not scan_line[index]:
         continue
     context = line + "\n" + (lines[index - 1] if index else "")
     produced = bool(PRODUCER.search(context))
+    claims_before = claims
 
     # --- 1. shas in claim positions -------------------------------------------------
     cited = []
@@ -468,9 +512,16 @@ for index, line in enumerate(lines):
                          "guard verdict names no subject: say which guard script, job or run decided "
                          "it — 'all guards passed' is a sentence about a subject nobody identified"))
 
+    if claims > claims_before and index in block_of:
+        block_claims[block_of[index]] = block_claims.get(block_of[index], 0) + 1
+
+skipped = sum(1 for b, n in block_claims.items() if n == 0)
+skip_note = (f" — {skipped} block(s) skipped: no invocation on the first line and no claim inside"
+             if skipped else "")
+
 if MODE == "report":
     print(f"{LABEL}: {len(lines)} line(s), {claims} claim(s), {resolved} resolved, "
-          f"{len(findings)} unresolved")
+          f"{len(findings)} unresolved{skip_note}")
     for lineno, _, message in findings:
         print(f"  {lineno}: {message}")
     sys.exit(0)
@@ -490,8 +541,9 @@ for lineno, line, message in findings:
     print(f"{DIM}   {quoted(line)}{RESET}")
 
 if findings:
-    print(f"{RED}❌ {LABEL}: {claims} claim(s), {resolved} resolved, {len(findings)} unresolved{RESET}")
+    print(f"{RED}❌ {LABEL}: {claims} claim(s), {resolved} resolved, {len(findings)} unresolved"
+          f"{skip_note}{RESET}")
     sys.exit(1)
 
-print(f"{GREEN}✅ {LABEL}: {claims} claim(s), {resolved} resolved, 0 unresolved{RESET}")
+print(f"{GREEN}✅ {LABEL}: {claims} claim(s), {resolved} resolved, 0 unresolved{skip_note}{RESET}")
 PY

@@ -19,6 +19,18 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **A fenced block is a quotation or a result, not an unproven claim** (#1558). The check added in
+  #1549 refused every fenced block that did not begin with the invocation that printed it, which read
+  a quoted issue template, spec section or ADR excerpt as a false claim — and because
+  `mr-validation.sh` treats a refusal as a failed step, it stopped merges on bodies that asserted
+  nothing. The rule is now about the block's content: a **result** (first line the invocation) is one
+  claim and its contents are not re-scanned, so a record can still show the check refusing something;
+  a **quotation** asserts nothing, but its contents are judged by the same rule as prose, so
+  `merged at deadbeef` cannot be laundered through a fence; and a quotation with no claim inside is
+  skipped, with the skip printed (`1 block(s) skipped: no invocation on the first line and no claim
+  inside`), because a silent skip is a hole a reader cannot see. The bite is unchanged: a delivered
+  record that carried three unnamed counts still exits 1 with all three named.
+
 - **A delivery record is now checkable, and the check distinguishes three states of a sha** (#1549).
   `bash .pi/scripts/validate-delivery-record.sh <path>` (also `-` for stdin, `--pr <n>`, `--comment <url>`)
   refuses a record whose numbers do not resolve. A sha in a claim position — "merged at", "landed as",
