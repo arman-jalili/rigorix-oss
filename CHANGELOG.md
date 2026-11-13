@@ -35,7 +35,15 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   step now says *how* it failed — `killed by SIGKILL (exit 137)` rather than `exit: 137` — and the
   runner's own self-test (`local-ci.sh --self-test`, run inside the guards stage) proves the lock
   refusal, the release, the status pass-through and the signal names against fixtures in a temporary
-  tree (#1551, #1552).
+  tree (#1551, #1552). The table now names **two** totals, because a run has two costs: `stage time`
+  is the work done and is what the shares are of, `wall clock` is what the contributor waited, and
+  the difference is printed as the overlap when stages ran in a wave. `.pi/local-ci-budget.tsv` gained
+  the row that actually bounds the loop: `total`, its ceiling derived from six warm full runs (a
+  single run cannot set it — coverage varies 3m29–4m56, 41–57 % of the total) and enforced like the
+  rest. Removing `build` from the wave schedule was a real bug this work introduced and then caught:
+  the run reported **111** checks instead of 126 and passed, because the summary only described the
+  stages that had written a result. A stage that was scheduled and wrote nothing is now a failure
+  naming it, and the self-test seeds that fixture (#1551).
 
 - **Two `receipt` refusals that could never be produced are gone or given a subject.** `ReceiptRefusal`
   declared twelve variants; ten were reachable. `SealedDigestChanged` was ADR-024 §6's re-seal rule

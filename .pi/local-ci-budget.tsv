@@ -7,6 +7,13 @@
 # Cold run, same day, same machine (seconds): lint 1336 · build 547 · test 491 · security 34 ·
 # guards 89 · coverage 250 · docs 29 · integration 1. Warm run: total 8m 26s, 126 checks.
 #
+# The `total` row bounds the run, not a stage: eight stages each inside their ceiling can still be a
+# run nobody would accept, and the total is the number a contributor actually lives in. Its ceiling is
+# derived from six warm full runs on this machine — 9m19s, 8m26s, 8m26s, 8m27s (all at fb4841a0,
+# before the total row) and 7m17s, 7m31s (with it). One run cannot set it: coverage varies 3m29-4m56,
+# which is 41-57% of the total. Ceiling = ceil(1.25 * 559s) = 699s, from the slowest of the six,
+# because a ceiling derived from the runs you like is a ceiling that fails the next reader.
+#
 # `local-ci.sh` fails when a stage exceeds its ceiling. Raise a ceiling with a measurement, the date
 # and the machine — a ceiling nudged to fit the last run is a comment that fails the person next week.
 stage	measured_seconds	ceiling_seconds	measured_on	machine
@@ -18,3 +25,4 @@ guards	56	112	2026-11-13	8-core (aarch64, macOS)
 coverage	290	363	2026-11-13	8-core (aarch64, macOS)
 docs	29	37	2026-11-13	8-core (aarch64, macOS)
 integration	1	2	2026-11-13	8-core (aarch64, macOS)
+total	506	699	2026-11-13	8-core (aarch64, macOS)
