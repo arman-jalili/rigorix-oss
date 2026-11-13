@@ -63,7 +63,12 @@ fn build_real_engine_facade(repo_root: &str) -> Result<SharedEngineFacade, Box<d
     use rigorix_engine::state_persistence::application::service::StateManagerService;
     use rigorix_engine::state_persistence::application::state_manager_service_impl::FileSystemStateManager;
     use rigorix_engine::state_persistence::infrastructure::filesystem_state_repository::FileSystemStateRepository;
-    let state_dir = std::path::PathBuf::from(repo_root).join(".rigorix").join("state");
+    // ADR-024 §6 (via #1527): the durable store must not be inside the workspace, because the
+    // agent's write tools are contained to `workspace_root` — a seal the agent can rewrite is not a
+    // seal. The default is a sibling directory (`<repo>/../.execution-state/<repo-name>`) and
+    // `RIGORIX_STATE_DIR` overrides it. Existing content under `.rigorix/state` is **not migrated**:
+    // an operator who wants that history points the variable at it.
+    let state_dir = rigorix_engine::receipt::application::service::default_state_dir(repo_root);
     let state_repo = Box::new(FileSystemStateRepository::new(state_dir).await?);
     let state_manager = Arc::new(FileSystemStateManager::new(state_repo));
 

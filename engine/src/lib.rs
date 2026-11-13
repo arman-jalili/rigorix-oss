@@ -77,6 +77,7 @@ pub mod precondition;
 #[cfg(not(feature = "portable"))]
 pub mod quality_gates;
 #[cfg(not(feature = "portable"))]
+pub mod receipt;
 pub mod recovery_recipes;
 #[cfg(not(feature = "portable"))]
 pub mod repo_engine;

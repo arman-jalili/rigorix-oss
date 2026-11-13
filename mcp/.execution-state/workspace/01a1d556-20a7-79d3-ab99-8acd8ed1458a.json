@@ -1,0 +1,24 @@
+{
+  "execution_id": "01a1d556-20a7-79d3-ab99-8acd8ed1458a",
+  "status": "Failed",
+  "started_at": "2026-11-13T14:35:53.899070Z",
+  "completed_at": "2026-11-13T14:35:53.899071Z",
+  "symbol_graph_hash": "",
+  "graph": null,
+  "approved": [],
+  "exec_node_states": {
+    "6498c6e5-d23b-46f4-95c6-2178ec898179": {
+      "node_id": "6498c6e5-d23b-46f4-95c6-2178ec898179",
+      "node_name": "step-1",
+      "status": "Failed",
+      "retry_attempts": 0,
+      "last_duration_ms": null,
+      "total_duration_ms": 0,
+      "ready_at": "2026-11-13T14:35:53.898196Z",
+      "started_at": "2026-11-13T14:35:53.898714Z",
+      "completed_at": "2026-11-13T14:35:53.898992Z",
+      "last_error": "Unknown tool 'test_tool', intent: {}",
+      "last_failure_type": "unknown_tool"
+    }
+  }
+}
