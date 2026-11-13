@@ -279,6 +279,13 @@ if should_run "security"; then
             | grep -v ".git" | grep -v ".rigorix" | grep -v "ghp_secret12345" | grep -v "AKIAIOSFODNN7EXAMPLE" || true)
     done
     if [[ "$secrets_found" == "false" ]]; then pass "secret scan"; else fail "secret scan"; fi
+    # The security validator's own seed: a non-advisory audit failure must print, not abort.
+    # `run_here=no` in `.pi/guards.tsv` keeps it out of `validate-guards.sh` (it has no fixtures
+    # for the runner), so the local runner is where its self-test is executed (#1531).
+    if [[ -f .pi/scripts/languages/rust/validate-security.sh ]]; then
+        run_cmd "validate-security.sh --self-test" \
+            bash .pi/scripts/languages/rust/validate-security.sh --self-test
+    fi
     # Per-crate security scripts
     for crate in "${CRATES[@]}"; do
         for script in "$crate/.pi/scripts/ci/stage_security.sh" "$crate/.pi/scripts/validate-security.sh"; do

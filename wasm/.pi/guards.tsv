@@ -27,7 +27,7 @@
 .pi/scripts/validate-wiring-claims.sh	wiring-claims	gating	yes	series-#1100	claims that a control is wired, re-resolved against the code (both directions: evidence gone, or a GAP silently restored)
 .pi/scripts/validate-ci.sh	ci	gating	no	build	gates via the CI lint+build+test jobs; aggregate fmt/clippy/test/audit
 .pi/scripts/validate-tests.sh	tests	gating	no	testing	gates via the CI test job and conformance
-.pi/scripts/validate-security.sh	deps-secrets	advisory	no	security	cargo audit + ad-hoc secret scan; WARN-only. Installed in all 5 trees; resolves its crate(s) from its OWN path, so it is cwd-independent (tree root = every crate). Advisory because its heuristics are noisy — the real dependency audit + secret scan gate in the CI audit job
+.pi/scripts/validate-security.sh	deps-secrets	advisory	no	security	`cargo audit --deny warnings` fails — the same command `hardening.yml:270` runs — and the remaining heuristics warn; `--self-test` proves a non-advisory audit failure prints instead of aborting silently (#1531). Classified `advisory` because of what its exit code reaches, not what it decides: `hardening.yml` invokes every validator with `continue-on-error: true` and `|| true`, so a non-zero exit fails no CI job, while `local-ci.sh` Stage 4 runs it with real exit codes. Installed in all 5 trees; resolves its crate(s) from its OWN path
 .pi/scripts/validate-architecture.sh	architecture	advisory	no	architecture	module-layering heuristic
 .pi/scripts/validate-architecture-readiness.sh	architecture	advisory	no	architecture	release-readiness heuristic
 .pi/scripts/validate-canonical.sh	canonical	advisory	no	architecture	@canonical reference check

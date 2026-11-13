@@ -15,9 +15,16 @@
 #   * tree root is a crate (engine/, mcp/, …)  -> validate that crate
 #   * tree root is the workspace (repo root)   -> validate every crate with src/
 #
-# Advisory by design: findings WARN and do not fail the build. The gating
-# dependency audit and the repo-wide secret scan run directly in the ci.yml
-# `audit` job. See .pi/guards.tsv for which guards gate.
+# Advisory policy, stated once: `cargo audit --deny warnings` **fails** — the same command
+# `hardening.yml` runs, so a vulnerability and an "unsound" warning alike stop the run (#1522).
+# The remaining heuristics (secret scan, SQL-pattern scan, unsafe surface) warn; their
+# classification is deliberately unchanged. `hardening.yml` is the authority on the advisory
+# policy; this script agrees with it rather than offering a second opinion.
+#
+# What its exit code reaches: `local-ci.sh` Stage 4 runs it with real exit codes, so a failure
+# stops a local pre-merge run. In CI it fails no job — `hardening.yml` invokes every validator
+# with `continue-on-error: true` and `|| true` — which is why `.pi/guards.tsv` still classifies
+# this as `advisory`, per that file's own definition, and says so in the note (#1531).
 # ============================================================================
 set -euo pipefail
 
@@ -33,6 +40,42 @@ NC='\033[0m'
 pass() { echo -e "${GREEN}✅ PASS${NC} $1"; PASS_COUNT=$((PASS_COUNT + 1)); }
 fail() { echo -e "${RED}❌ FAIL${NC} $1"; ERRORS+=("$1"); }
 warn() { echo -e "${YELLOW}⚠️  WARN${NC} $1"; WARNINGS+=("$1"); }
+
+# ── self-test: a non-advisory audit failure must print, not abort ─────────────
+# The bug this proves gone: `DETAIL=$(… | grep …)` under `set -euo pipefail` ends the script when
+# the audit's output matches none of the patterns, so the gate prints nothing at all. The stub
+# below is a `cargo` whose audit answers exactly that — a fetch failure — and the assertions are
+# that the run exits non-zero *and* says why (#1531).
+if [ "${1:-}" = "--self-test" ]; then
+    scratch="$(mktemp -d)"
+    # shellcheck disable=SC2064
+    trap "find '$scratch' -type f -delete 2>/dev/null; find '$scratch' -depth -type d -exec rmdir {} + 2>/dev/null || true" EXIT
+    cat > "$scratch/cargo" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  *audit*--version*) echo "cargo-audit 0.21.0"; exit 0 ;;
+  *audit*)           echo "error: failed to fetch advisory database" >&2; exit 2 ;;
+  *)                 exit 0 ;;
+esac
+STUB
+    chmod +x "$scratch/cargo"
+    set +e
+    out="$(PATH="$scratch:$PATH" "$0" 2>&1)"
+    status=$?
+    set -e
+    ok=1
+    [ "$status" -eq 1 ] || { echo "✗ self-test: exit $status, wanted 1" >&2; ok=0; }
+    printf '%s' "$out" | grep -q "cargo audit --deny warnings failed" \
+        || { echo "✗ self-test: the failure printed no FAIL line — it aborted silently" >&2; ok=0; }
+    printf '%s' "$out" | grep -q "remedy:" \
+        || { echo "✗ self-test: the failure printed no remedy" >&2; ok=0; }
+    if [ "$ok" -eq 1 ]; then
+        echo "✅ a non-advisory audit failure prints and fails (exit ${status}, FAIL line, remedy)"
+        exit 0
+    fi
+    printf '%s\n' "$out" | tail -20 >&2
+    exit 1
+fi
 
 echo "============================================"
 echo "  Security Validation (Rust)"
@@ -158,7 +201,11 @@ if command -v cargo &>/dev/null && cargo audit --version &>/dev/null; then
         pass "No advisories (cargo audit --deny warnings, the pipeline's policy)"
     else
         # Name what the pipeline names: the crate, the id, and the version that fixes it.
-        DETAIL=$(printf '%s\n' "$AUDIT_OUT" | grep -E "^(Crate|Version|ID|Title):|denied warning" | head -5 | sed 's/^/    /')
+        # `|| true` is load-bearing: when the audit fails for a reason that matches none of these
+        # patterns — a fetch failure, a registry outage, a lockfile error — `grep` exits 1, and
+        # under `set -euo pipefail` the assignment would end the script *before* `fail` printed.
+        # A gate that prints nothing is worse than the warning it replaced (#1522, #1530, #1531).
+        DETAIL=$(printf '%s\n' "$AUDIT_OUT" | grep -E "^(Crate|Version|ID|Title):|denied warning" | head -5 | sed 's/^/    /' || true)
         fail "cargo audit --deny warnings failed (hardening.yml denies the same finding):
 $DETAIL
     remedy: bump the dependency the advisory names, or record a suppression with an expiry in

@@ -29,6 +29,15 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Security
 
+- **A non-advisory `cargo audit` failure printed nothing.** The security validator built its failure
+  detail with `DETAIL=$(… | grep … | head | sed)` under `set -euo pipefail`: when the audit fails for
+  a reason that matches none of those patterns — a fetch failure, a registry outage, a lockfile
+  error — `grep` exits 1, the assignment ends the script, and `fail` never prints. Exit 1, no
+  message, no summary, the log stopping at the section header. The pipeline now carries `|| true`
+  with the reason, its header states the policy it implements instead of "findings WARN and do not
+  fail the build", and `--self-test` reproduces the silent abort with a stub `cargo` and asserts
+  that a `FAIL` line and the remedy are printed (#1531, following #1522/#1530).
+
 - **`rustix` 1.1.4 → 1.1.6 (RUSTSEC-2026-0486).** `cargo audit --deny warnings` — the policy
   `hardening.yml` enforces — failed at the tip on an "unsound" advisory: `xattr` functions marked
   unwritten bytes as initialized when given a zero-length buffer. Fixed in 1.1.6, so this is a
