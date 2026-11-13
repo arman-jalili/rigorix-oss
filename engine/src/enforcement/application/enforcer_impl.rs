@@ -1621,7 +1621,7 @@ mod tests {
     /// path, so the message and the docs say the same thing.
     #[test]
     fn test_the_shared_contested_refusal_names_the_supported_path() {
-        let mut config = EnforcementConfig::standard();
+        let mut config: EnforcementConfig = EnforcementConfig::standard();
         config.budgets.insert(
             "shared".to_string(),
             ResourceBudget {

@@ -132,21 +132,36 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Security Audit ---"
+# The policy is `hardening.yml`'s, not this script's: `cargo audit --deny warnings` makes every
+# advisory fatal — a vulnerability and an "unsound" warning alike — so the local gate answers the
+# same question the same way (#1522). An allowed suppression in `.cargo/audit.toml` still prints
+# "allowed warning", which is why the previous grep for "No known vulnerabilities" reported
+# findings on a clean tree.
+# The audit's subject is the *workspace* lockfile, which is not in a member crate's directory:
+# run from `engine/`, `cargo audit` answers "Couldn't load Cargo.lock" and the gate says nothing
+# about the tree. Resolve the workspace root, not the crate root.
+_WS_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$_TREE_ROOT")"
 if command -v cargo &>/dev/null && cargo audit --version &>/dev/null; then
-    AUDIT_OUT=$(cargo audit 2>/dev/null || true)
-    if echo "$AUDIT_OUT" | grep -q "No advisabilities found\|No known vulnerabilities\|info"; then
-        pass "No known vulnerabilities"
+    if AUDIT_OUT=$(cd "$_WS_ROOT" && cargo audit --deny warnings 2>&1); then
+        pass "No advisories (cargo audit --deny warnings, the pipeline's policy)"
     else
-        warn "cargo audit reported findings (review manually)"
+        # `|| true`: an advisory's output that matches none of these patterns must not end the
+        # script inside a command substitution — that failure is silent, which is how a gate
+        # reports nothing at all.
+        DETAIL=$(printf '%s\n' "$AUDIT_OUT" | grep -E "^(Crate|Version|ID|Title):|denied warning" | head -5 | sed 's/^/    /' || true)
+        fail "cargo audit --deny warnings failed (hardening.yml denies the same finding):
+$DETAIL
+    remedy: bump the dependency the advisory names, or record a suppression with an expiry in
+    .cargo/audit.toml — a suppression is a decision, not a silence"
     fi
 elif command -v cargo &>/dev/null && cargo deny --version &>/dev/null; then
-    if cargo deny check 2>/dev/null; then
+    if (cd "$_WS_ROOT" && cargo deny check 2>/dev/null); then
         pass "cargo deny passed"
     else
-        warn "cargo deny reported issues (review manually)"
+        fail "cargo deny reported issues (the pipeline denies advisories)"
     fi
 else
-    warn "No Rust audit tools available (cargo audit / cargo deny), skipping vulnerability audit"
+    warn "No Rust audit tools available (cargo audit / cargo deny) — the pipeline still denies advisories"
 fi
 
 # ---------------------------------------------------------------------------
