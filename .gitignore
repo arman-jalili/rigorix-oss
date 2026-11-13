@@ -101,3 +101,6 @@ cli/.rigorix/state/
 
 # wasm packaging output (built by wasm/ci/run-module-smoke.sh)
 wasm/pkg/
+# The state store lives beside the workspace (ADR-024 §6), and a run may create it next to any
+# crate; artifacts from it are not content.
+.execution-state/
