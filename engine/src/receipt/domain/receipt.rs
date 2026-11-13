@@ -49,6 +49,40 @@ impl WorkspaceKind {
     pub fn supported() -> Vec<String> {
         vec!["commit_tree".to_string()]
     }
+
+    /// Read a kind from a document, a CLI flag, or a tool argument.
+    ///
+    /// This is the door that produces `UnsupportedWorkspaceKind`, and it exists because the
+    /// vocabulary's claim and the parser's behaviour were different things (#1548): the typed
+    /// `Deserialize` refuses an unknown kind as `unknown variant ..., expected commit_tree` —
+    /// serde's sentence, from serde's layer, never this type's refusal. A caller reading a
+    /// document gets this type's answer from `Receipt::from_document`, which runs this door over
+    /// the raw field before the typed parse; a caller that already has a string uses it directly.
+    ///
+    /// # Errors
+    /// `UnsupportedWorkspaceKind`, quoting the kind it found and the kinds it supports.
+    pub fn from_name(name: &str) -> Result<Self, ReceiptRefusal> {
+        match name {
+            "commit_tree" => Ok(Self::CommitTree),
+            other => Err(ReceiptRefusal::UnsupportedWorkspaceKind {
+                kind: other.to_string(),
+                supported: Self::supported(),
+            }),
+        }
+    }
+}
+
+impl Workspace {
+    /// A workspace identity from an untyped kind name.
+    ///
+    /// # Errors
+    /// Whatever `WorkspaceKind::from_name` refuses.
+    pub fn from_name(kind: &str, value: impl Into<String>) -> Result<Self, ReceiptRefusal> {
+        Ok(Self {
+            kind: WorkspaceKind::from_name(kind)?,
+            value: value.into(),
+        })
+    }
 }
 
 /// The sandbox a step runs in. `none` is deliberately not representable (ADR-024 §4): a receipt
@@ -264,6 +298,80 @@ impl Receipt {
             ReceiptVerdict::Verified
         } else {
             ReceiptVerdict::Refused(refusals)
+        }
+    }
+
+    /// Read a receipt document.
+    ///
+    /// Two fields are refused **in this module's words** before the typed parse, because they are
+    /// closed vocabularies and serde would otherwise answer with its own sentence:
+    ///
+    /// - `schema_version` → `SchemaVersion`, naming the version and the ones this engine reads;
+    /// - `workspace.kind` → `UnsupportedWorkspaceKind`, naming the kind it found and the ones it
+    ///   supports (`SandboxRegime`'s own closed set is reached by the typed parse; this module has
+    ///   no refusal for a regime, because `none` is not representable at all — see the type's doc).
+    ///
+    /// Everything else is the parser's answer, carried as `MalformedDocument`, so the caller reads
+    /// one vocabulary instead of one vocabulary plus serde's.
+    ///
+    /// # Errors
+    /// Every refusal the document meets, not the first: a document with a wrong version **and** an
+    /// unimplemented kind is told both, in one pass.
+    pub fn from_document(bytes: &str) -> Result<Self, Vec<ReceiptRefusal>> {
+        let raw: serde_json::Value = match serde_json::from_str(bytes) {
+            Ok(value) => value,
+            Err(e) => {
+                return Err(vec![ReceiptRefusal::MalformedDocument {
+                    detail: e.to_string(),
+                }]);
+            }
+        };
+
+        let mut refusals = Vec::new();
+
+        if let Some(found) = raw
+            .get("schema_version")
+            .and_then(serde_json::Value::as_u64)
+        {
+            let found = u16::try_from(found).unwrap_or(u16::MAX);
+            if !SUPPORTED_RECEIPT_SCHEMA_VERSIONS.contains(&found) {
+                refusals.push(ReceiptRefusal::SchemaVersion {
+                    found,
+                    supported: SUPPORTED_RECEIPT_SCHEMA_VERSIONS.to_vec(),
+                });
+            }
+        }
+
+        // The kind is read as a string first, so the refusal quotes what the document said rather
+        // than what serde made of it. `from_name` is the only door that produces this refusal.
+        if let Some(Err(refusal)) = raw
+            .get("workspace")
+            .and_then(|w| w.get("kind"))
+            .and_then(serde_json::Value::as_str)
+            .map(WorkspaceKind::from_name)
+        {
+            refusals.push(refusal);
+        }
+
+        if !refusals.is_empty() {
+            return Err(refusals);
+        }
+
+        let receipt: Self = match serde_json::from_value(raw) {
+            Ok(receipt) => receipt,
+            Err(e) => {
+                return Err(vec![ReceiptRefusal::MalformedDocument {
+                    detail: e.to_string(),
+                }]);
+            }
+        };
+
+        let mut rest = receipt.structure_refusals();
+        if rest.is_empty() {
+            Ok(receipt)
+        } else {
+            rest.shrink_to_fit();
+            Err(rest)
         }
     }
 

@@ -19,6 +19,20 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **Two `receipt` refusals that could never be produced are gone or given a subject.** `ReceiptRefusal`
+  declared twelve variants; ten were reachable. `SealedDigestChanged` was ADR-024 §6's re-seal rule
+  with no seal record to compare against — a verdict a caller could branch on and never receive — so
+  it is removed and the rule is recorded in the ADR as not implemented. `UnsupportedWorkspaceKind`
+  was pre-empted by serde: the closed `WorkspaceKind` derives `Deserialize`, so an unknown kind failed
+  as `unknown variant ..., expected commit_tree` — serde's sentence, in serde's words, from a
+  vocabulary that says unknown = refuse. It now has a door, `WorkspaceKind::from_name` /
+  `Workspace::from_name`, and `Receipt::from_document` runs it over the raw field before the typed
+  parse, so a document with `kind: repository_tree` is told the kind it named and the kinds this
+  engine implements. A document that is not readable JSON is `MalformedDocument`, carrying the
+  parser's message, so a caller reads one vocabulary instead of one vocabulary plus serde's. A test
+  scans the enum's own arms and fails on any variant with no construction site outside
+  `domain/refusal.rs` (#1548).
+
 - **`local-ci` runs the gating guard set, and refuses to disagree with the pipeline about whether a
   gate exists.** The local runner executed fmt, clippy, builds, tests, doctests, `cargo audit` and the
   security validator — and none of the eighteen scripts `.pi/guards.tsv` marks `gating` with
