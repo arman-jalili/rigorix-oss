@@ -421,7 +421,7 @@ self-test)
     expect "the tree's own manifest" 0 "$MANIFEST" "$LIB" "$ADR"
 
     # 1. a summary that undercounts the denominator
-    local mods declared wrong
+    mods=''; declared=''; wrong=''
     read -r _mods declared <<< "$(grep -oE '[0-9]+ of [0-9]+ public modules' "$MANIFEST" | head -1 | awk -F' of | public' '{print $1" "$2}')"
     mods="$_mods"
     wrong=$((declared + 1))
@@ -433,13 +433,25 @@ self-test)
     fi
     expect "summary says ${mods} of ${wrong}" 1 "$tmp/m22.tsv" "$LIB" "$ADR"
 
-    # 2. the bucket collapse that caused #1361 (six narrowed modules counted as closure)
-    sed 's/= 14 direct, 6 by closure,/= 11 indirect,/' "$MANIFEST" > "$tmp/mbucket.tsv"
-    if cmp -s "$MANIFEST" "$tmp/mbucket.tsv"; then
+    # 2. the bucket collapse that caused #1361 (six narrowed modules counted as closure).
+    #    The sentence is re-recorded whenever the counts move — it moved in #1545 — so the
+    #    seed reads its operands out of the record instead of writing them here: a seed keyed
+    #    to `14 direct, 6 by closure` went inert the moment the record said 7.
+    bucket="$(grep -oE '= [0-9]+ direct, [0-9]+ by closure,' "$MANIFEST" | head -1)"
+    bucket_direct="$(printf '%s' "$bucket" | grep -oE '[0-9]+ direct' | grep -oE '[0-9]+' || true)"
+    bucket_closure="$(printf '%s' "$bucket" | grep -oE '[0-9]+ by closure' | grep -oE '[0-9]+' || true)"
+    if [ -z "$bucket_direct" ] || [ -z "$bucket_closure" ]; then
         printf '  %b❌%b seed inert: the bucket sentence matches nothing\n' "$RED" "$NC"
         ko=$((ko + 1))
+    else
+        sed "s/= ${bucket_direct} direct, ${bucket_closure} by closure,/= $((bucket_direct - 3)) indirect,/" \
+            "$MANIFEST" > "$tmp/mbucket.tsv"
+        if cmp -s "$MANIFEST" "$tmp/mbucket.tsv"; then
+            printf '  %b❌%b seed inert: the bucket sentence matches nothing\n' "$RED" "$NC"
+            ko=$((ko + 1))
+        fi
+        expect "summary collapses three buckets into two" 1 "$tmp/mbucket.tsv" "$LIB" "$ADR"
     fi
-    expect "summary collapses three buckets into two" 1 "$tmp/mbucket.tsv" "$LIB" "$ADR"
 
     # 3. a row naming a module that does not exist
     cp "$MANIFEST" "$tmp/mghost.tsv"
@@ -513,8 +525,14 @@ self-test)
 
     # 14. #1377 seed A — a pronoun count that never moved with #1374. It sat next to the
     #     ratios that did move, in one arithmetically self-consistent paragraph.
-    mutate 'Of those 20' 'Of those 25' "$tmp/abareA.md"
-    expect "bare count: 'Of those 25' (#1377 seed A)" 1 "$MANIFEST" "$LIB" "$tmp/abareA.md"
+    those="$(grep -oE 'Of those [0-9]+' "$ADR" | head -1 | grep -oE '[0-9]+$' || true)"
+    if [ -z "$those" ]; then
+        printf '  %b❌%b seed inert: Of those <n> matches nothing in the record\n' "$RED" "$NC"
+        ko=$((ko + 1))
+    else
+        mutate "Of those ${those}" "Of those $((those + 5))" "$tmp/abareA.md"
+        expect "bare count: 'Of those $((those + 5))' (#1377 seed A)" 1 "$MANIFEST" "$LIB" "$tmp/abareA.md"
+    fi
 
     # 15. #1377 seed B — the elliptical form, wrapped across two lines: `only 10` on one,
     #     `leave for a forbidden crate` on the next. Per-line matching read it as a bare
