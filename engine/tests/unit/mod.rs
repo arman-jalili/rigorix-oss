@@ -3,6 +3,14 @@
 //! Each is preserved with its Guardian TDD structure and corrected to
 //! exercise the real implementation. Runs under `cargo test --test unit`.
 
+// The DAG executor is excluded from the portable slice: `dag_engine` and `execution_engine` are not public
+// modules of the portable inventory, so these tests carry the same gate as the orchestrator's (#1537).
+#[cfg(not(feature = "portable"))]
+#[path = "dag"]
+mod dag {
+    #[path = "graph_concurrency_test.rs"]
+    mod graph_concurrency_test;
+}
 // The orchestrator is excluded from the portable slice (engine/.pi/portable-inventory.tsv:51), so its unit tests
 // are gated the same way the other non-portable modules in this file are.
 #[cfg(not(feature = "portable"))]
