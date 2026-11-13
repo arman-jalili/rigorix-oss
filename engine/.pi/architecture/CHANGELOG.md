@@ -1,3 +1,26 @@
+## [2026-11-13] — ADR-024 is Proposed: the receipt the host writes, the attestation only the engine can sign
+
+### Added
+- **ADR-024 (Proposed, every `Decision:` line undecided).** Two engine-owned artifacts replace "the execution did
+  what was asked" as a claim made by the side that asked: `Receipt` (R0, host-authored, digest-pinned: steps with
+  `depends_on`, declared effects, one expectation per step, workspace identity, sandbox regime, role models, budget)
+  and `Attestation` (R1, engine-built, signed: `digest(R0)`, per-step observed effects and expectation outcomes,
+  `quality { level, source }`, settled effect ids, identity). Refusal is wholesale — nothing dispatched, no partial
+  verdict — which is ADR-013's shape.
+- It fixes the contract behind #1526–#1529 and absorbs three register items that had no home: E4 (the seal, and a
+  store the executing agent cannot write), E9 (the signed evidence *is* the attestation) and E12 (the gate level is
+  a caller claim today — `evaluate_gate` reads `input.observed_level`).
+- **Measured, not assumed:** both hosts root the state manager inside the repository
+  (`mcp/src/engine_wiring.rs:66-67`, `mcp/src/host/mod.rs:1667-1670` → `<repo_root>/.rigorix/state`), approval records
+  are appended to that state (`approval/infrastructure/mod.rs:8`), and the directory is reachable by a tool confined
+  to `workspace_root`. That is why the seal needs a location rule rather than a new adapter.
+- **Also measured:** the effect ledger's port has only `in_memory` (a `HashMap` behind a `Mutex`) and `http` (a
+  service), so a settlement written "beside the effect records" would evaporate on the crash #1528 tests. §7 records
+  that and the option that avoids it.
+- The five decisions (D1 level, D2 key model, D3 field set, D4 workspace identity, and E4's location) are stated as
+  options with consequences and **left undecided** — they are the operator's, and a section that is undecided blocks
+  the issue that needs it.
+
 ## [2026-11-05] — ADR-021 is Proposed: the signed record carries a subject, and the human is erasable
 
 ### Added
