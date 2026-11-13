@@ -3,6 +3,11 @@
 //! Each is preserved with its Guardian TDD structure and corrected to
 //! exercise the real implementation. Runs under `cargo test --test unit`.
 
+#[path = "orchestrator"]
+mod orchestrator {
+    #[path = "step_dependencies_test.rs"]
+    mod step_dependencies_test;
+}
 mod identity {
     mod identityattestationservice {
         mod identityattestationservice_test;

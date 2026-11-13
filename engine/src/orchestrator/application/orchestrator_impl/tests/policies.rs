@@ -722,6 +722,7 @@ async fn test_r7_cross_run_same_principal_remove_then_add_refused_at_plan_time()
         requires_approval: false,
         timeout_secs: None,
         evaluate_score: false,
+        depends_on: Vec::new(),
     };
     let err = orch
         .run_from_template(RunFromTemplateInput {

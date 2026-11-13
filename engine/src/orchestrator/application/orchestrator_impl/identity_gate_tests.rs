@@ -12,6 +12,7 @@ fn step(name: &str, require_identity: bool) -> TemplateStepDef {
         require_identity,
         timeout_secs: None,
         evaluate_score: false,
+        depends_on: Vec::new(),
     }
 }
 

@@ -444,6 +444,7 @@ action = "deny"
             require_identity: false,
             timeout_secs: None,
             evaluate_score: false,
+            depends_on: Vec::new(),
         };
 
         let orch = OrchestratorBuilderImpl::new(OrchestratorConfig::default())

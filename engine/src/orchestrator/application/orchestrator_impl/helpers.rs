@@ -211,27 +211,41 @@ impl OrchestratorServiceImpl {
 
     /// Build a sealed TaskGraph directly from pre-resolved template steps.
     ///
-    /// Each step becomes a TaskNode with no cross-node dependencies (sequential
-    /// or single-step execution). The step's parameters are serialized as the
-    /// node's intent string.
+    /// Each step becomes a `TaskNode`. With no `depends_on` anywhere in the plan, the graph is the
+    /// frozen sequential runbook — step *n+1* depends on step *n* — and it is byte-identical to
+    /// what this function built before #1526. With at least one declared dependency the plan is
+    /// dependency-driven instead: the names are resolved to the ids allocated here, and the four
+    /// ways a dependency set can be wrong are refused by `domain::step_graph` rather than becoming
+    /// a graph the executor cannot order.
+    ///
+    /// The step's parameters are serialized as the node's intent string.
     pub(super) fn build_graph_from_steps(
         &self,
         steps: &[super::super::dto::TemplateStepDef],
     ) -> Result<crate::dag_engine::domain::TaskGraph, OrchestratorError> {
+        let named: Vec<(String, Vec<String>)> = steps
+            .iter()
+            .map(|step| (step.name.clone(), step.depends_on.clone()))
+            .collect();
+        let resolved = crate::orchestrator::domain::step_graph::resolve_step_dependencies(&named)
+            .map_err(|e| OrchestratorError::InvalidStepDependencies {
+            kind: e.kind(),
+            detail: e.to_string(),
+        })?;
+
+        // One id per step, allocated in the caller's order and indexed by that order, so the node
+        // order in the graph is the plan's order whatever the dependency order is.
+        let ids: Vec<Uuid> = steps.iter().map(|_| Uuid::new_v4()).collect();
+
         let mut graph = crate::dag_engine::domain::TaskGraph::new();
-        // Step order is significant (frozen contract, template-tools value.rs):
-        // each step depends on its predecessor, so a template executes as a
-        // sequential runbook — validate → backup → migrate → verify — instead
-        // of a parallel batch where the migrate step could race ahead of the
-        // backup step. Parallel DAGs are expressed via explicit dependencies
-        // (engine [[nodes]] format); template steps are ordered by definition.
-        let mut prev: Option<Uuid> = None;
-        for step in steps {
-            let node_id = Uuid::new_v4();
+        for (position, step) in steps.iter().enumerate() {
             let intent = serde_json::to_string(&step.parameters).unwrap_or_default();
-            let deps = prev.map(|p| vec![p]).unwrap_or_default();
+            let deps: Vec<Uuid> = resolved.dependencies[position]
+                .iter()
+                .map(|&dependency| ids[dependency])
+                .collect();
             let node = crate::dag_engine::domain::TaskNode::new(
-                node_id,
+                ids[position],
                 step.name.clone(),
                 step.tool.clone(),
                 deps,
@@ -244,7 +258,6 @@ impl OrchestratorServiceImpl {
                     detail: format!("Failed to add graph node: {e}"),
                     source_module: "orchestrator".into(),
                 })?;
-            prev = Some(node_id);
         }
         graph.seal().map_err(|e| OrchestratorError::Internal {
             detail: format!("Failed to seal graph: {e}"),

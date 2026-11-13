@@ -42,6 +42,7 @@ async fn test_run_from_template_pauses_for_approval_and_resumes() {
             require_identity: false,
             timeout_secs: None,
             evaluate_score: false,
+            depends_on: Vec::new(),
         }
     };
 

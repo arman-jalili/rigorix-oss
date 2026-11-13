@@ -189,6 +189,15 @@ pub struct TemplateStepDef {
     /// Whether to run scored evaluation on this step's output.
     #[serde(default)]
     pub evaluate_score: bool,
+    /// Steps this one depends on, by `name` (#1526).
+    ///
+    /// `serde(default)`: every existing caller sends no such field, and a plan that declares none
+    /// keeps the frozen sequential contract — each step depends on its predecessor. A plan that
+    /// declares at least one becomes dependency-driven, and then a step with no dependencies has
+    /// none: it may run first. The names are resolved, and the four ways a set can be wrong are
+    /// refused, by `orchestrator::domain::step_graph`.
+    #[serde(default)]
+    pub depends_on: Vec<String>,
 }
 
 /// Input for a full orchestrator run from a pre-resolved template.

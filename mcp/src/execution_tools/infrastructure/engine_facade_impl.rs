@@ -120,6 +120,10 @@ fn plan_to_step_defs(plan: &PlanTemplate) -> Vec<TemplateStepDef> {
             require_identity: s.require_identity(),
             timeout_secs: s.timeout_secs(),
             evaluate_score: s.evaluate_score(),
+            // The MCP plan template has no dependency concept of its own; a caller that supplies
+            // one passes it through the engine DTO (#1526). Empty here keeps the sequential
+            // contract byte-identical.
+            depends_on: Vec::new(),
         })
         .collect()
 }

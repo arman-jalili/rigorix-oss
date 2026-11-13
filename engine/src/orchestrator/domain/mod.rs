@@ -19,6 +19,7 @@ pub mod config;
 pub mod error;
 pub mod event;
 pub mod record;
+pub mod step_graph;
 
 pub use config::OrchestratorConfig;
 pub use error::OrchestratorError;

@@ -248,6 +248,7 @@ fn conference_runbook() -> Vec<crate::orchestrator::dto::TemplateStepDef> {
         requires_approval: false,
         timeout_secs: None,
         evaluate_score: false,
+        depends_on: Vec::new(),
     };
     vec![step("registration_remove"), step("registration_add")]
 }
@@ -299,6 +300,7 @@ fn payout_runbook(include_params: bool) -> Vec<crate::orchestrator::dto::Templat
         require_identity: false,
         timeout_secs: None,
         evaluate_score: false,
+        depends_on: Vec::new(),
     }]
 }
 
@@ -403,3 +405,4 @@ mod dispatch;
 mod plan;
 mod policies;
 mod run;
+mod step_dependencies;
