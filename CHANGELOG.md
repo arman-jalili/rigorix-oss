@@ -19,6 +19,23 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **A delivery record is now checkable, and the check distinguishes three states of a sha** (#1549).
+  `bash .pi/scripts/validate-delivery-record.sh <path>` (also `-` for stdin, `--pr <n>`, `--comment <url>`)
+  refuses a record whose numbers do not resolve. A sha in a claim position — "merged at", "landed as",
+  "on main at", "green at", "→", "(commit|sha|squash) <hex>", or a status word followed by one — must be a
+  commit, and the three ways it can fail are three messages: `never pushed` when the object database has
+  no such commit, `off-branch` naming the branch that contains it and the squash `main` carries, and
+  `on main` when it resolves. Tokens outside a claim position are not assertions, so a digest prefix, a
+  fixture id or a RUSTSEC number passes; an all-digit token in a claim position is refused as "not a sha",
+  because a run id is written the same way. A count (`126/0`, `18/18`, "45 cases") and a guard verdict are
+  held to the same rule as a sha: they must name the producer that printed them, on their own line or the
+  line above, which is the half a sha check would have missed — one guard's internal `17/17` was reported
+  as the suite's result for exactly that reason. A text with no claims at all is exit 1, not a pass.
+  `--self-test` proves six cases in a temporary repository (branch sha, absent sha, prose digest, bare
+  count, count with a producer, no claims) plus two usage refusals, so the proof does not depend on this
+  repository's history. Registered advisory with `run_here=no` — its subject is a record, which a build
+  does not have — and called from `mr-validation.sh`, which is where a record exists.
+
 - **The two graph properties #1526 did not prove are now measured, not asserted** (#1537). A diamond
   (`a` → `b`, `c` → `d`) executed under a concurrency cap of two has **intersecting** intervals for
   `b` and `c`, taken from the `node_started`/`node_completed` events the executor already publishes;
