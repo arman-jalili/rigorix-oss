@@ -17,9 +17,12 @@
 - **Also measured:** the effect ledger's port has only `in_memory` (a `HashMap` behind a `Mutex`) and `http` (a
   service), so a settlement written "beside the effect records" would evaporate on the crash #1528 tests. §7 records
   that and the option that avoids it.
-- The five decisions (D1 level, D2 key model, D3 field set, D4 workspace identity, and E4's location) are stated as
-  options with consequences and **left undecided** — they are the operator's, and a section that is undecided blocks
-  the issue that needs it.
+- The decisions (D1 level, D2 key model, D3 field set and version policy, D4 workspace identity, E4's location, E13's
+  store, the budget's meaning, the module layout) are each **decided by derivation**, with the constraint that forces
+  them written out. An earlier revision left eight `Decision: undecided` lines and that made #1527, #1528 and #1529
+  unimplementable; the questions were the operator's and the issues were not moving. What remains the operator's is
+  roadmap, not contract: whether 1.15.0 ships before the gate level is executed, whether to adopt asymmetric signing,
+  whether to accept dirty workspaces — each additive, and each one edit.
 
 ## [2026-11-05] — ADR-021 is Proposed: the signed record carries a subject, and the human is erasable
 
