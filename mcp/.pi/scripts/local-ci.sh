@@ -11,12 +11,13 @@ FAILED=0; PASSED=0; SKIPPED=0; START_TIME=$(date +%s)
 FAILURES=()
 CRATES=("engine" "mcp" "cli" "actions" "server")
 REPORT_DIR=".pi/output"
-VALID_STAGES=" lint build test security coverage docs integration "
+VALID_STAGES=" lint build test security guards coverage docs integration "
 
 usage() {
     echo "usage: local-ci.sh [--quick] [--release] [--stage=<stage>|--stage <stage>]" >&2
     echo "                   [--crate=<crate>] [--list] [--save]" >&2
     echo "                   [--affected[=<base>]]  # narrow to what the diff can reach (#1441)" >&2
+    echo "  guards = the pipeline's audit gate: .pi/scripts/validate-guards.sh + its self-test (#1546)" >&2
     echo "stages:${VALID_STAGES}" >&2
 }
 
@@ -99,6 +100,22 @@ info()   { echo -e "  ${BLUE}ℹ️  ${NC} $1"; }
 header() { echo -e "\n${CYAN}══════════════════════════════════════════════════════════\n  $1\n${CYAN}══════════════════════════════════════════════════════════${NC}"; }
 subheader() { echo -e "\n${BLUE}--- $1 ---${NC}"; }
 
+# A failed step's one-line summary has to name what failed. `tail -5` of a
+# guard's output ends in the last guard that passed — the summary then reads
+# "❌ guards: gating set … ✅ ADR references: every one of 14 …", which names the
+# wrong thing. Prefer the lines that carry a ❌; fall back to the tail only when
+# the output has none (#1546).
+strip_ansi() { printf '%s' "${1//$'\033'\[[0-9;]*m/}"; }
+
+first_failures() {
+    local bad
+    bad="$(strip_ansi "$1" | grep -F '❌' | tail -2 | tr '\n' '; ' | head -c 200)"
+    if [[ -z "$bad" ]]; then
+        bad="$(strip_ansi "$1" | tail -3 | tr '\n' '; ' | head -c 200)"
+    fi
+    printf '%s' "$bad"
+}
+
 run_cmd() {
     local label="$1"; shift
     echo "  🔍 $label"
@@ -106,9 +123,7 @@ run_cmd() {
     out="$("$@" 2>&1)" && exit_code=0 || exit_code=$?
     if [[ $exit_code -eq 0 ]]; then pass "$label"
     else
-        local details
-        details="$(echo "$out" | tail -5 | tr '\n' '; ' | head -c 200)"
-        fail "$label (exit: ${exit_code})" "$details"
+        fail "$label (exit: ${exit_code})" "$(first_failures "$out")"
         echo "$out" | tail -15 | sed 's/^/      /'
     fi
 }
@@ -123,9 +138,7 @@ run_script() {
     out="$(cd "$crate" && bash "$script_rel" 2>&1)" && exit_code=0 || exit_code=$?
     if [[ $exit_code -eq 0 ]]; then pass "$label"
     else
-        local details
-        details="$(echo "$out" | tail -5 | tr '\n' '; ' | head -c 200)"
-        fail "$label (exit: ${exit_code})" "$details"
+        fail "$label (exit: ${exit_code})" "$(first_failures "$out")"
         echo "$out" | tail -15 | sed 's/^/      /'
     fi
 }
@@ -317,6 +330,24 @@ if should_run "security"; then
 fi
 
 # ═════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════
+# Stage 4c: Guards (#1546)
+# ═════════════════════════════════════════════════════════════════
+# The `🔒 Audit` job runs `.pi/scripts/validate-guards.sh` and its self-test
+# (`.github/workflows/ci.yml`). This stage runs the same two commands on the
+# same subject, because a local run that never executes the gating set reports
+# `0 failed` about a smaller subject than the pipeline's — which happened twice
+# on this repository while the report said "all gating guards passed".
+#
+# Not behind a flag: an opt-in gate is a default of "ignore", and the guards are
+# where this repository's own regressions have been caught.
+if should_run "guards"; then
+    header "Stage 4c: Guards"
+    run_cmd "guards: gating set (ci audit job)" bash .pi/scripts/validate-guards.sh
+    run_cmd "guards: self-test (each gating guard bites)" bash .pi/scripts/validate-guards.sh --self-test
+    run_cmd "guards: coverage (this runner executes what gates)" bash .pi/scripts/validate-guards.sh --coverage
+fi
+
 # ═════════════════════════════════════════════════════════════════
 # Stage 4b: Coverage (real line-coverage measurement via cargo-llvm-cov)
 # ═════════════════════════════════════════════════════════════════
