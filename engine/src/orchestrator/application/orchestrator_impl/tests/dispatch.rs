@@ -126,6 +126,7 @@ async fn test_r7_unanchored_history_refusal_is_structured() {
         requires_approval: false,
         timeout_secs: None,
         evaluate_score: false,
+        depends_on: Vec::new(),
     };
     let err = orch
         .run_from_template(RunFromTemplateInput {

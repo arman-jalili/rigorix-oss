@@ -51,6 +51,15 @@ pub enum OrchestratorError {
         state: String,
     },
 
+    /// The caller's plan does not describe a graph (#1526).
+    #[error("Invalid step dependencies ({kind}): {detail}")]
+    InvalidStepDependencies {
+        /// Which of the four refusals fired — stable, so a caller can branch without parsing.
+        kind: &'static str,
+        /// The refusal's message, which names the offending step(s).
+        detail: String,
+    },
+
     /// Cancellation signal could not be propagated.
     #[error("Cancellation failed: {detail}")]
     CancellationFailed {

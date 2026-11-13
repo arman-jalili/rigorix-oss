@@ -23,6 +23,7 @@ async fn test_run_from_template_records_effect_key_on_envelope() {
         requires_approval: false,
         timeout_secs: None,
         evaluate_score: false,
+        depends_on: Vec::new(),
     };
     orch.run_from_template(RunFromTemplateInput {
         steps: vec![step],
@@ -105,6 +106,7 @@ async fn test_run_from_template_refused_when_budget_exhausted() {
         requires_approval: false,
         timeout_secs: None,
         evaluate_score: false,
+        depends_on: Vec::new(),
     };
     let input = RunFromTemplateInput {
         steps: vec![step_def("a"), step_def("b"), step_def("c")],
@@ -157,6 +159,7 @@ async fn test_run_reports_degraded_evidence_instead_of_inferring_success() {
         requires_approval: false,
         timeout_secs: None,
         evaluate_score: false,
+        depends_on: Vec::new(),
     };
     let output = orch
         .run_from_template(RunFromTemplateInput {

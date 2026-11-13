@@ -48,6 +48,17 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **A caller-supplied plan can carry a dependency graph.** `OrchestratorService::run_from_template`
+  executed plans whose steps could not depend on one another: `build_graph_from_steps` chained them
+  in list order, so every branching plan was flattened into a line and a host could not express a
+  concurrency frontier or the difference between "b failed, d was never attempted" and "d failed
+  after c". `TemplateStepDef` gains `depends_on` (names other steps, `serde(default)`), and
+  `orchestrator::domain::step_graph` resolves names to the ids the graph allocates, refusing the
+  four ways a dependency set can be wrong — unknown name, self-edge, duplicate step name, cycle —
+  each with its own variant and a message naming the offending step. A plan that declares no
+  dependency keeps the frozen sequential contract byte-for-byte, which is pinned by an edge-set
+  comparison and by the untouched chaining test (#1526).
+
 - **The ADR guard reads both registers.** ADR numbering is tree-local, so
   `wasm/.pi/architecture/decisions/` is a different set carrying the same numbers — and nothing read
   it. Measured there: four citations that led nowhere (an `ADR-016` that set does not contain, a

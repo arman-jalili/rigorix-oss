@@ -143,6 +143,7 @@ fn test_build_graph_from_steps_chains_sequentially() {
             requires_approval: false,
             timeout_secs: None,
             evaluate_score: false,
+            depends_on: Vec::new(),
         },
         crate::orchestrator::application::dto::TemplateStepDef {
             name: "backup".into(),
@@ -153,6 +154,7 @@ fn test_build_graph_from_steps_chains_sequentially() {
             requires_approval: false,
             timeout_secs: None,
             evaluate_score: false,
+            depends_on: Vec::new(),
         },
         crate::orchestrator::application::dto::TemplateStepDef {
             name: "migrate".into(),
@@ -163,6 +165,7 @@ fn test_build_graph_from_steps_chains_sequentially() {
             requires_approval: true,
             timeout_secs: None,
             evaluate_score: false,
+            depends_on: Vec::new(),
         },
     ];
     let graph = orch.build_graph_from_steps(&steps).unwrap();
