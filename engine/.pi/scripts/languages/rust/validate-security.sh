@@ -196,8 +196,13 @@ echo "--- Dependency Audit ---"
 # "unsound" warning alike. This step used to answer the same question with a warning, which is
 # how a tree reported itself safe while the pipeline called it unsafe (RUSTSEC-2026-0486,
 # rustix 1.1.4, #1522). One policy, one answer; the two gates must not disagree.
+# The audit's subject is the *workspace* lockfile, which is not in a member crate's directory: run
+# from `engine/`, `cargo audit` answers "Couldn't load Cargo.lock" — a gate that says nothing about
+# the tree, and now (since this script fails on audit failure) fails for the wrong reason. Resolve
+# the workspace root, not the crate root. Same defect as #1530's, in the sibling file (#1531).
+_WS_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$TREE_ROOT")"
 if command -v cargo &>/dev/null && cargo audit --version &>/dev/null; then
-    if AUDIT_OUT=$(cd "$TREE_ROOT" && cargo audit --deny warnings 2>&1); then
+    if AUDIT_OUT=$(cd "$_WS_ROOT" && cargo audit --deny warnings 2>&1); then
         pass "No advisories (cargo audit --deny warnings, the pipeline's policy)"
     else
         # Name what the pipeline names: the crate, the id, and the version that fixes it.
@@ -212,7 +217,7 @@ $DETAIL
     .cargo/audit.toml — a suppression is a decision, not a silence"
     fi
 elif command -v cargo &>/dev/null && cargo deny --version &>/dev/null; then
-    if (cd "$TREE_ROOT" && cargo deny check 2>/dev/null); then
+    if (cd "$_WS_ROOT" && cargo deny check 2>/dev/null); then
         pass "No advisories (cargo deny)"
     else
         fail "cargo deny reported issues (the pipeline denies advisories; review the output above)"
