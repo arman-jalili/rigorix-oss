@@ -19,6 +19,20 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **The two graph properties #1526 did not prove are now measured, not asserted** (#1537). A diamond
+  (`a` → `b`, `c` → `d`) executed under a concurrency cap of two has **intersecting** intervals for
+  `b` and `c`, taken from the `node_started`/`node_completed` events the executor already publishes;
+  the same four steps as a chain do not intersect, and that control is a test that runs — an
+  assertion that also passes on a chain certifies nothing. Deleting the dependency edges and letting
+  the run go sequential makes the first assertion fail with the two intervals named, which is the
+  mutation it was shown to catch. A join carrying `requires_approval` has **no** interval while the
+  run is paused and one after `approve_node` + `resume_execution`: the assertion is the absence of a
+  dispatch rather than a session state, because a session can read `Paused` after the node was
+  spawned. The seam is the event stream, not a fake `Tool` — the executor does not consult
+  `ToolRegistryService` (`service_impl/tools.rs:187-211` dispatches over a fixed `match tool_name`
+  with `unknown_tool` as its fallback), so a double registered through the registry would record
+  nothing. No production file changed.
+
 - **`local-ci` says what it costs, and refuses to run twice in one tree.** A run now prints every
   step's duration, times each stage, and ends with a table of stage, steps, pass, fail, duration and
   share of the run — so a four-minute stage is attributed instead of discovered. A four-minute

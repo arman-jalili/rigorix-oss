@@ -180,6 +180,7 @@ ExecutionPolicyService::compute_backoff"]
 | Test Type | Coverage Target | Files |
 |-----------|-----------------|-------|
 | Unit | 80% | `engine/src/dag_engine/tests.rs` |
+| Integration (scheduling) | — | `engine/tests/unit/dag/graph_concurrency_test.rs` (#1537) |
 
 **Key Test Scenarios (67 tests):**
 - Add nodes and seal → valid topological order (linear, diamond, independent, 10-node chain)
@@ -194,6 +195,17 @@ ExecutionPolicyService::compute_backoff"]
 - Policy validation (default valid, zero backoff, low multiplier, max < base)
 - Service integration (construct, add, seal, query, cycle detection)
 - Serialization roundtrip
+
+**Scheduling, proved rather than asserted (#1537):** two properties of a graph that the resolver
+cannot show and the builder only claims. A diamond (`a` → `b`, `c` → `d`) under a concurrency cap of
+two has **intersecting** `node_started`/`node_completed` intervals for its two middle nodes, and the
+same four steps as a chain do **not** — the control is a test that runs, because an assertion that
+also passes on a chain certifies nothing. A join with `requires_approval` is **absent** from the
+event stream while the run is paused and present after `approve_node` + `resume_execution`: the
+assertion is the absence of a dispatch, not a session state, because a session can read `Paused`
+after the node has already been spawned. The observation is the event stream the executor already
+publishes — the executor does not consult `ToolRegistryService`, so a registered `Tool` double would
+record nothing (`service_impl/tools.rs:187-211` dispatches over a fixed `match tool_name`).
 
 ---
 
