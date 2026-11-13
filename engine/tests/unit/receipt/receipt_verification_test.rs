@@ -476,3 +476,146 @@ fn tempdir(tag: &str) -> TempDir {
     std::fs::create_dir_all(&base).expect("a temporary directory");
     TempDir(base)
 }
+
+// ── the two refusals that had no subject (#1548) ──────────────────────────────
+//
+// `UnsupportedWorkspaceKind` is advertised by a closed vocabulary whose typed parse answered with
+// serde's sentence instead. `Receipt::from_document` is the door: it reads the raw field first, so
+// the refusal quotes the document. The second half of #1548 was a variant nothing could construct —
+// `SealedDigestChanged` — which is gone; the scan below is what keeps a future one from landing.
+
+#[test]
+fn receipt_verification_an_unimplemented_workspace_kind_is_refused_in_this_module_s_words() {
+    let mut document = serde_json::to_value(receipt(vec![step("a", &[])])).expect("serialises");
+    document["workspace"]["kind"] = serde_json::json!("repository_tree");
+
+    let refusals = Receipt::from_document(&document.to_string())
+        .expect_err("a kind this engine does not implement is not a receipt");
+
+    assert_eq!(refusals.len(), 1, "one field, one refusal: {refusals:?}");
+    assert_eq!(refusals[0].kind(), "unsupported_workspace_kind");
+    let ReceiptRefusal::UnsupportedWorkspaceKind { kind, supported } = &refusals[0] else {
+        panic!("wrong refusal: {:?}", refusals[0]);
+    };
+    assert_eq!(kind, "repository_tree", "the document's own word");
+    assert_eq!(supported, &WorkspaceKind::supported());
+    let message = refusals[0].to_string();
+    assert!(message.contains("repository_tree"), "{message}");
+    assert!(message.contains("commit_tree"), "{message}");
+}
+
+#[test]
+fn receipt_verification_a_document_meeting_two_closed_vocabularies_is_told_both() {
+    let mut document = serde_json::to_value(receipt(vec![step("a", &[])])).expect("serialises");
+    document["schema_version"] = serde_json::json!(99);
+    document["workspace"]["kind"] = serde_json::json!("repository_tree");
+
+    let refusals =
+        Receipt::from_document(&document.to_string()).expect_err("both fields are closed");
+    let kinds: Vec<&str> = refusals.iter().map(ReceiptRefusal::kind).collect();
+    assert_eq!(kinds, vec!["schema_version", "unsupported_workspace_kind"]);
+}
+
+#[test]
+fn receipt_verification_a_document_that_is_not_json_carries_the_parser_message() {
+    let refusals = Receipt::from_document("{ not json").expect_err("not a document");
+    assert_eq!(refusals.len(), 1);
+    assert_eq!(refusals[0].kind(), "malformed_document");
+    assert!(
+        !refusals[0].to_string().trim_end().is_empty(),
+        "the parser's message is the detail, not an empty string"
+    );
+}
+
+#[test]
+fn receipt_verification_a_document_round_trips_through_the_reader() {
+    let original = receipt(vec![step("a", &[]), step("b", &["a"])]);
+    let bytes = serde_json::to_string(&original).expect("serialises");
+    let read = Receipt::from_document(&bytes).expect("a sound document reads back");
+    assert_eq!(
+        read.digest().expect("digests"),
+        original.digest().expect("digests")
+    );
+    assert_eq!(read.steps.len(), 2);
+}
+
+#[test]
+fn receipt_verification_a_document_whose_steps_cycle_is_refused_by_the_reader() {
+    let document = serde_json::to_string(&receipt(vec![step("a", &["b"]), step("b", &["a"])]))
+        .expect("serialises");
+    let refusals = Receipt::from_document(&document).expect_err("a cycle cannot be ordered");
+    assert!(
+        refusals.iter().any(|r| r.kind() == "dependency_cycle"),
+        "the reader runs the structural checks: {refusals:?}"
+    );
+}
+
+/// Every variant of `ReceiptRefusal` has a construction site outside `domain/refusal.rs`.
+///
+/// This is #1548's first acceptance criterion as a machine check rather than a review habit. It
+/// reads the enum's own `kind()` arms for the vocabulary — a variant added there is scanned for
+/// without anyone remembering to update a list here — and then looks for the name in every other
+/// engine source file and in this crate's tests.
+#[test]
+fn receipt_verification_no_refusal_variant_exists_only_in_the_enum() {
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let refusal_src = std::fs::read_to_string(format!("{manifest}/src/receipt/domain/refusal.rs"))
+        .expect("the refusal vocabulary is in this tree");
+
+    // `Self::Name { .. } => "code",` and `Self::Name => "code",`
+    let mut variants = Vec::new();
+    for line in refusal_src.lines() {
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix("Self::") else {
+            continue;
+        };
+        let name: String = rest.chars().take_while(|c| c.is_alphanumeric()).collect();
+        if !name.is_empty() && !variants.contains(&name) {
+            variants.push(name);
+        }
+    }
+    assert!(
+        variants.len() >= 10,
+        "the scan found {} variant(s), so it is reading the wrong thing: {variants:?}",
+        variants.len()
+    );
+
+    // The vocabulary file is excluded while collecting, not filtered afterwards: its own
+    // `Self::Name { .. }` arms contain `::Name`, so a filter over the concatenation would let
+    // every variant match itself and the scan could never fail.
+    let vocabulary = format!("{manifest}/src/receipt/domain/refusal.rs");
+    let mut elsewhere = String::new();
+    for tree in ["src", "tests"] {
+        collect_rs(&format!("{manifest}/{tree}"), &vocabulary, &mut elsewhere);
+    }
+
+    let inert: Vec<&String> = variants
+        .iter()
+        .filter(|name| !elsewhere.contains(&format!("::{name}")))
+        .collect();
+    assert!(
+        inert.is_empty(),
+        "refusal variant(s) with no construction site outside the enum: {inert:?} — \
+         a verdict a caller may branch on and never receive is a claim, not a control"
+    );
+}
+
+fn collect_rs(dir: &str, skip: &str, out: &mut String) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path == std::path::Path::new(skip) {
+            continue;
+        }
+        if path.is_dir() {
+            collect_rs(&path.to_string_lossy(), skip, out);
+        } else if path.extension().is_some_and(|e| e == "rs")
+            && let Ok(src) = std::fs::read_to_string(&path)
+        {
+            out.push_str(&src);
+            out.push('\n');
+        }
+    }
+}

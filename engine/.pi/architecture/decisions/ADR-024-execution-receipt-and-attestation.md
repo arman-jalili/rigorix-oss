@@ -192,7 +192,12 @@ So the mechanism is not a new adapter. It is a **location rule plus a refusal at
    naming both canonical paths.
 2. The sealed receipt and its fixture digests are written **once** into the state dir, and every verification reads them
    from there, never from a path R0 supplies. R0 supplies the digest; the engine resolves the bytes.
-3. Re-sealing the same `(execution_id | intent_key)` with a different digest is refused (`SealedDigestChanged`).
+3. Re-sealing the same `(execution_id | intent_key)` with a different digest is refused. **Not implemented
+   (#1548):** there is no seal record to compare a second seal against, so the vocabulary has no
+   `SealedDigestChanged` variant — it was declared, displayed, documented, and unreachable, which is a verdict a caller
+   may branch on and never receive. The rule is stated here because it is this ADR's; the variant returns with the
+   store that gives it a subject, and `engine/tests/unit/receipt/receipt_verification_test.rs` fails when a variant
+   lands without a construction site outside `domain/refusal.rs`.
 
 | option for the location | consequence |
 |---|---|

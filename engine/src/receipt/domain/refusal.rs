@@ -4,6 +4,15 @@
 //! because a catch-all turns "this engine does not know that refusal" into "some refusal happened",
 //! and the caller cannot act on that. The shape copies `GateOutcome`'s
 //! `Passed | Refused(..)` so an integrator reads one vocabulary, not two.
+//!
+//! Two rules about this enum, both learned the hard way (#1548):
+//!
+//! - **A variant exists only where it can be produced.** A refusal nothing constructs is a verdict
+//!   a caller may branch on and never receive. `Receipt::from_document` is the door for the two
+//!   closed vocabularies (`SchemaVersion`, `UnsupportedWorkspaceKind`), because serde would answer
+//!   with its own sentence instead; a test scans for a variant with no construction site.
+//! - **ADR-024 §6's re-seal rule has no variant here**, because nothing persists a seal yet. The
+//!   rule is recorded in the ADR rather than advertised in this type.
 
 use serde::{Deserialize, Serialize};
 
@@ -87,14 +96,14 @@ pub enum ReceiptRefusal {
         /// The canonical workspace root it was found inside.
         repo_root: String,
     },
-    /// A task already sealed with one digest was offered another (ADR-024 §6).
-    SealedDigestChanged {
-        /// The task key.
-        task: String,
-        /// The digest already sealed.
-        sealed: String,
-        /// The digest now proposed.
-        proposed: String,
+    /// The document is not readable JSON, or not the shape this module reads.
+    ///
+    /// Distinct from `SchemaVersion` and `UnsupportedWorkspaceKind`, which are fields this module
+    /// refuses *in its own words* before the typed parse: everything else is the parser's answer,
+    /// carried here so a caller reads one vocabulary.
+    MalformedDocument {
+        /// The parser's message, or the field that is missing.
+        detail: String,
     },
 }
 
@@ -114,7 +123,7 @@ impl ReceiptRefusal {
             Self::UndeclaredWrite { .. } => "undeclared_write",
             Self::ContentDigestMismatch { .. } => "content_digest_mismatch",
             Self::StateDirInsideWorkspace { .. } => "state_dir_inside_workspace",
-            Self::SealedDigestChanged { .. } => "sealed_digest_changed",
+            Self::MalformedDocument { .. } => "malformed_document",
         }
     }
 }
@@ -181,14 +190,12 @@ impl std::fmt::Display for ReceiptRefusal {
                 "the state directory {state_dir} is inside the workspace {repo_root}, which the \
                  executing agent can write"
             ),
-            Self::SealedDigestChanged {
-                task,
-                sealed,
-                proposed,
-            } => write!(
-                f,
-                "task '{task}' is sealed at {sealed} and cannot be re-sealed at {proposed}"
-            ),
+            Self::MalformedDocument { detail } => {
+                write!(
+                    f,
+                    "the receipt document is not one this module reads: {detail}"
+                )
+            }
         }
     }
 }
