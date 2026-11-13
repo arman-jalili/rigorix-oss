@@ -280,6 +280,79 @@ pub struct AuditEnvelope {
     /// the full payload is opt-in and stored locally (R4 privacy pattern).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decision_context_ref: Option<String>,
+
+    /// The execution settlement this envelope belongs to (#1528), when there is one.
+    ///
+    /// Additive and serde-defaulted: an envelope written before settlements existed still verifies,
+    /// and its signature covers the field when it is present — the canonical form omits `None`, so
+    /// adding it changed no existing envelope's bytes. The digest is over the settlement record, so
+    /// an envelope can name the run without carrying its effects.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_id: Option<String>,
+
+    /// The digest of the settlement record (its canonical JSON), for the same reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_digest: Option<String>,
+
+    /// The receipt this execution was admitted under (#1527), when it was receipt-driven.
+    ///
+    /// Additive for the same reason: `None` does not appear in the canonical bytes, so old envelopes
+    /// verify unchanged, and a receipt-driven run can be traced to the declaration that admitted it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receipt_digest: Option<String>,
+
+    /// The digest of the signed attestation produced for this execution (#1527).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attestation_digest: Option<String>,
+}
+
+impl Default for AuditEnvelope {
+    /// An envelope with every optional reference empty.
+    ///
+    /// Exists so a literal that predates the additive run references (#1527/#1528) can say
+    /// `..Default::default()` instead of restating four `None`s — and so a future additive field
+    /// costs one line in this impl rather than one edit per literal.
+    fn default() -> Self {
+        Self {
+            execution_id: uuid::Uuid::nil(),
+            timestamp: chrono::Utc::now(),
+            template_id: String::new(),
+            planning_hash: String::new(),
+            source: None,
+            repository: None,
+            author: None,
+            identity: None,
+            effect_key: None,
+            total_tokens: 0,
+            duration_ms: 0,
+            git_commit: None,
+            git_branch: None,
+            model_version: None,
+            planning_prompt: None,
+            file_paths: Vec::new(),
+            events: Vec::new(),
+            scoring_results: std::collections::HashMap::new(),
+            approval_events: Vec::new(),
+            scope_violations: Vec::new(),
+            scope_check: None,
+            sequence_policy_findings: Vec::new(),
+            requirement_findings: Vec::new(),
+            precondition_findings: Vec::new(),
+            decision_context_ref: None,
+            settlement_id: None,
+            settlement_digest: None,
+            receipt_digest: None,
+            attestation_digest: None,
+            signature: None,
+            evidence_degraded: false,
+            producer_id: None,
+            sequence: None,
+            prev_hash: None,
+            history_integrity: None,
+            anchor_head: None,
+            history_policy: None,
+        }
+    }
 }
 
 /// How the approval's `intent_hash` came to exist (#1243).

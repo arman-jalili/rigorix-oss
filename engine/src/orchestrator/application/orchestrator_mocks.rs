@@ -524,6 +524,7 @@ impl crate::audit::application::AuditService for MockAuditService {
                 history_integrity: None,
                 anchor_head: None,
                 history_policy: None,
+                ..Default::default()
             },
             signed: false,
             event_count: 0,

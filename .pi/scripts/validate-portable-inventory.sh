@@ -421,13 +421,17 @@ self-test)
     expect "the tree's own manifest" 0 "$MANIFEST" "$LIB" "$ADR"
 
     # 1. a summary that undercounts the denominator
-    sed -e 's/20 of the crate'"'"'s 39 public modules/20 of 41 public modules/' \
-        -e 's/(20 of 39 public modules)/(20 of 41 public modules)/' "$MANIFEST" > "$tmp/m22.tsv"
+    local mods declared wrong
+    read -r _mods declared <<< "$(grep -oE '[0-9]+ of [0-9]+ public modules' "$MANIFEST" | head -1 | awk -F' of | public' '{print $1" "$2}')"
+    mods="$_mods"
+    wrong=$((declared + 1))
+    sed -e "s/${mods} of the crate's ${declared} public modules/${mods} of ${wrong} public modules/" \
+        -e "s/(${mods} of ${declared} public modules)/(${mods} of ${wrong} public modules)/" "$MANIFEST" > "$tmp/m22.tsv"
     if cmp -s "$MANIFEST" "$tmp/m22.tsv"; then
         printf '  %b❌%b seed inert: the summary line matches nothing\n' "$RED" "$NC"
         ko=$((ko + 1))
     fi
-    expect "summary says 20 of 41" 1 "$tmp/m22.tsv" "$LIB" "$ADR"
+    expect "summary says ${mods} of ${wrong}" 1 "$tmp/m22.tsv" "$LIB" "$ADR"
 
     # 2. the bucket collapse that caused #1361 (six narrowed modules counted as closure)
     sed 's/= 14 direct, 6 by closure,/= 11 indirect,/' "$MANIFEST" > "$tmp/mbucket.tsv"
@@ -462,11 +466,12 @@ self-test)
 
     # 8. #1363 seed A — the prose ratio, inside markdown emphasis, with the table
     #    ratio left correct. Emphasis is stripped before matching, so this cannot hide.
-    mutate '\*\*20 of 39\*\*' '**20 of 41**' "$tmp/aprose.md"
+    destated="$(grep -oE '\*\*[0-9]+ of [0-9]+\*\*' "$ADR" | head -1 | tr -d '*')"
+    mutate "\*\*${destated}\*\*" "**${mods} of $((declared + 1))**" "$tmp/aprose.md"
     expect "prose ratio wrong while the table is right (#1363 seed A)" 1 "$MANIFEST" "$LIB" "$tmp/aprose.md"
 
     # 9. #1363 seed B — the table ratio, prose untouched.
-    mutate '20 of 39 public modules (8 forbidden crate' '20 of 41 public modules (8 forbidden crate' \
+    mutate "${mods} of ${declared} public modules (8 forbidden crate" "${mods} of ${wrong} public modules (8 forbidden crate" \
         "$tmp/atable.md"
     expect "table ratio wrong while the prose is right (#1363 seed B)" 1 "$MANIFEST" "$LIB" "$tmp/atable.md"
 

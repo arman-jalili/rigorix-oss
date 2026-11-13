@@ -52,3 +52,4 @@ pub use setup::{
     EffectCommitmentCompositionRoot, EffectCommitmentSetup, EffectCommitmentSetupError,
 };
 pub use vocabulary::NodeStateVocabulary;
+pub mod settlement_service;

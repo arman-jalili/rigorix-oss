@@ -48,6 +48,21 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **One settlement per execution, and an ambiguity that survives a restart.** `effect-commitment`
+  answered "was this effect committed?" per dispatch but not "how did this run end?", so a crashed
+  run left settled records and no statement about the run they belong to — and a second run could
+  start over an effect whose fate is unknown. `ExecutionSettlement` is the aggregate that references
+  record ids (the records stay the per-effect truth), opened **before** the first dispatch and
+  written on every effect, so a crash has something to reopen into. A reopened store reads a record
+  with no terminal as `Ambiguous`, not as "still running", and `refuse_resume` refuses a second run
+  for the same receipt naming the ambiguous record ids. The settlement is a durable record in
+  `state_persistence` — atomic temp-plus-rename, in the state directory ADR-024 §6 keeps outside the
+  workspace — not a field on the effect ledger, whose only local adapter is a `HashMap` that a crash
+  erases. The audit envelope gained the additive references (`settlement_id`, `settlement_digest`,
+  `receipt_digest`, `attestation_digest`) that old envelopes verify without. The crash case is
+  modelled by re-opening the store, because `rigorix-engine` is a library with no `[[bin]]` to kill
+  (#1528).
+
 - **An execution receipt the engine can check, and an attestation it can sign.** A host that submits
   an execution declares what it expects; until now the engine had nothing to compare that against
   and nothing it could sign, so "the execution did what was asked" was a claim made by the side that

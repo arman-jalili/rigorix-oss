@@ -24,6 +24,7 @@ pub mod outcome;
 pub mod query;
 pub mod record;
 pub mod resolver;
+pub mod settlement;
 pub mod state;
 
 pub use error::CommitmentError;

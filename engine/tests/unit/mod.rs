@@ -338,6 +338,8 @@ mod capacity_ledger {
 #[path = "effect-commitment"]
 #[cfg(not(feature = "portable"))]
 mod effect_commitment {
+    #[path = "execution_settlement_test.rs"]
+    mod execution_settlement_test;
     mod commitmenterror {
         mod commitmenterror_test;
     }

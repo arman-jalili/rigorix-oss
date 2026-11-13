@@ -110,6 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         requirement_findings: Vec::new(),
         precondition_findings: Vec::new(),
         decision_context_ref: None,
+        ..Default::default()
     };
 
     let factory = AuditEnvelopeFactoryImpl::new(Some(key));
