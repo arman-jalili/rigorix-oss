@@ -46,4 +46,6 @@ engine/.pi/scripts/validate-adr-references.sh	engine/.pi/architecture/decisions/
 # read it: measured, it reports four unresolved citations there (an ADR-016 that set does not have,
 # a path that resolves nowhere, and two descriptive labels with no record). Those are decisions in
 # another tree, not a mechanical rewrite — tracked in its own issue and named in the guard's scope
-# note, rather than silently absent from both this table and the map (#1514).
+# note, rather than silently absent from both this table and the map (#1514).engine/.pi/scripts/validate-spec-vocabulary.sh	docs/spec/**	the specification the vocabularies are enumerated in
+engine/.pi/scripts/validate-spec-vocabulary.sh	wasm/src/domain/outcome/**	the owners of the wire words
+engine/.pi/scripts/validate-spec-vocabulary.sh	engine/src/gate/domain/**	the owner of the gate identifiers
