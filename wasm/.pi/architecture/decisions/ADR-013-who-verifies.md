@@ -108,4 +108,4 @@ remains), and the demo's verification runs in a JS realm that shares only the fi
 
 - Exploration FR-006 (amended), FR-014; use case `VerifyExportedArtifacts` (removed)
 - `rigorix-sdk/typescript/src/{canonical,envelope,chain}.ts` — the verifier the host uses
-- ADR-010 (artifact format), ADR-005 (key custody), ADR-002 (no persistence)
+- ADR-010 (artifact format), ADR-005 (key ownership and capability-free surface), ADR-002 (no persistence)

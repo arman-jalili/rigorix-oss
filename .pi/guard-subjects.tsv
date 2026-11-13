@@ -49,3 +49,4 @@ engine/.pi/scripts/validate-adr-references.sh	engine/.pi/architecture/decisions/
 # note, rather than silently absent from both this table and the map (#1514).engine/.pi/scripts/validate-spec-vocabulary.sh	docs/spec/**	the specification the vocabularies are enumerated in
 engine/.pi/scripts/validate-spec-vocabulary.sh	wasm/src/domain/outcome/**	the owners of the wire words
 engine/.pi/scripts/validate-spec-vocabulary.sh	engine/src/gate/domain/**	the owner of the gate identifiers
+engine/.pi/scripts/validate-adr-references.sh	wasm/.pi/architecture/decisions/**	the wasm register — a different ADR set with the same numbers, checked since #1520

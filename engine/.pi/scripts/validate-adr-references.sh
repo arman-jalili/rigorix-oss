@@ -29,14 +29,14 @@
 #      different documents with the same numbers — so a bare number means one thing inside
 #      this directory and another elsewhere, which is why rule 5 is scoped to this directory.
 #
-# # Scope, stated because silence is not a scope (#1514)
+# # Two registers (#1520)
 #
-# The wasm register is **not** checked here. Measured on 2026-11-11, running this guard against
-# it reports four unresolved citations: an `ADR-016` that set does not contain, a
-# `.pi/architecture/decisions/ADR-010-…` path that resolves nowhere, and two descriptive labels
-# (`ADR-009 (error handling)`, `ADR-005 (key custody)`) with no record. Every one of them is a
-# decision about what a number means in another tree — a rewrite, not a mechanical fix — so it is
-# tracked rather than silently absent from both this guard and the affected-path map.
+# ADR numbering is tree-local: `wasm/.pi/architecture/decisions/` is a different set carrying the
+# same numbers. Nothing read it until #1520 measured four citations there that led nowhere (an
+# `ADR-016` that set does not have, a crate-relative `@canonical` path that resolves from no root
+# the guard knows, and two labels naming nothing in their target). They are fixed, and both
+# registers are checked by default; `--adr-dir` still means exactly one. Each register has its own
+# labels file, because an engine record must not license a wasm label.
 #
 # Usage:
 #   bash engine/.pi/scripts/validate-adr-references.sh             # check
@@ -52,6 +52,8 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TREE_ROOT="$(cd "${SELF_DIR}/../.." && pwd)"          # <repo>/engine
 ADR_DIR="$TREE_ROOT/.pi/architecture/decisions"
 LABELS="$TREE_ROOT/.pi/architecture/adr-citation-labels.tsv"
+REPO_ROOT_ADRS="$(cd "${TREE_ROOT}/.." && pwd)"
+REPO_ADR_WASM="$REPO_ROOT_ADRS/wasm/.pi/architecture/decisions"
 
 MODE="check"
 ADR_DIR_OVERRIDE=""
@@ -73,6 +75,28 @@ done
 [ -n "$LABELS_OVERRIDE" ] && LABELS="$LABELS_OVERRIDE"
 
 [ -d "$ADR_DIR" ] || { echo "validate-adr-references: $ADR_DIR does not exist" >&2; exit 2; }
+
+# Which registers this run covers. An explicit `--adr-dir` means exactly that one (the self-test
+# depends on it). Otherwise both registers in the tree: ADR numbering is tree-local, so
+# `wasm/.pi/architecture/decisions/` is a different set carrying the same numbers, and nothing read
+# it (#1520). It gets its own labels file for the same reason — an engine record must not license a
+# wasm label.
+REGISTERS=""
+if [ -n "$ADR_DIR_OVERRIDE" ]; then
+    REGISTERS="${ADR_DIR}	${LABELS}"
+else
+    REGISTERS="${ADR_DIR}	${LABELS}"
+    if [ -d "$REPO_ADR_WASM" ]; then
+        WASM_LABELS="${REPO_ADR_WASM%/decisions}/adr-citation-labels.tsv"
+        WASM_TMP=""
+        if [ ! -f "$WASM_LABELS" ]; then
+            WASM_TMP="$(mktemp "${TMPDIR:-/tmp}/wasm-adr-labels.XXXXXX")"
+            WASM_LABELS="$WASM_TMP"
+        fi
+        REGISTERS="${REGISTERS}
+${REPO_ADR_WASM}	${WASM_LABELS}"
+    fi
+fi
 
 # ── self-test: each rule has a seed that it rejects ────────────────────────
 if [ "$MODE" = "self-test" ]; then
@@ -170,7 +194,13 @@ if [ "$MODE" = "self-test" ]; then
 fi
 
 REPO_ROOT="$(cd "$TREE_ROOT/.." && pwd)"
-exec python3 - "$ADR_DIR" "$LABELS" "$MODE" "$REPO_ROOT" "$TREE_ROOT" <<'PY'
+STATUS=0
+while IFS='	' read -r _dir _labels; do
+    [ -n "$_dir" ] || continue
+    echo "── ${_dir#"$REPO_ROOT_ADRS"/} ──"
+    # Preserve the exit code: 2 is malformed input, 1 is a violation, and the self-test
+    # asserts the difference — collapsing both to 1 made the malformed seed unreadable.
+    python3 - "$_dir" "$_labels" "$MODE" "$REPO_ROOT" "$TREE_ROOT" <<'PY' || STATUS=$?
 import glob
 import os
 import re
@@ -341,3 +371,6 @@ print(f"{GREEN}✅ ADR references: every one of {len(citations)} labelled citati
       f"citation(s)){RESET}")
 sys.exit(0)
 PY
+done <<< "$REGISTERS"
+[ -n "${WASM_TMP:-}" ] && rm -f "$WASM_TMP"
+exit "$STATUS"

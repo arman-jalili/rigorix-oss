@@ -81,7 +81,7 @@ Rules:
 - `wasm/src/application/export_artifact_set.rs` — consumes evidence only
 - `wasm/src/interfaces/events.rs` — host observation callback (no return path)
 
-**Canonical References:** `// @canonical .pi/architecture/decisions/ADR-003-cross-context-events.md`
+**Canonical References:** `// @canonical wasm/.pi/architecture/decisions/ADR-003-cross-context-events.md`
 
 ## Validation
 

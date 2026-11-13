@@ -107,7 +107,7 @@ Rules:
 - `wasm/tests/fixtures/vectors/<vector-id>/{scenario.json,fixtures.json,clock.json,expected.artifact.json}`
 - `.github/workflows/` — live CLI diff job (builds CLI from the same commit)
 
-**Canonical References:** `// @canonical .pi/architecture/decisions/ADR-009-conformance-harness.md`
+**Canonical References:** `// @canonical wasm/.pi/architecture/decisions/ADR-009-conformance-harness.md`
 
 ## Validation
 

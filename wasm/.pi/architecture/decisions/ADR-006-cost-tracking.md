@@ -72,7 +72,7 @@ A third, subtler reason: a usage meter that a host can read creates an incentive
 - architecture test: `domain` must not reference any metrics/counter crate
 - `wasm/src/interfaces/wasm_api.rs` — no analytics payloads in any DTO
 
-**Canonical References:** `// @canonical .pi/architecture/decisions/ADR-006-cost-tracking.md`
+**Canonical References:** `// @canonical wasm/.pi/architecture/decisions/ADR-006-cost-tracking.md`
 
 ## Validation
 

@@ -75,7 +75,7 @@ public key with a `demo:` prefix), never the key, never a path, never a user.
 - `wasm/src/infrastructure/adapters/host_key_source.rs` — demo adapter (host-supplied seed)
 - `wasm/src/application/export_artifact_set.rs` — stamps `key_ref` only
 
-**Canonical References:** `// @canonical .pi/architecture/decisions/ADR-005-authentication.md`
+**Canonical References:** `// @canonical wasm/.pi/architecture/decisions/ADR-005-authentication.md`
 
 ## Validation
 
@@ -87,7 +87,7 @@ public key with a `demo:` prefix), never the key, never a path, never a user.
 ## References
 
 - Related ADRs: ADR-004, ADR-006, ADR-007
-- Engine: identity attestation context, ADR-016 (envelope signing)
+- Engine: identity attestation context, `engine/.pi/architecture/decisions/ADR-016-audit-integrity-anchor.md` (envelope signing)
 
 ---
 
