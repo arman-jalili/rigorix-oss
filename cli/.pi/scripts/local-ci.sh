@@ -22,7 +22,7 @@ QUICK=false; RELEASE=false; STAGE=""; CRATE_FILTER=""; LIST_ONLY=false; SAVE_OUT
 SELF_TEST=false; PROBE_EXIT=""; LOCK_FILE=""; JOBS=""
 START_TIME=$(date +%s)
 CRATES=("engine" "mcp" "cli" "actions" "server")
-REPORT_DIR=".pi/output"
+REPORT_DIR="${REPORT_DIR:-.pi/output}"
 VALID_STAGES=" lint build test security guards coverage docs integration "
 # The table's order, and the serial order: the legacy one, so `--jobs 1` reproduces what a
 # contributor ran before this change (#1551's acceptance asks for the order and the duration).
@@ -100,11 +100,27 @@ acquire_lock() {
         printf '%s\n' "$$" > "$LOCK_FILE/pid"
         printf '%s\n' "$(pwd)" > "$LOCK_FILE/tree"
         LOCK_HELD=true
+        report_interrupted_run
         return 0
     fi
     local holder tree
     holder="$(cat "$LOCK_FILE/pid" 2>/dev/null || echo 'unknown')"
     tree="$(cat "$LOCK_FILE/tree" 2>/dev/null || echo 'unknown')"
+    # A lock whose pid is gone is not a lock (#1567). The previous run was interrupted — Ctrl-C, a
+    # closed terminal, a killed process — and refusing the next run leaves the operator to remove the
+    # directory by hand from a message that already told them to.
+    if [[ "$holder" =~ ^[0-9]+$ ]] && ! kill -0 "$holder" 2>/dev/null; then
+        echo -e "${YELLOW}local-ci: reclaiming a lock left by pid $holder, which is gone${NC}" >&2
+        rm -f "$LOCK_FILE/pid" "$LOCK_FILE/tree" 2>/dev/null
+        rmdir "$LOCK_FILE" 2>/dev/null
+        if mkdir "$LOCK_FILE" 2>/dev/null; then
+            printf '%s\n' "$$" > "$LOCK_FILE/pid"
+            printf '%s\n' "$(pwd)" > "$LOCK_FILE/tree"
+            LOCK_HELD=true
+            report_interrupted_run
+            return 0
+        fi
+    fi
     echo -e "${RED}local-ci: another run holds the lock${NC}" >&2
     echo "  lock:  $LOCK_FILE" >&2
     echo "  held by pid $holder in $tree" >&2
@@ -112,6 +128,27 @@ acquire_lock() {
     echo "  binary replaced mid-run fails with no test name. Wait for it, or remove the lock if" >&2
     echo "  that pid is gone." >&2
     return 1
+}
+
+# Say what an interrupted run left behind (#1567).
+#
+# A run directory with no `.end` marker for a stage is the fingerprint: the stage started and the run
+# never finished it. `target/` is then in a state where the *next* cargo invocation fails with
+# "extern location for X does not exist" — a message about a dependency, never about the interruption —
+# and recovering costs a full rebuild. Naming it here is the difference between a one-line diagnosis and
+# an hour of chasing a crate name.
+report_interrupted_run() {
+    local stale=""
+    for d in "$REPORT_DIR"/.run-*; do
+        [[ -d "$d" ]] || continue
+        [[ -f "$d/.complete" ]] && continue
+        stale="$d"
+    done
+    [[ -n "$stale" ]] || return 0
+    echo -e "${YELLOW}local-ci: $stale is a run that did not finish${NC}" >&2
+    echo "  If a build now fails with 'extern location for <crate> does not exist', that is this:" >&2
+    echo "  target/ keeps fingerprints for artifacts an interrupted run never wrote, and the fix is" >&2
+    echo "  'cargo clean' (a full rebuild) — not 'cargo clean -p <crate>', which reveals the next gap." >&2
 }
 
 release_lock() {
@@ -199,6 +236,25 @@ if [[ "$SELF_TEST" == "true" ]]; then
     check "a second run in a held tree is refused" "$code" "1"
     contains "the refusal names the holding pid" "$out" "held by pid $$"
     check "the refused run leaves the first run's lock in place" "$(cat "$tmp/held/pid")" "$$"
+
+    # A lock whose holder is gone is not a lock (#1567): the previous run was interrupted, and
+    # making the operator delete the directory by hand — from a message that told them to — is the
+    # refusal working against the person it is for.
+    mkdir -p "$tmp/dead"
+    echo "999999" > "$tmp/dead/pid"
+    echo "$tmp" > "$tmp/dead/tree"
+    out="$(bash "$0" --lock-file "$tmp/dead" --probe-exit 0 2>&1)" && code=0 || code=$?
+    check "a lock whose pid is gone is reclaimed" "$code" "0"
+    contains "the reclaim names the dead pid" "$out" "reclaiming a lock left by pid 999999"
+
+    # An interrupted run is named on the next start, because what it leaves behind fails as a
+    # missing crate rather than as an interruption.
+    mkdir -p "$tmp/results/.run-999999" "$tmp/results/.run-2"
+    : > "$tmp/results/.run-999999/lint.start"
+    : > "$tmp/results/.run-2/.complete"
+    out="$(REPORT_DIR="$tmp/results" bash "$0" --lock-file "$tmp/free2" --probe-exit 0 2>&1)" && code=0 || code=$?
+    contains "an unfinished run is named on the next start" "$out" ".run-999999 is a run that did not finish"
+    check "a finished run is not named" "$(grep -c '.run-2 is a run' <<<"$out")" "0"
 
     # A free lock is taken, used, and released.
     out="$(bash "$0" --lock-file "$tmp/free" --probe-exit 0 2>&1)" && code=0 || code=$?
@@ -874,11 +930,15 @@ if [[ $FAILED -gt 0 ]]; then
         done
         echo ""
     fi
+    # A finished run, whatever its verdict: the marker is what distinguishes "this run failed" from
+    # "this run never returned" on the next start (#1567).
+    : > "$RESULTS_DIR/.complete" 2>/dev/null || true
     echo -e "${RED}❌ CI SIMULATION FAILED — ${FAILED} check(s) failed${NC}"
     echo "  Debug a single stage: bash .pi/scripts/local-ci.sh --stage=<stage>"
     echo "  Debug a single crate: bash .pi/scripts/local-ci.sh --crate=<crate>"
     exit 1
 else
+    : > "$RESULTS_DIR/.complete" 2>/dev/null || true
     echo -e "${GREEN}✅ CI SIMULATION PASSED — all ${PASSED} checks passed${NC}"
     echo "  Warm-serial equivalent: --jobs 1. Per-stage transcript: $RESULTS_DIR/<stage>.log"
     exit 0
