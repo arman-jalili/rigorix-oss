@@ -45,6 +45,22 @@ impl FileSystemExecutionRecordRepository {
         Ok(Self { record_dir })
     }
 
+    /// Ensure this store's directory exists before a write (#1572).
+    ///
+    /// The constructor creates it, and that guarantee does not survive the process: a deployment that
+    /// names its runtime directory per run can remove the parent while the server is alive, and the
+    /// failure then lands at the **end** of a governed run — after the steps executed — which is the
+    /// worst of the three outcomes (a refusal before dispatch, a completed record, or half of each).
+    async fn ensure_dir(&self) -> Result<(), StateError> {
+        let dir = self.record_dir.clone();
+        // sink: state-persistence:execution-records
+        fs::create_dir_all(&dir)
+            .await
+            .map_err(|e| StateError::DirectoryError {
+                detail: format!("Failed to create state directory {dir:?}: {e}"),
+            })
+    }
+
     fn record_path(&self, record_id: Uuid) -> PathBuf {
         self.record_dir.join(format!("{}.record.json", record_id))
     }
@@ -59,6 +75,7 @@ impl FileSystemExecutionRecordRepository {
 impl ExecutionRecordRepository for FileSystemExecutionRecordRepository {
     async fn save_record(&self, record: &ExecutionRecord) -> Result<(), StateError> {
         let path = self.record_path(record.record_id);
+        self.ensure_dir().await?;
         let temp = self
             .record_dir
             .join(format!("{}.record.json.tmp", record.record_id));

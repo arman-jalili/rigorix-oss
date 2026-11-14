@@ -46,6 +46,22 @@ impl FileSystemSettlementStore {
         Ok(Self { dir })
     }
 
+    /// Ensure this store's directory exists before a write (#1572).
+    ///
+    /// The constructor creates it, and that guarantee does not survive the process: a deployment that
+    /// names its runtime directory per run can remove the parent while the server is alive, and the
+    /// failure then lands at the **end** of a governed run — after the steps executed — which is the
+    /// worst of the three outcomes (a refusal before dispatch, a completed record, or half of each).
+    async fn ensure_dir(&self) -> Result<(), StateError> {
+        let dir = self.dir.clone();
+        // sink: state-persistence:settlements
+        fs::create_dir_all(&dir)
+            .await
+            .map_err(|e| StateError::DirectoryError {
+                detail: format!("Failed to create state directory {dir:?}: {e}"),
+            })
+    }
+
     fn path(&self, execution_id: Uuid) -> PathBuf {
         self.dir.join(format!("{execution_id}.settlement.json"))
     }
@@ -55,6 +71,7 @@ impl FileSystemSettlementStore {
 impl SettlementStore for FileSystemSettlementStore {
     async fn put(&self, settlement: &ExecutionSettlement) -> Result<(), StateError> {
         let path = self.path(settlement.execution_id);
+        self.ensure_dir().await?;
 
         // Read before write (ADR-024 §6 rule 3, #1569). What is sealed is **which receipt** the record
         // answers, not the whole file: a settlement accrues effects and a terminal over its life, so

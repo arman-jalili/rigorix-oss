@@ -199,6 +199,16 @@ missing_stages() {  # $1 results dir, then the keys that were scheduled; prints 
 # The lock's test does not depend on this repository being idle: the fixture builds the state a
 # running run leaves behind (`mkdir` + pid) and asserts the refusal names it. That is the property
 # — the state, not the race.
+# Does this stage's record contain a failure? A stage's status is its steps' status, and every stage
+# function ended with `stage_end`, whose own last command was `date` — so it always succeeded and a run
+# printed "✅ stage lint — 17 passed" beside a FAIL row (measured). The overall verdict sums the tsv and
+# was right; the line a reader watches was not.
+stage_has_failures() {  # $1 results dir, $2 stage key
+    local failed
+    failed="$(grep -c '^FAIL' "$1/$2.tsv" 2>/dev/null || true)"
+    [[ "${failed:-0}" -gt 0 ]]
+}
+
 if [[ "$SELF_TEST" == "true" ]]; then
     tmp="$(mktemp -d)"
     trap 'find "${tmp:-/nonexistent}" -mindepth 0 -delete 2>/dev/null || true' EXIT
@@ -264,6 +274,16 @@ if [[ "$SELF_TEST" == "true" ]]; then
     else
         check "the lock is released on exit" "gone" "gone"
     fi
+
+    # A stage whose step failed is a failed stage — its status is its steps', not `stage_end`'s own
+    # last command (measured on a run that printed "✅ stage lint — 17 passed" beside a FAIL row).
+    mkdir -p "$tmp/stage"
+    printf 'PASS\tsomething fine\t1\t\n' > "$tmp/stage/selftest-stage.tsv"
+    stage_has_failures "$tmp/stage" "selftest-stage" && code=0 || code=$?
+    check "a stage whose steps all passed has no failure" "$code" "1"
+    printf 'FAIL\tsomething broke\t1\t\n' >> "$tmp/stage/selftest-stage.tsv"
+    stage_has_failures "$tmp/stage" "selftest-stage" && code=0 || code=$?
+    check "a stage with one failed step has a failure" "$code" "0"
 
     # A scheduled stage that wrote nothing is not a pass. The fixture is the exact state the bug
     # left behind: `lint` ran, `build` never did.
@@ -365,6 +385,12 @@ stage_begin() {
 
 stage_end() {
     date +%s > "$RESULTS_DIR/$CUR_STAGE.end"
+    # The stage's status is its steps' status (measured, not assumed): every stage function ended with
+    # this call, so its exit code was always 0 and a run printed `✅ stage lint — 17 passed` beside a
+    # `FAIL validate-ci.sh (engine)` row. The overall verdict was right — it sums the tsv — but the line
+    # a reader watches was not, and a stage that reports green while a step failed is the reporting
+    # defect the run-level fixes were about.
+    ! stage_has_failures "$RESULTS_DIR" "$CUR_STAGE"
 }
 
 record() {  # $1 status, $2 label, $3 seconds, $4 detail

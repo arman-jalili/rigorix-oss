@@ -117,6 +117,21 @@ a different `SettlementStore` implementing the port cannot skip it, and the adap
 anything, so a file written by anything else cannot replace a seal. Each has its own test, because a test that
 only exercised the use case stays green with the adapter's guard removed — measured.
 
+### The writers re-create their directory (#1572)
+
+Every store in this module creates its directory in its constructor, and **that guarantee does not survive
+the process**: a deployment that recreates its runtime directory per run removes the parent while the server
+is alive, and the failure then lands at the end of a governed run — after the steps executed — as
+`Failed to write temp state file …: No such file or directory`.
+
+So `save`, `save_record`, `save_graph` and `put` each call an `ensure_dir` before writing. The cost is one
+`create_dir_all` on a directory that is usually already there; what it buys is that the three outcomes stay
+three — a refusal before dispatch, a completed record, or half of each — instead of collapsing into the
+third.
+
+The construction-time refusal names the resolved path and `RIGORIX_STATE_DIR`, because that is the moment an
+operator can still act on it rather than the end of a run.
+
 ## Data Flow
 
 ```mermaid
