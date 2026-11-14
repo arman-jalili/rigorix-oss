@@ -51,6 +51,8 @@ async fn test_r7_unanchored_history_refusal_is_structured() {
             file_paths: vec![],
             metadata: None,
             scoring_results: std::collections::HashMap::new(),
+            receipt_digest: None,
+            attestation_digest: None,
             sign: true,
             repository: None,
             author: Some("jeff@corp".to_string()),

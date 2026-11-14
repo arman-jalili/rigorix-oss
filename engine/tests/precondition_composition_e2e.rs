@@ -160,6 +160,8 @@ fn envelope_input(execution_id: Uuid, events: Vec<ExecutionEventRef>) -> BuildEn
         metadata: None,
         sign: true,
         scoring_results: HashMap::new(),
+        receipt_digest: None,
+        attestation_digest: None,
     }
 }
 

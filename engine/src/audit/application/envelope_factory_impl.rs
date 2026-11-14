@@ -246,8 +246,12 @@ impl AuditEnvelopeFactory for AuditEnvelopeFactoryImpl {
             // unchanged — and when they are present the signature covers them.
             settlement_id: None,
             settlement_digest: None,
-            receipt_digest: None,
-            attestation_digest: None,
+            // #1527 P1: the references come from the caller's input rather than being hardcoded, so
+            // a receipt-driven run can be traced from the signed envelope to the declaration that
+            // admitted it. They stay `None` until a caller supplies them (P2), which is why the
+            // envelope of every existing run keeps byte-identical canonical bytes.
+            receipt_digest: input.receipt_digest.clone(),
+            attestation_digest: input.attestation_digest.clone(),
             signature: None,
             // GAP-M-12: an unsigned run is explicitly degraded evidence.
             // Approval-bearing runs must request signing; this marker makes
@@ -328,6 +332,8 @@ mod tests {
             file_paths: vec![],
             metadata: None,
             scoring_results: std::collections::HashMap::new(),
+            receipt_digest: None,
+            attestation_digest: None,
             sign: false,
             repository: None,
             author: None,
@@ -338,6 +344,143 @@ mod tests {
             prev_hash: None,
             history_policy: None,
         }
+    }
+
+    /// A run whose every field is pinned, so that its canonical bytes are a constant.
+    ///
+    /// `sample_input()` cannot serve the recorded vector: it draws a fresh execution id and a
+    /// wall-clock instant, so its bytes differ on every run.
+    fn pinned_input() -> BuildEnvelopeInput {
+        BuildEnvelopeInput {
+            execution_id: uuid::Uuid::from_u128(0x0123_4567_89ab_cdef_0123_4567_89ab_cdef),
+            template_id: "recorded-vector".to_string(),
+            planning_prompt: "plan the execution".to_string(),
+            events: vec![ExecutionEventRef {
+                event_type: "task_completed".to_string(),
+                summary: "one step".to_string(),
+                occurred_at: "2026-11-13T00:00:00Z".parse().expect("fixed instant"),
+                correlation_id: Some(uuid::Uuid::from_u128(1)),
+                status: EventStatus::Success,
+                payload: None,
+            }],
+            source: Some("recorded".to_string()),
+            repository: Some("arman-jalili/rigorix-oss".to_string()),
+            author: Some("recorded".to_string()),
+            identity: None,
+            effect_key: None,
+            producer_id: None,
+            sequence: None,
+            prev_hash: None,
+            history_policy: None,
+            total_tokens: 1,
+            duration_ms: 2,
+            git_commit: None,
+            git_branch: None,
+            model_version: None,
+            planning_prompt_content: None,
+            file_paths: vec![],
+            metadata: None,
+            sign: false,
+            scoring_results: std::collections::HashMap::new(),
+            receipt_digest: None,
+            attestation_digest: None,
+        }
+    }
+
+    fn sha256_hex(bytes: &[u8]) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        hasher
+            .finalize()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    }
+
+    /// P1 (#1527): the canonical bytes of a receipt-free run are a **recorded constant**.
+    ///
+    /// The literal below is the assertion. Deriving it from `canonical_envelope_bytes` would compare
+    /// the function with itself and pass for any field order — which is the one thing this test
+    /// exists to notice, because a new field placed in the middle changes what the signature covers
+    /// for every envelope that carries it. Recorded 2026-11-13 from the commit that made
+    /// `receipt_digest`/`attestation_digest` reachable from the input.
+    #[tokio::test]
+    async fn canonical_bytes_without_a_receipt_match_the_recorded_vector() {
+        const RECORDED_CANONICAL_SHA256: &str =
+            "266d95c74e41b5e5f356ef911e91f46560063596075568c5561c993c315bd03f";
+
+        // The clock is pinned through the factory's own mechanism, not by rewriting the built
+        // envelope: an unpinned factory reads the wall clock into `timestamp`, so a vector recorded
+        // from one run would fail the next for a reason that has nothing to do with the field set.
+        let instant: chrono::DateTime<chrono::Utc> =
+            "2026-11-13T00:00:00Z".parse().expect("fixed instant");
+        let factory = AuditEnvelopeFactoryImpl::new(None)
+            .with_pinned_inputs(PinnedInputs::none().with_timestamp(instant));
+        let envelope = factory
+            .build_envelope(pinned_input())
+            .await
+            .expect("a pinned input builds");
+        let bytes =
+            AuditEnvelopeFactoryImpl::canonical_envelope_bytes(&envelope).expect("canonical bytes");
+        let text = String::from_utf8(bytes.clone()).expect("canonical bytes are utf-8");
+
+        assert!(
+            !text.contains("receipt_digest") && !text.contains("attestation_digest"),
+            "an absent reference must not appear in the canonical bytes at all: {text}"
+        );
+        assert_eq!(
+            sha256_hex(&bytes),
+            RECORDED_CANONICAL_SHA256,
+            "the canonical form changed, so every envelope this build signs now covers different \
+             bytes: a new field must be `Option` + `#[serde(default, skip_serializing_if)]` and \
+             appended, never inserted. Bytes: {text}"
+        );
+    }
+
+    /// P1 (#1527): a supplied reference reaches the envelope **and the signed bytes**.
+    ///
+    /// Two claims, both on the subject that matters: the value is in the canonical form (so the HMAC
+    /// covers it), and flipping one character of it breaks verification — otherwise the field would
+    /// be along for the ride rather than part of the evidence.
+    #[tokio::test]
+    async fn a_supplied_receipt_digest_is_inside_the_signed_bytes() {
+        let mut input = pinned_input();
+        input.receipt_digest = Some("sha256:r1".to_string());
+        input.attestation_digest = Some("sha256:a1".to_string());
+        input.sign = true;
+
+        let factory = AuditEnvelopeFactoryImpl::new(Some("recorded-key".to_string()));
+        let envelope = factory
+            .build_envelope(input)
+            .await
+            .expect("a pinned input builds");
+
+        assert_eq!(envelope.receipt_digest.as_deref(), Some("sha256:r1"));
+        assert_eq!(envelope.attestation_digest.as_deref(), Some("sha256:a1"));
+
+        let bytes =
+            AuditEnvelopeFactoryImpl::canonical_envelope_bytes(&envelope).expect("canonical bytes");
+        let text = String::from_utf8(bytes).expect("canonical bytes are utf-8");
+        assert!(
+            text.contains("\"receipt_digest\":\"sha256:r1\""),
+            "the reference must be in the canonical form, which is what the HMAC covers: {text}"
+        );
+        assert!(
+            text.contains("\"attestation_digest\":\"sha256:a1\""),
+            "the attestation reference must be in the canonical form too: {text}"
+        );
+
+        factory
+            .verify_signature(&envelope)
+            .await
+            .expect("a signed envelope verifies");
+
+        let mut tampered = envelope.clone();
+        tampered.receipt_digest = Some("sha256:r2".to_string());
+        assert!(
+            factory.verify_signature(&tampered).await.is_err(),
+            "an envelope whose receipt reference was changed must not verify"
+        );
     }
 
     fn scope_check_event(status: &str) -> ExecutionEventRef {

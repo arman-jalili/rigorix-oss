@@ -48,6 +48,8 @@ fn input(execution_id: Uuid, sequence: u64, prev_hash: Option<String>) -> BuildE
         metadata: None,
         sign: true,
         scoring_results: std::collections::HashMap::new(),
+        receipt_digest: None,
+        attestation_digest: None,
     }
 }
 
