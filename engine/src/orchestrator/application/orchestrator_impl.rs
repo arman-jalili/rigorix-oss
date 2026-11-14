@@ -54,6 +54,7 @@ use crate::sequence_policy::application::service::SequencePolicyService;
 use crate::state_persistence::application::{dto as state_dto, service as state_svc};
 
 mod effect_key;
+mod effects;
 mod helpers;
 mod policy_pipeline;
 
@@ -86,13 +87,13 @@ pub struct OrchestratorServiceImpl {
     /// construction rather than at the write, so a run cannot be signed by a key its host did not
     /// have when it was built.
     attestation_key: Option<String>,
-    /// Where attestations are written, when the host named it (#1527 P3).
+    /// Where the sealed records are written, when the host named it (#1527 P3, #1570).
     ///
     /// `None` means [`crate::receipt::default_state_dir`]'s answer for the run's repository — a
     /// sibling of the repository. The seam exists because the operator's `RIGORIX_STATE_DIR` is read
     /// there, and because a test that had to set an environment variable to place a file would be
     /// testing the environment.
-    attestation_state_dir: Option<std::path::PathBuf>,
+    sealed_state_dir: Option<std::path::PathBuf>,
     current_execution: Arc<RwLock<Option<CurrentExecutionState>>>,
 }
 
@@ -167,9 +168,39 @@ impl OrchestratorServiceImpl {
         input: &RunFromTemplateInput,
         verified: Option<&crate::receipt::VerifiedReceipt>,
         record: &ExecutionRecord,
+        observations: Option<&effects::Observations>,
     ) -> Option<String> {
         let verified = verified?;
         let receipt = verified.receipt();
+
+        // The run-level set is what settles a dispute, so it is passed whatever else is available;
+        // the per-step sets are used only where the recorder found the step's window disjoint.
+        let digests: std::collections::BTreeMap<&str, &str> = observations
+            .map(|o| {
+                o.run
+                    .iter()
+                    .map(|e| (e.path.as_str(), e.content_digest.as_str()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let observed_for = |step_id: &str| -> Vec<crate::receipt::ObservedEffect> {
+            observations
+                .and_then(|o| o.per_step.get(step_id))
+                .map(|step| {
+                    step.paths
+                        .iter()
+                        .map(|path| crate::receipt::ObservedEffect {
+                            path: path.clone(),
+                            content_digest: digests
+                                .get(path.as_str())
+                                .copied()
+                                .unwrap_or_default()
+                                .to_string(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
 
         let mut builder = crate::receipt::AttestationBuilder::from_verified(verified);
         for step in &receipt.steps {
@@ -190,29 +221,87 @@ impl OrchestratorServiceImpl {
                     TaskStatus::Pending => (false, Some("the step never ran".to_string())),
                 },
             };
+            let observed_effects = observed_for(&step.id);
+            let shared = observations
+                .and_then(|o| o.per_step.get(&step.id))
+                .map(|o| o.concurrent_with.clone())
+                .unwrap_or_default();
+
+            // Three things can make a step's expectation "not met", and the detail says which: the
+            // step did not run, its window was shared with another step (so the set is a union and a
+            // per-step comparison would blame it for another's writes), or it wrote a path it did not
+            // declare.
+            let (met, detail) = if shared.is_empty() {
+                let refusals = crate::receipt::compare_declared_observed(
+                    &step.id,
+                    &step.declared_effects,
+                    &observed_effects,
+                );
+                if refusals.is_empty() {
+                    (met, detail)
+                } else {
+                    (
+                        false,
+                        Some(
+                            refusals
+                                .iter()
+                                .map(std::string::ToString::to_string)
+                                .collect::<Vec<_>>()
+                                .join("; "),
+                        ),
+                    )
+                }
+            } else {
+                let note = format!(
+                    "concurrent with {}: attribution is the union",
+                    shared.join(", ")
+                );
+                (
+                    met,
+                    Some(match detail {
+                        Some(reason) => format!("{reason}; {note}"),
+                        None => note,
+                    }),
+                )
+            };
+
             builder.observe_step(crate::receipt::ObservedStep {
                 step_id: step.id.clone(),
-                // Empty on purpose, and it says what it is: this change does not collect the paths a
-                // step wrote, so an empty list here means "no file-level observation was taken",
-                // not "nothing was written". `compare_declared_observed` over an empty observed set
-                // reports no undeclared write for that reason, which is why the field is not
-                // allowed to imply a clean bill of health anywhere it is read.
-                observed_effects: Vec::new(),
+                observed_effects,
                 expectation_met: met,
                 expectation_detail: detail,
             });
         }
         builder.identity(input.identity.as_ref().map(|i| i.subject.clone()));
+
+        // The run-level finding: paths this run changed that no step of the declaration named. Named
+        // here rather than per step because on a frontier the engine can say *that* a path was
+        // undeclared without being able to say which step wrote it.
+        let declared: std::collections::BTreeSet<&str> = receipt
+            .steps
+            .iter()
+            .flat_map(|s| s.declared_effects.paths.iter().map(String::as_str))
+            .collect();
+        let undeclared: Vec<String> = observations
+            .map(|o| {
+                o.run
+                    .iter()
+                    .map(|e| e.path.clone())
+                    .filter(|path| !declared.contains(path.as_str()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        builder.observe_run(
+            observations.map(|o| o.run.clone()).unwrap_or_default(),
+            undeclared,
+        );
         let attestation = builder.build(
             u32::try_from(record.task_results.len()).unwrap_or(u32::MAX),
             u64::from(record.planning.total_tokens),
         );
 
         let mut attestation = attestation;
-        let state_dir = self
-            .attestation_state_dir
-            .clone()
-            .unwrap_or_else(|| crate::receipt::default_state_dir(&input.repo_root));
+        let state_dir = self.sealed_state_dir(&input.repo_root);
         let store = crate::receipt::infrastructure::FileAttestationStore::new(
             state_dir,
             &input.repo_root,
@@ -241,6 +330,24 @@ impl OrchestratorServiceImpl {
                 );
                 None
             }
+        }
+    }
+
+    /// The error a refused receipt store becomes, keeping the refusal's own kind and sentence.
+    fn receipt_store_refused(
+        error: crate::receipt::infrastructure::ReceiptStoreError,
+    ) -> OrchestratorError {
+        match error {
+            crate::receipt::infrastructure::ReceiptStoreError::Refused(refusal) => {
+                Self::receipt_refused(vec![refusal])
+            }
+            // A store failure is not a refusal of the receipt: the declaration may be perfectly good
+            // and the disk full. Reporting it as `ReceiptRefused` would tell an author to fix their
+            // document.
+            other => OrchestratorError::Internal {
+                detail: other.to_string(),
+                source_module: "receipt-store".into(),
+            },
         }
     }
 
@@ -276,7 +383,7 @@ impl OrchestratorServiceImpl {
             attestation_key: std::env::var("RIGORIX_HMAC_KEY")
                 .ok()
                 .filter(|k| !k.trim().is_empty()),
-            attestation_state_dir: None,
+            sealed_state_dir: None,
             current_execution: Arc::new(RwLock::new(None)),
         }
     }
@@ -457,13 +564,21 @@ impl OrchestratorServiceImpl {
         self
     }
 
-    /// Override where attestations are written (#1527 P3).
+    /// Override where the sealed records are written (#1527 P3, #1570).
     ///
+    /// Both stores answer to one directory: `receipts/` and `attestations/` are siblings under it.
     /// The default is `default_state_dir(repo_root)`; a directory inside the workspace is refused by
-    /// the store itself, so this setter cannot be used to defeat ADR-024 §6.
-    pub fn with_attestation_state_dir(mut self, state_dir: impl Into<std::path::PathBuf>) -> Self {
-        self.attestation_state_dir = Some(state_dir.into());
+    /// each store, so this setter cannot be used to defeat ADR-024 §6.
+    pub fn with_sealed_state_dir(mut self, state_dir: impl Into<std::path::PathBuf>) -> Self {
+        self.sealed_state_dir = Some(state_dir.into());
         self
+    }
+
+    /// The directory the sealed records live under, for a repository.
+    fn sealed_state_dir(&self, repo_root: &str) -> std::path::PathBuf {
+        self.sealed_state_dir
+            .clone()
+            .unwrap_or_else(|| crate::receipt::default_state_dir(repo_root))
     }
 
     pub fn with_sandbox_declaration(
@@ -1008,7 +1123,39 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     .map_err(|refusal| Self::receipt_refused(vec![refusal]))?;
                 let workspace = crate::receipt::workspace_identity(&input.repo_root)
                     .map_err(|refusal| Self::receipt_refused(vec![refusal]))?;
-                Some(crate::receipt::verify(receipt, &workspace).map_err(Self::receipt_refused)?)
+                let verified =
+                    crate::receipt::verify(receipt, &workspace).map_err(Self::receipt_refused)?;
+
+                // ADR-024 §6 rule 2 — the declaration is kept, not just its digest, and it is kept
+                // **now**: before a gate, before any state write, before the graph. A run that
+                // crashes on the next line has still left the document it was admitted under, and a
+                // second presentation of different bytes for this execution is refused by the store
+                // rather than believed.
+                let store = crate::receipt::infrastructure::FileReceiptStore::new(
+                    self.sealed_state_dir(&input.repo_root),
+                    &input.repo_root,
+                );
+                let sealed = store
+                    .put(receipt, verified.digest())
+                    .map_err(Self::receipt_store_refused)?;
+                // Read it back: the digest the envelope carries names bytes that must exist and must
+                // be the ones verified here. A store that cannot round-trip its own seal is a defect
+                // to fail on, not one to report afterwards as a missing reference.
+                let (resealed, resealed_digest) = store
+                    .get(receipt.execution_id)
+                    .map_err(Self::receipt_store_refused)?;
+                if resealed_digest != verified.digest() || &resealed != receipt {
+                    return Err(OrchestratorError::Internal {
+                        detail: format!(
+                            "the sealed receipt at {} does not read back as the one verified \
+                             (sealed {resealed_digest}, verified {})",
+                            sealed.path.display(),
+                            verified.digest()
+                        ),
+                        source_module: "orchestrator".into(),
+                    });
+                }
+                Some(verified)
             }
         };
         let receipt_digest: Option<String> =
@@ -1141,6 +1288,17 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 }
             }
         }
+
+        // 2b. Start observing effects (#1570). The recorder snapshots the run's changed paths before
+        // the graph and again after it, and each node's window from the executor's own progress
+        // transitions, so the attestation can say what changed — per step where attribution is sound
+        // and as a run-level set always.
+        let recorder = verified_receipt.as_ref().map(|_| {
+            let recorder =
+                std::sync::Arc::new(effects::EffectRecorder::new(&input.repo_root, execution_id));
+            self.execution_service.on_progress(recorder.callback());
+            recorder
+        });
 
         // 3. Execute DAG — keep a clone of the graph so an approval pause can
         // be persisted for cross-process resume (GAP-3).
@@ -1409,7 +1567,16 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // record), and the absence is reported rather than papered over: no digest in the envelope,
         // and the store's reason in the log at `error`, because a receipt-driven run that produced
         // no attestation is a deployment defect rather than a normal state.
-        let attestation_digest = self.seal_attestation(&input, verified_receipt.as_ref(), &record);
+        let observations = match (recorder.as_ref(), verified_receipt.as_ref()) {
+            (Some(recorder), Some(verified)) => Some(recorder.finish(verified.receipt())),
+            _ => None,
+        };
+        let attestation_digest = self.seal_attestation(
+            &input,
+            verified_receipt.as_ref(),
+            &record,
+            observations.as_ref(),
+        );
 
         // 10. Evidence: built, signed, persisted and delivered — and the run says
         // which of those happened (#1480). The result is consumed, never dropped.

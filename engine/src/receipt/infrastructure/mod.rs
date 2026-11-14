@@ -26,6 +26,16 @@
 //! repository and outside every workspace by construction. The envelope carries the attestation's
 //! **digest** (a reference) and never a copy of it: one sealed record, one home, no second trail.
 //!
+//! # Two records, two files, one rule
+//!
+//! `attestations/<execution_id>.json` is what the engine observed; `receipts/<execution_id>.json`
+//! is what the caller declared, written at R0 before anything ran (ADR-024 §6 rule 2). Both are
+//! sealed records: read-before-write, the same `SealedDigestChanged` when the bytes change, and the
+//! same refusal when the state directory resolves inside the workspace. The two stores each carry
+//! their own atomic write rather than sharing a helper, for the reason the sink register gives: a row
+//! describes a call site, so a shared writer would make one row claim two records whose only common
+//! property is the syscall they use.
+//!
 //! # Why the module has an adapter now
 //!
 //! Because the location rule is a property of the *store*, not of a caller. `FileAttestationStore`
@@ -33,5 +43,7 @@
 //! refuses a state directory inside the workspace rather than trusting whoever constructed it.
 
 pub mod attestation_store;
+pub mod receipt_store;
 
 pub use attestation_store::{AttestationStoreError, FileAttestationStore, StoredAttestation};
+pub use receipt_store::{FileReceiptStore, ReceiptStoreError, StoredReceipt};

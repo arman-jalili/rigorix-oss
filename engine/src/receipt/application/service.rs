@@ -233,6 +233,9 @@ pub struct AttestationBuilder {
     /// The level the caller declared, kept separately: a step can raise the record above the claim,
     /// but never by silently rewriting what the host asked for.
     caller_level: QualityLevel,
+    /// What the run observed it changed, and what nobody declared (#1570).
+    observed_effects: Vec<ObservedEffect>,
+    undeclared_writes: Vec<String>,
 }
 
 impl AttestationBuilder {
@@ -256,12 +259,29 @@ impl AttestationBuilder {
                 source: QualitySource::Caller,
             },
             caller_level: receipt.quality_required.level,
+            observed_effects: Vec::new(),
+            undeclared_writes: Vec::new(),
         }
     }
 
     /// Record what one step did.
     pub fn observe_step(&mut self, step: ObservedStep) -> &mut Self {
         self.steps.push(step);
+        self
+    }
+
+    /// Record what the run observed it changed, and what nobody declared (#1570).
+    ///
+    /// The run-level set is the one that is always sound: per-step attribution depends on a step's
+    /// window being disjoint from every other's, and the builder cannot check that — the caller that
+    /// measured the windows is the one that knows, and it passes both.
+    pub fn observe_run(
+        &mut self,
+        observed_effects: Vec<ObservedEffect>,
+        undeclared_writes: Vec<String>,
+    ) -> &mut Self {
+        self.observed_effects = observed_effects;
+        self.undeclared_writes = undeclared_writes;
         self
     }
 
@@ -320,6 +340,8 @@ impl AttestationBuilder {
                 // than leaving a reader to infer that the numbers were limits.
                 enforced: false,
             },
+            self.observed_effects,
+            self.undeclared_writes,
         )
     }
 }

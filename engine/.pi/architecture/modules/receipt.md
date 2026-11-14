@@ -23,6 +23,7 @@ contract: a receipt that lies is **refused**, an attestation that lies **cannot 
 | canonical form | `src/receipt/domain/digest.rs` | one function, one digest — what every seal and signature is taken over | #canonical |
 | `verify` / `AttestationBuilder` | `src/receipt/application/service.rs` | verify before dispatch; attest after the last step; the state-directory rule | #verify |
 | `FileAttestationStore` | `src/receipt/infrastructure/attestation_store.rs` | where a sealed attestation is written, and the refusals that keep it out of the workspace | #store |
+| `FileReceiptStore` | `src/receipt/infrastructure/receipt_store.rs` | where the **declaration** is sealed at R0 (ADR-024 §6 rule 2), and what a later reader gets back | #store |
 
 ## Receipt
 
@@ -48,6 +49,9 @@ inside the module provides the parsing, so `grep 'impl.*Deserialize.*for Attesta
 | `receipt_digest` | echoed from the verified receipt, not restated |
 | `steps[]` | observed effects and whether each expectation was met, with the reason when not |
 | `quality` | `source: Engine { step_id }` **only** when a step in this execution established a level above the caller's claim; otherwise `source: Caller`, and no field reads as passed |
+| `observed_effects` | every path the run changed, with a sha256 of the bytes at seal time — taken around the whole execution, so it is sound whatever the schedule (#1570) |
+| `undeclared_writes` | paths the run changed that no step declared, named at the run level (#1570) |
+| `steps[].observed_effects` | the paths attributable to that step: exact when its window intersects no other step's, the union with `expectation_detail` naming the overlap otherwise (#1570) |
 | `budget` | `{ declared, observed, enforced: false }` |
 | `signature` | HMAC-SHA256 over the canonical body, the audit envelope's mechanism; absent when no key is configured (signing is never silently simulated) |
 
@@ -75,6 +79,21 @@ what runs — so "the receipt was verified" means "the declaration was admissibl
 the declaration".
 
 ## Where the record lives {#store}
+
+Two records, two files, one rule:
+
+| file | written | contents |
+|---|---|---|
+| `<state dir>/receipts/<execution_id>.json` | at **R0**, after `verify` and before any gate, state write or graph | the receipt's canonical bytes — the declaration as admitted |
+| `<state dir>/attestations/<execution_id>.json` | after the last step, before the envelope | the signed observation |
+
+Both are written as a temporary file plus a rename, and both read before they write: the same canonical
+body is already sealed (nothing is written), a different one is `SealedDigestChanged`, and a state
+directory that resolves inside the workspace is refused before anything is created.
+
+The receipt seal has one extra check the attestation seal does not need: R0 reads the file back and
+compares it against the value it verified. A store that cannot return its own seal would let the
+envelope name a digest for bytes that do not exist, which is the state rule 2 exists to end.
 
 `<state dir>/attestations/<execution_id>.json`, one file per execution, written by
 `FileAttestationStore` as a temporary file plus a rename. `<state dir>` is `default_state_dir`'s

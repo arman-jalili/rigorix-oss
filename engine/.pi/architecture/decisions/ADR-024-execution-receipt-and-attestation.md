@@ -165,6 +165,27 @@ submodules) that is its own specification and its own class of silent wrong-iden
 
 ---
 
+### 4a. The amendment of #1570: what the run wrote
+
+§4's table fixed the attestation's field set. Two fields joined it, and the reason is the one sentence the
+module exists for: an attestation that cannot say what an effect **was** cannot settle a dispute about it.
+
+| field | level | rule |
+|---|---|---|
+| `observed_effects` | the run | every path the run changed, with a sha256 of the file's bytes at seal time. Taken around the whole execution, so it is sound whatever the schedule |
+| `undeclared_writes` | the run | paths the run changed that **no** step declared. Named at the run level because on a frontier the engine can say a path was undeclared without being able to say which step wrote it |
+| `steps[].observed_effects` | one step | the paths attributable to that step, exact **only** when its window intersects no other step's; a shared window carries the union and `expectation_detail` names the steps it shared with |
+
+Per-step attribution depends on a property the engine can measure (`on_progress` publishes each node's
+transitions, and `NodeExecutionState` carries the interval) but cannot guarantee: a `depends_on` frontier
+runs steps concurrently, and their windows intersect. The rule for that case is to state the union rather
+than choose a winner — a per-step set that silently includes another step's writes is a false accusation,
+and one that omits them is a false exoneration.
+
+An empty content digest means the file could not be read at seal time (deleted since the snapshot, or
+reached through a symlinked component, which is refused rather than followed). It never means the digest
+of empty bytes: that would be a fact the engine did not observe.
+
 ## 6. E4 — the seal and where it lives (the protected store)
 
 The requirement: the digest over the criteria and every fixture is recomputed before evaluation, a mismatch refuses the
@@ -191,7 +212,14 @@ So the mechanism is not a new adapter. It is a **location rule plus a refusal at
    `state_dir.starts_with(repo_root)` while sealing is armed — `CoreOrchestratorError` variant `StateDirInsideWorkspace`,
    naming both canonical paths.
 2. The sealed receipt and its fixture digests are written **once** into the state dir, and every verification reads them
-   from there, never from a path R0 supplies. R0 supplies the digest; the engine resolves the bytes.
+   from there, never from a path R0 supplies. R0 supplies the digest; the engine resolves the bytes. **Implemented (#1570):**
+   `FileReceiptStore` seals `<state dir>/receipts/<execution_id>.json` at R0 — after `verify`, before any gate, state write or
+   graph — and the file is the receipt's canonical bytes, so a reader recovers the value rather than a re-serialisation that
+   happens to parse. The seal is readback-checked in the same step: a store that cannot return its own seal fails the run,
+   because the digest the envelope carries must name bytes that exist. A second presentation of different bytes for a sealed
+   execution is `SealedDigestChanged` before anything runs. The **fixture digests** the rule names are not yet written
+   separately: they are part of the receipt's own canonical body (`fixture_digests`), which is what makes sealing the document
+   sufficient — a field of the declaration is sealed by sealing the declaration.
 3. Re-sealing the same `(execution_id | intent_key)` with a different digest is refused. **Implemented (#1527):**
    `FileAttestationStore::put` reads the record already on disk, verifies it with the deployment's key, and compares
    digests before replacing anything: the same canonical body is accepted as already sealed (a copy of one fact), a

@@ -19,6 +19,39 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **The attestation records what the run wrote, and the surface hosts use can see it** (#1570, ADR-024 §4).
+  `observed_effects` is no longer an empty list: the engine snapshots the run's changed paths before and
+  after execution, digests the bytes of each at seal time, and records them on the attestation.
+  Per-step attribution uses the executor's own progress transitions — a step's window is the interval
+  between its `Running` and terminal states — and is **exact only where that window intersects no other
+  step's**. On a `depends_on` frontier the windows overlap, so each step carries the union and its
+  `expectation_detail` names the steps it shared with: a per-step set that silently includes another
+  step's writes is a false accusation, and one that omits them is a false exoneration.
+  `undeclared_writes` names — once, at the run level — every path the run changed that no step declared,
+  which is the finding a frontier can make without knowing which step wrote it. Content digests are read
+  without following a symlinked component, and an empty digest means "could not be read at seal time",
+  never "the digest of empty bytes".
+  `ExecutionResult.attestation_digest` crosses to MCP, so a client can tell a sealed run from an
+  unsealed one: the record lives in a directory the client does not read, and without the field a
+  sealed run and an unsealed one were the same response. The five tool names are unchanged.
+
+- **The receipt itself is sealed, so the envelope's digest names bytes that exist** (#1570, ADR-024 §6 rule 2).
+  `run_from_template` verified the declaration in memory and carried only its digest, so "the run was
+  admitted under this declaration" was a claim about a document nobody had kept. `FileReceiptStore` now
+  seals `<state dir>/receipts/<execution_id>.json` at R0 — after `verify`, before any gate, any state
+  write and any graph — and the file is the receipt's **canonical bytes**, so a reader recovers the
+  value rather than a re-serialisation that happens to parse.
+  R0 reads the file back and compares it against the value it verified: a store that cannot return its
+  own seal fails the run, because a digest naming bytes that do not exist is the state the rule exists
+  to end. The store reads before it writes, as the attestation store does — the same canonical body is
+  already sealed and nothing is written, a different one is `SealedDigestChanged` **before anything
+  runs**, and a state directory that resolves inside the workspace is refused before a directory is
+  created. That last one changes a P3 test's subject on purpose: a store that cannot seal is now a
+  refusal of the run rather than a withheld record.
+  ADR-024 §6 rule 2 moves from a rule to what the code does, and names the one part it does not: the
+  fixture digests are not written separately because they are a field of the receipt
+  (`fixture_digests`), so sealing the document seals them.
+
 - **A seal is authoritative: re-sealing an execution with a different digest is refused** (#1527, P4).
   `FileAttestationStore::put` reads the record already on disk and verifies it with the deployment's
   key before replacing anything, so the digest it compares is the one the record actually has rather
