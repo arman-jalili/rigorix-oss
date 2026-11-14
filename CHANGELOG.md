@@ -17,6 +17,21 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+### Fixed
+
+- **`local-ci` reclaims a lock whose holder is gone, and names the run an interruption left behind**
+  (#1567). The lock refused the next run whenever `.pi/.local-ci.lock` existed, including when the pid in
+  it was dead — so an interrupted run (Ctrl-C, a closed terminal) needed a manual `rm` from a message that
+  had just told the operator to "remove the lock if that pid is gone". The pid is now checked with
+  `kill -0`: a dead holder is reclaimed with a line naming it, a live one still refuses.
+  The next start also **names an unfinished run**: a `.run-*` directory without a `.complete` marker means
+  a stage started and the run never finished, and `target/` is then in the state where the next `cargo`
+  invocation fails with `extern location for <crate> does not exist` — an error about a dependency, never
+  about the interruption. The note points at `cargo clean` and says why `cargo clean -p <crate>` only
+  reveals the next gap. Finished runs write the marker, so the note fires only on a real interruption.
+  Four new self-test cases in each of the six mirrored copies: a dead holder is reclaimed, the reclaim
+  names it, an unfinished run is named, and a finished one is not — 16/16 in every tree.
+
 ### Added
 
 - **A progress callback can be unregistered, because the handle that registers it removes it** (#1573).
