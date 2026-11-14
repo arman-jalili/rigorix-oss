@@ -35,6 +35,19 @@ Executes sealed TaskGraphs from the DAG Engine using a concurrent worker pool (t
 - `state_persistence` — ExecutionState for crash recovery
 - `approval` — pre-dispatch intent verification, approval records (see `modules/approval.md`)
 
+### Progress subscriptions (#1573)
+
+`on_progress` returns a `ProgressSubscription`, and **dropping it unregisters the callback**. The registry is
+a `HashMap<u64, Arc<dyn Fn(ExecutionProgress) + Send + Sync>>` keyed by a monotonic id, because a position in
+a `Vec` shifts under removal and `notify_progress` would then skip or repeat callbacks.
+
+`notify_progress` clones the arcs out and drops the lock **before** calling anything, so a callback that
+unregisters itself mid-notification neither deadlocks nor disturbs its neighbours. The handle is `#[must_use]`
+because discarding it is exactly the leak the type exists to prevent: before #1573 the registry was a `Vec`
+nothing removed from, and every early return in a run left one entry behind.
+
+The subscription holds a **weak** reference to the registry, so it cannot keep its own executor alive.
+
 ## Components
 
 | Component | File Path | Purpose | Canonical Section |

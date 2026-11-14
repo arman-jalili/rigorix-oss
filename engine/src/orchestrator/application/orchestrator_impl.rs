@@ -1294,11 +1294,14 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // transitions, so the attestation can say what changed — per step where attribution is sound
         // and as a run-level set always.
         let recorder = verified_receipt.as_ref().map(|_| {
-            let recorder =
-                std::sync::Arc::new(effects::EffectRecorder::new(&input.repo_root, execution_id));
-            self.execution_service.on_progress(recorder.callback());
-            recorder
+            std::sync::Arc::new(effects::EffectRecorder::new(&input.repo_root, execution_id))
         });
+        // Held for the rest of the run and dropped on every exit path, including the early returns
+        // below (#1573): a registration nobody removes is one per run, forever, and dropping the
+        // handle is the only removal that survives a path its author did not enumerate.
+        let _progress_subscription = recorder
+            .as_ref()
+            .map(|recorder| self.execution_service.on_progress(recorder.callback()));
 
         // 3. Execute DAG — keep a clone of the graph so an approval pause can
         // be persisted for cross-process resume (GAP-3).

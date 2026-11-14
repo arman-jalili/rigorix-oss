@@ -1056,12 +1056,17 @@ impl ParallelExecutionServiceImpl {
         state: NodeExecutionState,
         total_nodes: u32,
     ) {
-        let Ok(callbacks) = self.progress_callbacks.lock() else {
-            return;
+        // Clone the arcs out and drop the lock before calling anything: a callback that drops its own
+        // subscription removes its entry, and removal under the iteration lock would deadlock (#1573).
+        let callbacks: Vec<std::sync::Arc<dyn Fn(ExecutionProgress) + Send + Sync>> = {
+            let Ok(registry) = self.progress_callbacks.lock() else {
+                return;
+            };
+            if registry.is_empty() {
+                return;
+            }
+            registry.values().cloned().collect()
         };
-        if callbacks.is_empty() {
-            return;
-        }
 
         // Compute aggregate counts from session state
         let (completed, failed, skipped) = {
@@ -1100,7 +1105,7 @@ impl ParallelExecutionServiceImpl {
             skipped_count: skipped,
         };
 
-        for cb in callbacks.iter() {
+        for cb in &callbacks {
             cb(progress.clone());
         }
     }

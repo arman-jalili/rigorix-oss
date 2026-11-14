@@ -25,6 +25,11 @@
 /// Progress callback for node state changes.
 pub type ProgressCallback = Box<dyn Fn(ExecutionProgress) + Send + Sync>;
 
+/// What the registry holds: one entry per live subscription, and the id that removes it.
+pub type ProgressRegistry = std::sync::Mutex<
+    std::collections::HashMap<u64, std::sync::Arc<dyn Fn(ExecutionProgress) + Send + Sync>>,
+>;
+
 use async_trait::async_trait;
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
@@ -638,8 +643,14 @@ pub struct ParallelExecutionServiceImpl {
     sessions: Arc<Mutex<HashMap<Uuid, ExecutionSession>>>,
     /// Global executor config.
     config: ParallelExecutorConfig,
-    /// Registered progress callbacks.
-    progress_callbacks: Mutex<Vec<ProgressCallback>>,
+    /// Registered progress callbacks, keyed by subscription id (#1573).
+    ///
+    /// A `HashMap` rather than a `Vec` because a subscription removes its own entry: a position in a
+    /// vector shifts under removal, and `notify_progress` would then skip or repeat callbacks.
+    progress_callbacks: Arc<ProgressRegistry>,
+    /// The next subscription id. Monotonic, never reused, so a stale subscription cannot remove a
+    /// live callback.
+    next_progress_id: std::sync::atomic::AtomicU64,
     /// The retry evaluation service for retry decisions.
     retry_service: Box<dyn RetryEvaluationService>,
     /// Event bus for publishing node lifecycle events.
@@ -751,6 +762,17 @@ pub struct ParallelExecutionServiceImpl {
 }
 
 impl ParallelExecutionServiceImpl {
+    /// How many callbacks are registered. Exists for the assertion #1573 needs — "the list is what it
+    /// was before N runs" — which cannot be observed from outside without either counting the
+    /// notifications (which confuses silence with absence) or exposing the registry.
+    #[cfg(test)]
+    pub(crate) fn registered_progress_callbacks(&self) -> usize {
+        self.progress_callbacks
+            .lock()
+            .map(|registry| registry.len())
+            .unwrap_or(0)
+    }
+
     /// Create a new ParallelExecutionServiceImpl.
     pub fn new(
         config: ParallelExecutorConfig,
@@ -760,7 +782,8 @@ impl ParallelExecutionServiceImpl {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             config,
-            progress_callbacks: Mutex::new(Vec::new()),
+            progress_callbacks: Arc::new(ProgressRegistry::new(std::collections::HashMap::new())),
+            next_progress_id: std::sync::atomic::AtomicU64::new(1),
             retry_service,
             event_bus,
             hook_runner: None,
@@ -1723,10 +1746,20 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
     }
 
     #[tracing::instrument(skip_all)]
-    fn on_progress(&self, callback: ProgressCallback) {
+    fn on_progress(
+        &self,
+        callback: ProgressCallback,
+    ) -> crate::execution_engine::application::service::ProgressSubscription {
+        let id = self
+            .next_progress_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if let Ok(mut callbacks) = self.progress_callbacks.lock() {
-            callbacks.push(callback);
+            callbacks.insert(id, std::sync::Arc::from(callback));
         }
+        crate::execution_engine::application::service::ProgressSubscription::new(
+            Arc::downgrade(&self.progress_callbacks),
+            id,
+        )
     }
 }
 

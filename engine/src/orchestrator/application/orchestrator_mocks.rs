@@ -259,7 +259,10 @@ impl exec_svc::ParallelExecutionService for MockExecutionService {
         _: Box<
             dyn Fn(crate::execution_engine::application::service::ExecutionProgress) + Send + Sync,
         >,
-    ) {
+    ) -> crate::execution_engine::application::service::ProgressSubscription {
+        // The mock keeps no registry: a subscription to nothing is the honest answer, and it is
+        // droppable, so a caller need not treat the mock differently from the real service.
+        crate::execution_engine::application::service::ProgressSubscription::unsubscribed()
     }
 }
 
