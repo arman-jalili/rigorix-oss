@@ -471,6 +471,7 @@ action = "deny"
                 identity: None,
                 identity_verification_failure: None,
                 enforcement_preset: None,
+                receipt: None,
             })
             .await
             .expect_err("deny rule must refuse the runbook at plan time");

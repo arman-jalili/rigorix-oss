@@ -42,6 +42,50 @@ impl VerifiedReceipt {
     }
 }
 
+/// The engine's own answer to "which tree is this?" (ADR-024 §5).
+///
+/// `git rev-parse HEAD^{tree}` in the repository the caller named. The engine computes the identity
+/// rather than reading it out of the receipt: a receipt that names its workspace and is then compared
+/// against that name proves nothing, which is the same substitution [`verify`] exists to refuse.
+///
+/// A tree OID — not `HEAD` and not a branch — because a branch name moves and a commit id names a
+/// history, while the tree names the layout the steps will write into.
+///
+/// # Errors
+/// `WorkspaceIdentityUnavailable` when `git` cannot be run in `repo_root`, exits non-zero (no
+/// repository, no commit yet), or answers with something that is not an object id.
+pub fn workspace_identity(repo_root: &str) -> Result<String, ReceiptRefusal> {
+    let unavailable = |detail: String| ReceiptRefusal::WorkspaceIdentityUnavailable {
+        repo_root: repo_root.to_string(),
+        detail,
+    };
+    // #1083: the reason is the row this call site names — a fixed `git rev-parse HEAD^{tree}` argv,
+    // no caller string, in the repository the caller named, with the answer refused unless it is an
+    // object id. The residual is `git` reading repository configuration, and the register says so.
+    #[allow(clippy::disallowed_types)]
+    // sink: receipt:workspace-tree
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD^{tree}"])
+        .current_dir(repo_root)
+        .output()
+        .map_err(|e| unavailable(format!("git could not be run: {e}")))?;
+    if !output.status.success() {
+        return Err(unavailable(format!(
+            "git rev-parse HEAD^{{tree}} failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    let tree = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    // An identity is a hex object id, and nothing else is one: a message that happens to reach
+    // stdout, or git's own warning, would otherwise become the thing a receipt is compared against.
+    if tree.len() < 40 || !tree.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(unavailable(format!(
+            "git answered with '{tree}', which is not a tree object id"
+        )));
+    }
+    Ok(tree)
+}
+
 /// Verify a receipt against the workspace identity the engine computed.
 ///
 /// `workspace_identity` is the engine's answer (for `CommitTree`, the tree OID of the tree it was

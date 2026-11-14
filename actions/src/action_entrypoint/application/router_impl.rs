@@ -500,6 +500,7 @@ mod tests {
                 // instead of inheriting a silent `Complete` (#1480).
                 evidence:
                     rigorix_engine::orchestrator::application::dto::EvidenceStatus::NotRequested,
+                receipt_digest: None,
             })
         }
 
@@ -595,6 +596,7 @@ mod tests {
                 // instead of inheriting a silent `Complete` (#1480).
                 evidence:
                     rigorix_engine::orchestrator::application::dto::EvidenceStatus::NotRequested,
+                receipt_digest: None,
             })
         }
 

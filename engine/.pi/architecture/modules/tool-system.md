@@ -191,11 +191,13 @@ reverse) is a review defect — the two are meant to move together.
 | `precondition/infrastructure/runner.rs` | operator argv, never a shell; trust boundary + explicit env (ADR-017) |
 | `hooks/application/hook_runner_impl.rs` | operator-configured hook command (shell); child env cleared to the allowlist (#1082, class C3) |
 | `approval/infrastructure/effect_scope.rs`, `orchestrator/.../helpers.rs` | fixed argv `git` |
+| `receipt/application/service.rs` | fixed argv `git rev-parse HEAD^{tree}` — the workspace identity a receipt is verified against (ADR-024 §5, #1527); the answer is refused unless it is a hex object id |
 | `scored_evaluation/.../local_backend.rs` | operator-configured scorer script, fixed argv |
 | `cli/cli_boundary/dispatch.rs`, `mcp/.../engine_facade_impl.rs` | fixed argv `git remote/config` |
 | `cli/tui/mod.rs` | fixed argv clipboard helper |
 | `actions/.../router_impl.rs` | fixed argv `git` |
 | test-only: `execution_engine/approval_binding_tests.rs`, `cli/tests/projection_surface.rs`, `mcp/tests/{stdio_integration,e2e_execute_to_audit,e2e_enterprise_proxy}_test.rs` | runs the binary under test |
+| test-only: `orchestrator/.../tests/receipt_gate.rs` | `git init` + one empty commit — the repository is the subject of the workspace-identity check (#1527) |
 
 The lint confines *where* spawning happens, not *what* the command does with
 caller input. Those are separate properties and both are now enforced: the two

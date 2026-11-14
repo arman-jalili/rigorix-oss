@@ -353,6 +353,7 @@ fn payout_input(
         identity_verification_failure: None,
         author: None,
         enforcement_preset: None,
+        receipt: None,
     }
 }
 
@@ -405,5 +406,6 @@ mod approval;
 mod dispatch;
 mod plan;
 mod policies;
+mod receipt_gate;
 mod run;
 mod step_dependencies;

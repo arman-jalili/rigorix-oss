@@ -317,3 +317,34 @@ pub const EXECUTION_TOOL_NAMES: &[&str] = &[
     "rigorix_validate_plan",
     "rigorix_check_enforcement",
 ];
+
+#[cfg(test)]
+mod frozen_surface {
+    /// The five execution tool names are a cross-repository contract, and this asserts them
+    /// **literally** (#1527 P2).
+    ///
+    /// P2 adds a field to `ExecutionResult` — `receipt_digest` — which is additive: `tokens_used`,
+    /// `audit_uri` and `evidence` are the precedents, and a client that does not know the field
+    /// ignores it. A sixth **name** would not be additive: a client's tool list, its allow-list and
+    /// its prompt all move at once, across a repository this one cannot see. That asymmetry is why
+    /// the receipt path crosses the surface as a field rather than as a `rigorix_verify_receipt`
+    /// tool, and why the list is pinned here instead of being trusted to stay short.
+    ///
+    /// Written out rather than derived from the constant: a test that compares the constant with
+    /// itself passes when a name is added, which is the one change it exists to notice.
+    #[test]
+    fn the_execution_tool_names_are_the_five_that_were_frozen() {
+        assert_eq!(
+            super::EXECUTION_TOOL_NAMES,
+            &[
+                "rigorix_execute",
+                "rigorix_plan",
+                "rigorix_run",
+                "rigorix_validate_plan",
+                "rigorix_check_enforcement",
+            ],
+            "the execution tool names are frozen: a field on a result is additive, a new name is a \
+             change every client must make at once (#1527)"
+        );
+    }
+}

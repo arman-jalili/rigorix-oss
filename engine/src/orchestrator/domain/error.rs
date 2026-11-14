@@ -60,6 +60,19 @@ pub enum OrchestratorError {
         detail: String,
     },
 
+    /// The run's receipt was refused before any step executed (#1527, ADR-024 §4).
+    ///
+    /// `kinds` is every refusal's stable kind, comma-separated, so a caller branches without
+    /// parsing; `detail` carries every refusal's own sentence — all of them, not the first, because
+    /// a receipt fixed one refusal at a time is a receipt verified one refusal at a time.
+    #[error("Receipt refused ({kinds}): {detail}")]
+    ReceiptRefused {
+        /// Every refusal kind, comma-separated (`digest_mismatch,workspace_mismatch`).
+        kinds: String,
+        /// Every refusal's sentence, separated by `; `.
+        detail: String,
+    },
+
     /// Cancellation signal could not be propagated.
     #[error("Cancellation failed: {detail}")]
     CancellationFailed {

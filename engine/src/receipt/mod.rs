@@ -29,7 +29,7 @@ pub mod infrastructure;
 
 pub use application::service::{
     AttestationBuilder, VerifiedReceipt, compare_declared_observed, default_state_dir,
-    refuse_state_dir_inside_workspace, sign, verify,
+    refuse_state_dir_inside_workspace, sign, verify, workspace_identity,
 };
 pub use domain::attestation::{Attestation, QualityRecord, QualitySource, verify_attestation};
 pub use domain::digest::{ReceiptDigest, canonical_json, sha256_hex};

@@ -141,6 +141,7 @@ async fn test_r7_unanchored_history_refusal_is_structured() {
             identity_verification_failure: None,
             author: Some("jeff@corp".to_string()),
             enforcement_preset: None,
+            receipt: None,
         })
         .await
         .expect_err("unanchored cross-run denial must refuse (fail closed)");

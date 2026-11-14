@@ -92,7 +92,51 @@ struct CurrentExecutionState {
     started_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// The evidence references a run's audit envelope carries (#1527).
+///
+/// A struct rather than two `Option<String>` parameters, because `record_evidence(…, None, None)`
+/// says nothing about which `None` is the receipt and which is the attestation — and the P3 change
+/// fills the second one, so the two must be distinguishable at every call site that passes them.
+#[derive(Debug, Clone, Default)]
+struct EnvelopeReferences {
+    /// The digest of the receipt the run was admitted under. `None` when it declared none.
+    receipt_digest: Option<String>,
+    /// The digest of the signed attestation. `None` until a run produces one (P3).
+    attestation_digest: Option<String>,
+}
+
+impl EnvelopeReferences {
+    /// A run that referenced nothing: no receipt declared, no attestation observed.
+    const fn none() -> Self {
+        Self {
+            receipt_digest: None,
+            attestation_digest: None,
+        }
+    }
+}
+
 impl OrchestratorServiceImpl {
+    /// The error a refused receipt becomes, carrying **every** refusal.
+    ///
+    /// `kinds` is comma-separated and stable so a caller can branch; `detail` keeps each refusal's
+    /// own sentence, because "the receipt was refused" without saying which rule fired is a refusal
+    /// an author cannot act on.
+    fn receipt_refused(
+        refusals: Vec<crate::receipt::domain::refusal::ReceiptRefusal>,
+    ) -> OrchestratorError {
+        let kinds = refusals
+            .iter()
+            .map(crate::receipt::domain::refusal::ReceiptRefusal::kind)
+            .collect::<Vec<_>>()
+            .join(",");
+        let detail = refusals
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("; ");
+        OrchestratorError::ReceiptRefused { kinds, detail }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: OrchestratorConfig,
@@ -177,6 +221,7 @@ impl OrchestratorServiceImpl {
         repository: Option<String>,
         author: Option<String>,
         identity: Option<crate::identity::domain::IdentityRef>,
+        references: EnvelopeReferences,
     ) -> EvidenceStatus {
         let Some(ref audit) = self.audit_service else {
             return EvidenceStatus::NotRequested;
@@ -221,8 +266,8 @@ impl OrchestratorServiceImpl {
                 file_paths: Self::extract_file_paths(&record.task_results),
                 metadata: self.isolation_metadata(),
                 scoring_results: self.collect_scoring_results(record.execution_id).await,
-                receipt_digest: None,
-                attestation_digest: None,
+                receipt_digest: references.receipt_digest,
+                attestation_digest: references.attestation_digest,
                 sign: true,
                 repository,
                 author,
@@ -364,6 +409,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 // A validation-loop run takes the legacy paths out of scope; no
                 // audit service is consulted here, and saying so is the point.
                 evidence: EvidenceStatus::NotRequested,
+                receipt_digest: None,
             });
         }
 
@@ -693,6 +739,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 input.repository.clone(),
                 input.author.clone(),
                 input.identity.as_ref().map(IdentityRef::from_claim),
+                EnvelopeReferences::none(),
             )
             .await;
 
@@ -706,6 +753,9 @@ impl OrchestratorService for OrchestratorServiceImpl {
             execution_id,
             record,
             evidence,
+            // `run()` plans from an intent and declares no receipt: the caller's declaration
+            // belongs to the from-template path, where the steps are already concrete.
+            receipt_digest: None,
         })
     }
 
@@ -804,6 +854,27 @@ impl OrchestratorService for OrchestratorServiceImpl {
         let started_at = chrono::Utc::now();
         tracing::info!(%execution_id, template=%input.template_name, "run_from_template");
 
+        // R0 (ADR-024 §4) — the receipt is verified BEFORE anything else: before the identity gate,
+        // before the sequence-policy pipeline, before any state is written, and in particular before
+        // `build_graph`. The order is the claim. A refused receipt dispatches nothing, and that is
+        // asserted as an absence — no graph, no `NodeStarted` — rather than read off the error
+        // message, because an assertion on the message would pass with the verification moved after
+        // the graph was already built.
+        //
+        // The identity is the engine's own (`git rev-parse HEAD^{tree}`), never a string the receipt
+        // carries: `receipt::verify` compares the two, and a receipt compared against its own claim
+        // proves nothing.
+        let receipt_digest: Option<String> = match input.receipt.as_ref() {
+            None => None,
+            Some(receipt) => {
+                let workspace = crate::receipt::workspace_identity(&input.repo_root)
+                    .map_err(|refusal| Self::receipt_refused(vec![refusal]))?;
+                let verified =
+                    crate::receipt::verify(receipt, &workspace).map_err(Self::receipt_refused)?;
+                Some(verified.digest().to_string())
+            }
+        };
+
         // L1 identity gate (F-20260907-05) — run BEFORE the sequence-policy
         // gate so the error names the missing identity rather than a
         // possibly-confusing sequence denial. Steps declaring
@@ -857,6 +928,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // approval-gated).
         let steps: &[super::dto::TemplateStepDef] = &gated_steps;
         let graph = self.build_graph_from_steps(steps)?;
+
         let node_order: Vec<String> = graph.nodes().map(|n| n.name.clone()).collect();
 
         let pmeta = PlanningMetadata {
@@ -1193,6 +1265,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 input.repository.clone(),
                 input.author.clone(),
                 input.identity.clone(),
+                EnvelopeReferences {
+                    receipt_digest: receipt_digest.clone(),
+                    attestation_digest: None,
+                },
             )
             .await;
 
@@ -1236,6 +1312,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             execution_id,
             record,
             evidence,
+            receipt_digest,
         })
     }
 

@@ -42,11 +42,21 @@ UserIntent + Config
 ```
 
 **Plan-time gate (before any dispatch).** For `run` and `run_from_template`, the
-ordered steps are checked before the graph is built: (1) plan-declared
+ordered steps are checked before the graph is built: (0) the caller's receipt,
+when one is declared (R0, ADR-024 §4, #1527), (1) plan-declared
 `require_identity` (L1, ADR-012), (2) operator sequence policy (R1–R8,
 ADR-013), and (3) operator step requirements — attestation + parameter
 obligations (R9, ADR-015). Any refusal happens at plan time, named and
 actionable; nothing is dispatched.
+
+R0 is first and the order is the claim. `receipt::verify` is called before the
+gates, before any state is written and before `build_graph_from_steps`, so a
+refused receipt means the gates were never consulted, no graph exists, no node
+ever started and no envelope was built. That is asserted as an absence
+(`orchestrator_impl/tests/receipt_gate.rs`), not read off the refusal's message:
+an assertion on the message passes with the verification moved after the graph.
+The workspace identity compared against is the engine's own
+(`git rev-parse HEAD^{tree}`), never a string the receipt carries.
 
 ### Cancellation Path
 
@@ -174,8 +184,8 @@ let result = orchestrator.run(RunInput { intent }).await?;
 | DTO | Input/Output | Fields |
 |-----|:-----------:|--------|
 | RunInput | Input | intent: String, config: Config, repo_root: String, repository: Option\<String\>, author: Option\<String\> (legacy, self-asserted), identity: Option\<IdentityClaim\>, enforcement_preset: Option\<String\> |
-| RunFromTemplateInput | Input | steps: Vec\<TemplateStepDef\>, repo_root: String, execution_id: Option\<Uuid\>, template_name: String, repository: Option\<String\>, author: Option\<String\>, enforcement_preset: Option\<String\> |
-| RunOutput | Output | execution_id, record: ExecutionRecord |
+| RunFromTemplateInput | Input | steps: Vec\<TemplateStepDef\>, repo_root: String, execution_id: Option\<Uuid\>, template_name: String, repository: Option\<String\>, author: Option\<String\>, identity: Option\<IdentityRef\>, identity_verification_failure: Option\<String\>, enforcement_preset: Option\<String\>, receipt: Option\<Receipt\> (additive, #1527) |
+| RunOutput | Output | execution_id, record: ExecutionRecord, evidence: EvidenceStatus, receipt_digest: Option\<String\> (additive, #1527) |
 | PlanFromTemplateInput | Input | steps: Vec\<TemplateStepDef\>, repo_root: String, template_name: String |
 | PlanOnlyInput | Input | intent: UserIntent, config: Config, repo_root: PathBuf |
 | PlanOnlyOutput | Output | plan: PlanningResult, graph: TaskGraph |
