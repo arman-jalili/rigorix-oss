@@ -623,20 +623,19 @@ fn collect_rs(dir: &str, skip: &str, out: &mut String) {
 /// A workspace whose own name is hidden still gets a usable state directory (#1572).
 ///
 /// `default_state_dir` slugs the resolved path's basename, and a deployment may name it with a leading
-/// dot — `.rigorix-runtime` is what a runtime directory for a harness looks like. The result is
-/// `<parent>/.execution-state/.rigorix-runtime`, which is a normal directory even though its name is
-/// not, and the point of asserting it is that a "hidden" component is the kind of thing a slug that
-/// strips dots would silently change.
+/// dot — a per-run runtime directory is the ordinary case. The slug keeps the dot, so the result is a
+/// normal directory whose name merely begins with one, and the point of asserting it is that a "hidden"
+/// component is the kind of thing a slug that strips dots would silently change.
 #[test]
 fn receipt_a_hidden_workspace_basename_slugs_without_losing_the_name() {
-    let dir = rigorix_engine::receipt::default_state_dir("/srv/bursar/.rigorix-runtime");
+    let dir = rigorix_engine::receipt::default_state_dir("/srv/workspace/.runtime");
     assert_eq!(
         dir,
-        std::path::PathBuf::from("/srv/bursar/.execution-state/.rigorix-runtime"),
+        std::path::PathBuf::from("/srv/workspace/.execution-state/.runtime"),
         "the slug keeps the leading dot: it is part of the directory's name, not a comment"
     );
     assert!(
-        !dir.starts_with("/srv/bursar/.rigorix-runtime"),
+        !dir.starts_with("/srv/workspace/.runtime"),
         "and it is outside the workspace it names"
     );
 }

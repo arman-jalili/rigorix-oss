@@ -37,9 +37,9 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   `RIGORIX_STATE_DIR`, because that is when an operator can still act on it.
   Reproduced before it was fixed: removing the directory after construction and saving again fails with the
   issue's exact message, and the test that pins it is the mutation — `test_save_recreates_a_directory_removed_after_construction`.
-  A workspace whose own name is hidden (`.rigorix-runtime`) is covered too: its state directory is
-  `<parent>/.execution-state/.rigorix-runtime`, and a slug that stripped the dot would have changed where
-  every record lives.
+  A workspace whose own directory name begins with a dot is covered too: its state directory keeps the
+  leading dot in the slug, and a slug that stripped it would have changed where every record lives —
+  asserted in `receipt_verification_test.rs` rather than assumed.
 
 - **`local-ci` reclaims a lock whose holder is gone, and names the run an interruption left behind**
   (#1567). The lock refused the next run whenever `.pi/.local-ci.lock` existed, including when the pid in
