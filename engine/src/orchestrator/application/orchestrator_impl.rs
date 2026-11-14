@@ -86,13 +86,13 @@ pub struct OrchestratorServiceImpl {
     /// construction rather than at the write, so a run cannot be signed by a key its host did not
     /// have when it was built.
     attestation_key: Option<String>,
-    /// Where attestations are written, when the host named it (#1527 P3).
+    /// Where the sealed records are written, when the host named it (#1527 P3, #1570).
     ///
     /// `None` means [`crate::receipt::default_state_dir`]'s answer for the run's repository — a
     /// sibling of the repository. The seam exists because the operator's `RIGORIX_STATE_DIR` is read
     /// there, and because a test that had to set an environment variable to place a file would be
     /// testing the environment.
-    attestation_state_dir: Option<std::path::PathBuf>,
+    sealed_state_dir: Option<std::path::PathBuf>,
     current_execution: Arc<RwLock<Option<CurrentExecutionState>>>,
 }
 
@@ -209,10 +209,7 @@ impl OrchestratorServiceImpl {
         );
 
         let mut attestation = attestation;
-        let state_dir = self
-            .attestation_state_dir
-            .clone()
-            .unwrap_or_else(|| crate::receipt::default_state_dir(&input.repo_root));
+        let state_dir = self.sealed_state_dir(&input.repo_root);
         let store = crate::receipt::infrastructure::FileAttestationStore::new(
             state_dir,
             &input.repo_root,
@@ -241,6 +238,24 @@ impl OrchestratorServiceImpl {
                 );
                 None
             }
+        }
+    }
+
+    /// The error a refused receipt store becomes, keeping the refusal's own kind and sentence.
+    fn receipt_store_refused(
+        error: crate::receipt::infrastructure::ReceiptStoreError,
+    ) -> OrchestratorError {
+        match error {
+            crate::receipt::infrastructure::ReceiptStoreError::Refused(refusal) => {
+                Self::receipt_refused(vec![refusal])
+            }
+            // A store failure is not a refusal of the receipt: the declaration may be perfectly good
+            // and the disk full. Reporting it as `ReceiptRefused` would tell an author to fix their
+            // document.
+            other => OrchestratorError::Internal {
+                detail: other.to_string(),
+                source_module: "receipt-store".into(),
+            },
         }
     }
 
@@ -276,7 +291,7 @@ impl OrchestratorServiceImpl {
             attestation_key: std::env::var("RIGORIX_HMAC_KEY")
                 .ok()
                 .filter(|k| !k.trim().is_empty()),
-            attestation_state_dir: None,
+            sealed_state_dir: None,
             current_execution: Arc::new(RwLock::new(None)),
         }
     }
@@ -457,13 +472,21 @@ impl OrchestratorServiceImpl {
         self
     }
 
-    /// Override where attestations are written (#1527 P3).
+    /// Override where the sealed records are written (#1527 P3, #1570).
     ///
+    /// Both stores answer to one directory: `receipts/` and `attestations/` are siblings under it.
     /// The default is `default_state_dir(repo_root)`; a directory inside the workspace is refused by
-    /// the store itself, so this setter cannot be used to defeat ADR-024 §6.
-    pub fn with_attestation_state_dir(mut self, state_dir: impl Into<std::path::PathBuf>) -> Self {
-        self.attestation_state_dir = Some(state_dir.into());
+    /// each store, so this setter cannot be used to defeat ADR-024 §6.
+    pub fn with_sealed_state_dir(mut self, state_dir: impl Into<std::path::PathBuf>) -> Self {
+        self.sealed_state_dir = Some(state_dir.into());
         self
+    }
+
+    /// The directory the sealed records live under, for a repository.
+    fn sealed_state_dir(&self, repo_root: &str) -> std::path::PathBuf {
+        self.sealed_state_dir
+            .clone()
+            .unwrap_or_else(|| crate::receipt::default_state_dir(repo_root))
     }
 
     pub fn with_sandbox_declaration(
@@ -1008,7 +1031,39 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     .map_err(|refusal| Self::receipt_refused(vec![refusal]))?;
                 let workspace = crate::receipt::workspace_identity(&input.repo_root)
                     .map_err(|refusal| Self::receipt_refused(vec![refusal]))?;
-                Some(crate::receipt::verify(receipt, &workspace).map_err(Self::receipt_refused)?)
+                let verified =
+                    crate::receipt::verify(receipt, &workspace).map_err(Self::receipt_refused)?;
+
+                // ADR-024 §6 rule 2 — the declaration is kept, not just its digest, and it is kept
+                // **now**: before a gate, before any state write, before the graph. A run that
+                // crashes on the next line has still left the document it was admitted under, and a
+                // second presentation of different bytes for this execution is refused by the store
+                // rather than believed.
+                let store = crate::receipt::infrastructure::FileReceiptStore::new(
+                    self.sealed_state_dir(&input.repo_root),
+                    &input.repo_root,
+                );
+                let sealed = store
+                    .put(receipt, verified.digest())
+                    .map_err(Self::receipt_store_refused)?;
+                // Read it back: the digest the envelope carries names bytes that must exist and must
+                // be the ones verified here. A store that cannot round-trip its own seal is a defect
+                // to fail on, not one to report afterwards as a missing reference.
+                let (resealed, resealed_digest) = store
+                    .get(receipt.execution_id)
+                    .map_err(Self::receipt_store_refused)?;
+                if resealed_digest != verified.digest() || &resealed != receipt {
+                    return Err(OrchestratorError::Internal {
+                        detail: format!(
+                            "the sealed receipt at {} does not read back as the one verified \
+                             (sealed {resealed_digest}, verified {})",
+                            sealed.path.display(),
+                            verified.digest()
+                        ),
+                        source_module: "orchestrator".into(),
+                    });
+                }
+                Some(verified)
             }
         };
         let receipt_digest: Option<String> =

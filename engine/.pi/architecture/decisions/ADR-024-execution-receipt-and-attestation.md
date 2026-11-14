@@ -191,7 +191,14 @@ So the mechanism is not a new adapter. It is a **location rule plus a refusal at
    `state_dir.starts_with(repo_root)` while sealing is armed — `CoreOrchestratorError` variant `StateDirInsideWorkspace`,
    naming both canonical paths.
 2. The sealed receipt and its fixture digests are written **once** into the state dir, and every verification reads them
-   from there, never from a path R0 supplies. R0 supplies the digest; the engine resolves the bytes.
+   from there, never from a path R0 supplies. R0 supplies the digest; the engine resolves the bytes. **Implemented (#1570):**
+   `FileReceiptStore` seals `<state dir>/receipts/<execution_id>.json` at R0 — after `verify`, before any gate, state write or
+   graph — and the file is the receipt's canonical bytes, so a reader recovers the value rather than a re-serialisation that
+   happens to parse. The seal is readback-checked in the same step: a store that cannot return its own seal fails the run,
+   because the digest the envelope carries must name bytes that exist. A second presentation of different bytes for a sealed
+   execution is `SealedDigestChanged` before anything runs. The **fixture digests** the rule names are not yet written
+   separately: they are part of the receipt's own canonical body (`fixture_digests`), which is what makes sealing the document
+   sufficient — a field of the declaration is sealed by sealing the declaration.
 3. Re-sealing the same `(execution_id | intent_key)` with a different digest is refused. **Implemented (#1527):**
    `FileAttestationStore::put` reads the record already on disk, verifies it with the deployment's key, and compares
    digests before replacing anything: the same canonical body is accepted as already sealed (a copy of one fact), a

@@ -493,7 +493,7 @@ async fn a_verified_receipt_seals_one_attestation_outside_the_workspace() {
     let orch = service(calls, captured.clone(), policy)
         .await
         .with_attestation_key(Some(KEY.to_string()))
-        .with_attestation_state_dir(state_dir(&repo));
+        .with_sealed_state_dir(state_dir(&repo));
 
     let out = orch
         .run_from_template(input(repo.root(), receipt))
@@ -567,7 +567,7 @@ async fn without_a_key_no_attestation_is_written_and_no_digest_is_claimed() {
         .await
         // No key: the store refuses to write an unsigned record, so there is no record at all.
         .with_attestation_key(None)
-        .with_attestation_state_dir(state_dir(&repo));
+        .with_sealed_state_dir(state_dir(&repo));
 
     let out = orch
         .run_from_template(input(repo.root(), receipt_for(&identity, Uuid::new_v4())))
@@ -609,19 +609,27 @@ async fn a_state_dir_inside_the_workspace_refuses_the_seal() {
     let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
         Arc::new(std::sync::Mutex::new(None));
     let policy = Arc::new(policy_recorder());
-    let orch = service(calls, captured.clone(), policy)
+    let orch = service(calls.clone(), captured.clone(), policy)
         .await
         .with_attestation_key(Some(KEY.to_string()))
-        .with_attestation_state_dir(inside.clone());
+        .with_sealed_state_dir(inside.clone());
 
-    let out = orch
+    // Rule 2 seals the declaration **before** anything runs, so a store that cannot seal is a
+    // refusal of the run rather than a withheld record: a run whose declaration was never kept has
+    // nothing a later reader could compare against.
+    let err = orch
         .run_from_template(input(repo.root(), receipt_for(&identity, Uuid::new_v4())))
         .await
-        .expect("a refused store does not fail the run; it withholds the record");
-
-    assert_eq!(out.attestation_digest, None);
+        .expect_err("a store inside the workspace cannot seal the declaration");
+    match &err {
+        OrchestratorError::ReceiptRefused { kinds, .. } => {
+            assert_eq!(kinds, "state_dir_inside_workspace");
+        }
+        other => panic!("the location rule is a refusal of the declaration, got: {other:?}"),
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 0, "nothing was dispatched");
     assert!(
-        !inside.join("attestations").exists(),
+        !inside.join("attestations").exists() && !inside.join("receipts").exists(),
         "the store refuses before it creates a directory: {}",
         inside.display()
     );
@@ -686,7 +694,7 @@ async fn the_same_observation_for_the_same_execution_is_already_sealed() {
             let orch = service(calls, captured, policy)
                 .await
                 .with_attestation_key(Some(KEY.to_string()))
-                .with_attestation_state_dir(state);
+                .with_sealed_state_dir(state);
             orch.run_from_template(input(repo_root, receipt)).await
         }
     };
@@ -724,7 +732,7 @@ async fn a_second_digest_for_the_same_execution_is_refused_and_the_seal_stands()
     let first = service(calls, captured, policy)
         .await
         .with_attestation_key(Some(KEY.to_string()))
-        .with_attestation_state_dir(state_dir(&repo))
+        .with_sealed_state_dir(state_dir(&repo))
         .run_from_template(input(repo.root(), receipt_for(&identity, execution_id)))
         .await
         .expect("the first run seals");
@@ -733,7 +741,9 @@ async fn a_second_digest_for_the_same_execution_is_refused_and_the_seal_stands()
         .join("attestations")
         .join(format!("{execution_id}.json"));
 
-    // Second: the same execution, a declaration with one more step — a different observation.
+    // Second: the same execution, a declaration with one more step — a different observation, and
+    // a different canonical body. Rule 2 sealed the first declaration, so the second is refused
+    // before anything runs rather than overwriting the document the run was admitted under.
     let mut wider = receipt_for(&identity, execution_id);
     let mut extra = wider.steps[0].clone();
     extra.id = "write-more".to_string();
@@ -743,18 +753,24 @@ async fn a_second_digest_for_the_same_execution_is_refused_and_the_seal_stands()
     let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
         Arc::new(std::sync::Mutex::new(None));
     let policy = Arc::new(policy_recorder());
-    let second = service(calls, captured, policy)
+    let err = service(calls.clone(), captured, policy)
         .await
         .with_attestation_key(Some(KEY.to_string()))
-        .with_attestation_state_dir(state_dir(&repo))
+        .with_sealed_state_dir(state_dir(&repo))
         .run_from_template(input(repo.root(), wider))
         .await
-        .expect("a refused seal does not fail the run; it withholds the second record");
-
-    assert_eq!(
-        second.attestation_digest, None,
-        "the second record is refused, so no digest is claimed"
-    );
+        .expect_err("a different declaration for a sealed execution is refused");
+    match &err {
+        OrchestratorError::ReceiptRefused { kinds, detail } => {
+            assert_eq!(kinds, "sealed_digest_changed");
+            assert!(
+                detail.contains("is already sealed as"),
+                "the refusal names the seal: {detail}"
+            );
+        }
+        other => panic!("the re-seal rule is a refusal of the declaration, got: {other:?}"),
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 0, "nothing was dispatched");
 
     // The seal is exactly what it was, and it still verifies.
     let bytes = std::fs::read(&path).expect("the original seal is still there");
@@ -789,4 +805,56 @@ async fn a_second_digest_for_the_same_execution_is_refused_and_the_seal_stands()
         }
         other => panic!("a re-seal must be refused with SealedDigestChanged, got: {other:?}"),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Rule 2: the declaration itself is sealed, and its bytes are what a reader gets back
+// ---------------------------------------------------------------------------
+
+/// The sealed file is the canonical bytes of the receipt that was verified, and it reads back.
+#[tokio::test]
+async fn the_declaration_is_sealed_at_r0_and_reads_back_as_the_verified_receipt() {
+    let repo = TempRepo::new();
+    let identity = crate::receipt::workspace_identity(&repo.root()).expect("the fixture is a repo");
+    let execution_id = Uuid::new_v4();
+    let receipt = receipt_for(&identity, execution_id);
+    let expected_digest = crate::receipt::verify(&receipt, &identity)
+        .expect("verifies")
+        .digest()
+        .to_string();
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let policy = Arc::new(policy_recorder());
+    let orch = service(calls, captured, policy)
+        .await
+        .with_sealed_state_dir(state_dir(&repo))
+        .with_attestation_key(Some(KEY.to_string()));
+
+    orch.run_from_template(input(repo.root(), receipt.clone()))
+        .await
+        .expect("a receipt naming this tree verifies");
+
+    let path = state_dir(&repo)
+        .join("receipts")
+        .join(format!("{execution_id}.json"));
+    let text = std::fs::read_to_string(&path).expect("the declaration is on disk");
+
+    // The file is the canonical body itself, so a reader recovers the value rather than a
+    // re-serialisation that happens to parse: the digest of what is on disk is the digest the run
+    // reported.
+    assert_eq!(
+        text.as_bytes(),
+        crate::receipt::canonical_json(&receipt).expect("canonical"),
+        "the sealed bytes are the canonical form the digest is taken over"
+    );
+    let read_back = crate::receipt::Receipt::from_document(&text).expect("it parses");
+    assert_eq!(read_back, receipt, "and it is the same declaration");
+    assert_eq!(
+        read_back.digest().expect("digest").as_str(),
+        expected_digest,
+        "recomputing from the bytes gives the digest the envelope carries"
+    );
+    assert!(path.is_file());
 }
