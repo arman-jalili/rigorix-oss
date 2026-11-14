@@ -220,11 +220,14 @@ impl OrchestratorServiceImpl {
         );
         match store.put(&mut attestation) {
             Ok(stored) => {
+                // `already_sealed` is the idempotent case: the same observation for the same
+                // execution produced the same record, and writing it again would be a copy.
                 tracing::info!(
                     execution_id = %record.execution_id,
                     %stored.digest,
                     path = %stored.path.display(),
                     receipt_digest = %verified.digest(),
+                    already_sealed = stored.already_sealed,
                     "attestation sealed"
                 );
                 Some(stored.digest)

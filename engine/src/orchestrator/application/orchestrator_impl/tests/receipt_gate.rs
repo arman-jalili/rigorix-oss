@@ -663,3 +663,130 @@ async fn a_receipt_for_another_execution_is_refused() {
     assert!(policy.order.lock().unwrap().is_empty());
     assert!(captured.lock().unwrap().is_none());
 }
+
+// ---------------------------------------------------------------------------
+// P4: a seal is authoritative — the same observation is idempotent, a different one is refused
+// ---------------------------------------------------------------------------
+
+/// Re-running the same execution with the same declaration writes nothing and changes nothing.
+#[tokio::test]
+async fn the_same_observation_for_the_same_execution_is_already_sealed() {
+    let repo = TempRepo::new();
+    let identity = crate::receipt::workspace_identity(&repo.root()).expect("the fixture is a repo");
+    let execution_id = Uuid::new_v4();
+
+    let run = |state: std::path::PathBuf| {
+        let repo_root = repo.root();
+        let receipt = receipt_for(&identity, execution_id);
+        async move {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
+                Arc::new(std::sync::Mutex::new(None));
+            let policy = Arc::new(policy_recorder());
+            let orch = service(calls, captured, policy)
+                .await
+                .with_attestation_key(Some(KEY.to_string()))
+                .with_attestation_state_dir(state);
+            orch.run_from_template(input(repo_root, receipt)).await
+        }
+    };
+
+    let first = run(state_dir(&repo)).await.expect("the first run seals");
+    let path = state_dir(&repo)
+        .join("attestations")
+        .join(format!("{execution_id}.json"));
+    let after_first = std::fs::read(&path).expect("the record exists");
+
+    let second = run(state_dir(&repo))
+        .await
+        .expect("the second run seals the same record");
+
+    assert_eq!(first.attestation_digest, second.attestation_digest);
+    assert_eq!(
+        std::fs::read(&path).expect("the record still exists"),
+        after_first,
+        "the same observation must not rewrite the seal, and must not change its bytes"
+    );
+}
+
+/// A different observation for the same execution is refused, and the seal is left as it was.
+#[tokio::test]
+async fn a_second_digest_for_the_same_execution_is_refused_and_the_seal_stands() {
+    let repo = TempRepo::new();
+    let identity = crate::receipt::workspace_identity(&repo.root()).expect("the fixture is a repo");
+    let execution_id = Uuid::new_v4();
+
+    // First: the fixture receipt, one step.
+    let calls = Arc::new(AtomicUsize::new(0));
+    let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let policy = Arc::new(policy_recorder());
+    let first = service(calls, captured, policy)
+        .await
+        .with_attestation_key(Some(KEY.to_string()))
+        .with_attestation_state_dir(state_dir(&repo))
+        .run_from_template(input(repo.root(), receipt_for(&identity, execution_id)))
+        .await
+        .expect("the first run seals");
+    let sealed = first.attestation_digest.clone().expect("sealed");
+    let path = state_dir(&repo)
+        .join("attestations")
+        .join(format!("{execution_id}.json"));
+
+    // Second: the same execution, a declaration with one more step — a different observation.
+    let mut wider = receipt_for(&identity, execution_id);
+    let mut extra = wider.steps[0].clone();
+    extra.id = "write-more".to_string();
+    wider.steps.push(extra);
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let policy = Arc::new(policy_recorder());
+    let second = service(calls, captured, policy)
+        .await
+        .with_attestation_key(Some(KEY.to_string()))
+        .with_attestation_state_dir(state_dir(&repo))
+        .run_from_template(input(repo.root(), wider))
+        .await
+        .expect("a refused seal does not fail the run; it withholds the second record");
+
+    assert_eq!(
+        second.attestation_digest, None,
+        "the second record is refused, so no digest is claimed"
+    );
+
+    // The seal is exactly what it was, and it still verifies.
+    let bytes = std::fs::read(&path).expect("the original seal is still there");
+    let verified = crate::receipt::verify_attestation(&bytes, KEY.as_bytes())
+        .expect("the original seal still verifies");
+    assert_eq!(verified.attestation().digest().expect("canonical"), sealed);
+    // And the variant is the ADR's own, produced by the store rather than merely declared by it.
+    // Asserted at the store, because the run reports the refusal as an absent digest — a run that
+    // logged "sealed" and returned `None` would satisfy the assertions above for the wrong reason.
+    let store = crate::receipt::infrastructure::FileAttestationStore::new(
+        state_dir(&repo),
+        &repo.path,
+        Some(KEY.to_string()),
+    );
+    let verified = crate::receipt::verify(&receipt_for(&identity, execution_id), &identity)
+        .expect("the original declaration still verifies");
+    let mut replay = crate::receipt::AttestationBuilder::from_verified(&verified).build(1, 0);
+    match store.put(&mut replay) {
+        Err(crate::receipt::infrastructure::AttestationStoreError::Refused(
+            crate::receipt::ReceiptRefusal::SealedDigestChanged {
+                execution_id: named,
+                sealed,
+                presented,
+            },
+        )) => {
+            assert_eq!(named, execution_id.to_string());
+            assert_eq!(sealed, first.attestation_digest.clone().expect("sealed"));
+            assert_ne!(
+                presented, sealed,
+                "a different observation is a different digest"
+            );
+        }
+        other => panic!("a re-seal must be refused with SealedDigestChanged, got: {other:?}"),
+    }
+}

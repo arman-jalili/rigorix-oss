@@ -19,6 +19,19 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **A seal is authoritative: re-sealing an execution with a different digest is refused** (#1527, P4).
+  `FileAttestationStore::put` reads the record already on disk and verifies it with the deployment's
+  key before replacing anything, so the digest it compares is the one the record actually has rather
+  than a name or a timestamp. The same canonical body is accepted as **already sealed** and nothing is
+  written — the same observation twice is one fact, not two records. A different body is
+  `ReceiptRefusal::SealedDigestChanged`, naming the execution and both digests, and the original seal
+  is left untouched. The variant has exactly one construction site — the store — so the reachability
+  scan that refused it in #1548 now keeps it honest in the other direction.
+  `AttestationStoreError::Refused(ReceiptRefusal)` replaces P3's copied rule, so the store's rules are
+  stated once, in the vocabulary a caller already branches on. ADR-024 §6 rule 3's "not implemented"
+  sentence is corrected in this commit, which is the commit that gives it a subject; rule 2 (the sealed
+  *receipt* in the state directory) remains a rule, so this is item 3 and not all of §6.
+
 - **The attestation is sealed beside the repository, and the envelope references its digest** (#1527, P3).
   A receipt-driven run now writes `<state dir>/attestations/<execution_id>.json` through
   `FileAttestationStore`, and `RunOutput::attestation_digest` plus the audit envelope carry that
