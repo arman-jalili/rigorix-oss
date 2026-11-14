@@ -316,6 +316,16 @@ pub struct ExecutionResult {
     /// correlate the answer it got with the record the engine kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     receipt_digest: Option<String>,
+
+    /// The digest of the signed attestation sealed for this run (#1570).
+    ///
+    /// The difference between a sealed record and an unobserved one: a client that cannot see this
+    /// field cannot tell a run whose observation was written from one where it was not, and the
+    /// record is in a directory the client does not read. `None` means no receipt was declared, no
+    /// signing key was wired, or the store refused — the engine logs which, and this field does not
+    /// guess.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    attestation_digest: Option<String>,
 }
 
 impl ExecutionResult {
@@ -338,6 +348,7 @@ impl ExecutionResult {
             audit_uri,
             evidence: EvidenceStatus::NotRequested,
             receipt_digest: None,
+            attestation_digest: None,
         }
     }
 
@@ -382,6 +393,19 @@ impl ExecutionResult {
     #[must_use]
     pub fn receipt_digest(&self) -> Option<&str> {
         self.receipt_digest.as_deref()
+    }
+
+    /// Record the attestation sealed for this run (#1570).
+    #[must_use]
+    pub fn with_attestation_digest(mut self, attestation_digest: Option<String>) -> Self {
+        self.attestation_digest = attestation_digest;
+        self
+    }
+
+    /// The digest of the attestation sealed for this run, when one was sealed.
+    #[must_use]
+    pub fn attestation_digest(&self) -> Option<&str> {
+        self.attestation_digest.as_deref()
     }
 
     /// Record whether the run's evidence is complete (#1491).
@@ -1078,4 +1102,38 @@ pub struct NodeExecutionStateInfo {
     pub last_duration_ms: Option<u64>,
     /// Error message from the last failure.
     pub last_error: Option<String>,
+}
+
+#[cfg(test)]
+mod attestation_crossing {
+    use super::*;
+
+    /// #1570: the attestation digest crosses, and its absence is distinguishable.
+    ///
+    /// The record lives in the state directory, which a client does not read. Without this field a
+    /// run whose observation was sealed and one where nothing was sealed return the same response —
+    /// which is the difference between a sealed record and an unobserved one.
+    #[test]
+    fn a_sealed_run_and_an_unsealed_one_are_different_responses() {
+        let base = ExecutionResult::new(
+            Uuid::nil(),
+            ExecutionStatus::Completed,
+            vec![],
+            1,
+            None,
+            String::new(),
+        );
+        assert_eq!(base.attestation_digest(), None, "nothing sealed by default");
+
+        let sealed = base.clone().with_attestation_digest(Some("a".repeat(64)));
+        assert_eq!(sealed.attestation_digest(), Some("a".repeat(64).as_str()));
+
+        let with = serde_json::to_string(&sealed).expect("serialises");
+        let without = serde_json::to_string(&base).expect("serialises");
+        assert!(with.contains("attestation_digest"), "{with}");
+        assert!(
+            !without.contains("attestation_digest"),
+            "an absent reference must not appear at all: {without}"
+        );
+    }
 }

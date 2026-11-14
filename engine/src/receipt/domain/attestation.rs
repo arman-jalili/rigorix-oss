@@ -102,6 +102,22 @@ pub struct Attestation {
     identity: Option<String>,
     /// What the budget was and what it did.
     budget: BudgetEcho,
+    /// **Every** path the run changed, and a digest of what was there when it was sealed (#1570).
+    ///
+    /// Per-step attribution exists too, and it is exact only where a step's window is disjoint from
+    /// every other step's. This set is the one that is always sound: it is the run's net change,
+    /// taken around the whole execution, so it answers "what did this run write" without claiming to
+    /// know which step wrote it.
+    #[serde(default)]
+    observed_effects: Vec<ObservedEffect>,
+    /// Paths the run changed that **no** step of the receipt declared (#1570).
+    ///
+    /// Empty is a finding, not a default: a run whose declaration covered everything it touched says
+    /// so by having nothing here. Naming them at the run level rather than per step is deliberate —
+    /// on a concurrent frontier the engine can say a path was undeclared without being able to say
+    /// which step wrote it.
+    #[serde(default)]
+    undeclared_writes: Vec<String>,
     /// The HMAC over the canonical body, absent when no key is configured (signing is never
     /// silently simulated).
     signature: Option<String>,
@@ -136,6 +152,18 @@ impl Attestation {
     #[must_use]
     pub fn settled_effects(&self) -> &[String] {
         &self.settled_effects
+    }
+
+    /// Every path the run changed, with a digest of what was there at seal time.
+    #[must_use]
+    pub fn observed_effects(&self) -> &[ObservedEffect] {
+        &self.observed_effects
+    }
+
+    /// Paths the run changed that no step declared.
+    #[must_use]
+    pub fn undeclared_writes(&self) -> &[String] {
+        &self.undeclared_writes
     }
 
     /// The budget echo.
@@ -222,6 +250,11 @@ pub fn verify_attestation(bytes: &[u8], key: &[u8]) -> Result<VerifiedAttestatio
 /// to build an `Attestation`, and the builder asserts the invariants the type documents.
 impl Attestation {
     /// Build one. Crate-private on purpose (ADR-024 §4, #1527's constructor-privacy criterion).
+    ///
+    /// The argument list is the field list, one for one: a grouped argument would be a second place
+    /// where a field's default could be chosen, which is the thing this constructor exists to
+    /// prevent. `clippy` counts nine; the type counts nine fields.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn assemble(
         receipt_digest: String,
         execution_id: Uuid,
@@ -230,6 +263,8 @@ impl Attestation {
         settled_effects: Vec<String>,
         identity: Option<String>,
         budget: BudgetEcho,
+        observed_effects: Vec<ObservedEffect>,
+        undeclared_writes: Vec<String>,
     ) -> Self {
         Self {
             schema_version: super::receipt::RECEIPT_SCHEMA_VERSION,
@@ -240,6 +275,8 @@ impl Attestation {
             settled_effects,
             identity,
             budget,
+            observed_effects,
+            undeclared_writes,
             signature: None,
         }
     }
@@ -267,6 +304,10 @@ struct Wire {
     settled_effects: Vec<String>,
     identity: Option<String>,
     budget: BudgetEcho,
+    #[serde(default)]
+    observed_effects: Vec<ObservedEffect>,
+    #[serde(default)]
+    undeclared_writes: Vec<String>,
     signature: Option<String>,
 }
 
@@ -281,6 +322,8 @@ impl From<Wire> for Attestation {
             settled_effects: wire.settled_effects,
             identity: wire.identity,
             budget: wire.budget,
+            observed_effects: wire.observed_effects,
+            undeclared_writes: wire.undeclared_writes,
             signature: wire.signature,
         }
     }

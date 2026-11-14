@@ -377,7 +377,10 @@ impl EngineFacade for EngineFacadeImpl {
             &run_output.evidence,
         ))
         // #1527: the receipt the run was admitted under crosses the facade for the same reason.
-        .with_receipt_digest(run_output.receipt_digest.clone());
+        .with_receipt_digest(run_output.receipt_digest.clone())
+        // #1570: and so does the attestation, which lives in a directory the client cannot read.
+        // Without this field a sealed run and an unsealed one are the same response.
+        .with_attestation_digest(run_output.attestation_digest.clone());
 
         self.repository.save_execution(&result).await?;
         Ok(result)

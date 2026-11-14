@@ -19,6 +19,22 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **The attestation records what the run wrote, and the surface hosts use can see it** (#1570, ADR-024 §4).
+  `observed_effects` is no longer an empty list: the engine snapshots the run's changed paths before and
+  after execution, digests the bytes of each at seal time, and records them on the attestation.
+  Per-step attribution uses the executor's own progress transitions — a step's window is the interval
+  between its `Running` and terminal states — and is **exact only where that window intersects no other
+  step's**. On a `depends_on` frontier the windows overlap, so each step carries the union and its
+  `expectation_detail` names the steps it shared with: a per-step set that silently includes another
+  step's writes is a false accusation, and one that omits them is a false exoneration.
+  `undeclared_writes` names — once, at the run level — every path the run changed that no step declared,
+  which is the finding a frontier can make without knowing which step wrote it. Content digests are read
+  without following a symlinked component, and an empty digest means "could not be read at seal time",
+  never "the digest of empty bytes".
+  `ExecutionResult.attestation_digest` crosses to MCP, so a client can tell a sealed run from an
+  unsealed one: the record lives in a directory the client does not read, and without the field a
+  sealed run and an unsealed one were the same response. The five tool names are unchanged.
+
 - **The receipt itself is sealed, so the envelope's digest names bytes that exist** (#1570, ADR-024 §6 rule 2).
   `run_from_template` verified the declaration in memory and carried only its digest, so "the run was
   admitted under this declaration" was a claim about a document nobody had kept. `FileReceiptStore` now

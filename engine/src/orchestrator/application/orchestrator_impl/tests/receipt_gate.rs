@@ -212,6 +212,59 @@ fn step_def() -> crate::orchestrator::dto::TemplateStepDef {
     }
 }
 
+/// One declared step: `id` may write `path`, with a placeholder content digest.
+fn receipt_step(id: &str, path: &str) -> ReceiptStep {
+    receipt_step_with_digest(id, path, &format!("digest-of-{path}"))
+}
+
+/// One declared step with the content digest the run is expected to observe.
+fn receipt_step_with_digest(id: &str, path: &str, digest: &str) -> ReceiptStep {
+    ReceiptStep {
+        id: id.to_string(),
+        tool: "run_command".to_string(),
+        parameters: serde_json::json!({ "command": "true" }),
+        depends_on: Vec::new(),
+        declared_effects: DeclaredEffect {
+            paths: vec![path.to_string()],
+            content_digests: vec![digest.to_string()],
+        },
+        expectation: Expectation {
+            description: format!("{id} writes {path}"),
+            quality_level: None,
+        },
+        requires_approval: false,
+        timeout_secs: None,
+    }
+}
+
+/// A receipt over explicit steps, for `execution_id` in `workspace`.
+fn receipt_with(workspace: &str, execution_id: Uuid, steps: Vec<ReceiptStep>) -> Receipt {
+    Receipt::new(
+        execution_id,
+        Workspace {
+            kind: WorkspaceKind::CommitTree,
+            value: workspace.to_string(),
+        },
+        Sandbox {
+            regime: SandboxRegime::Container,
+            image_digest: "sha256:1111".to_string(),
+        },
+        steps,
+        vec![Role {
+            role: "executor".to_string(),
+            model_id: "m".to_string(),
+            context_window: 8192,
+            structured_output: false,
+        }],
+        BudgetDeclared {
+            max_iterations: 10,
+            max_tokens: 1000,
+        },
+        crate::quality_gates::domain::level::QualityLevel::MergeReady,
+    )
+    .expect("the fixture carries no credentials")
+}
+
 /// A receipt that names `workspace` as the tree it applies to, for `execution_id`.
 fn receipt_for(workspace: &str, execution_id: Uuid) -> Receipt {
     Receipt::new(
@@ -857,4 +910,462 @@ async fn the_declaration_is_sealed_at_r0_and_reads_back_as_the_verified_receipt(
         "recomputing from the bytes gives the digest the envelope carries"
     );
     assert!(path.is_file());
+}
+
+// ---------------------------------------------------------------------------
+// #1570: what the run wrote, observed while it ran
+// ---------------------------------------------------------------------------
+
+/// An executor that writes files and publishes the progress transitions the recorder listens to.
+///
+/// The observation seam is `on_progress`, so a double that only returns a result would prove nothing
+/// about it: this one keeps the callbacks the orchestrator registered and fires `Running` before its
+/// writes and a terminal status after them — which is exactly what the real executor does, and the
+/// only way a test can say the window is real.
+struct WritingExecutionService {
+    /// The repository the fixture writes into.
+    root_dir: std::path::PathBuf,
+    plans: Vec<(String, Vec<(String, String)>)>,
+    /// When true, every node's `Running` is published before any write: the windows overlap, which is
+    /// the frontier case.
+    overlap: bool,
+    callbacks:
+        std::sync::Mutex<Vec<crate::execution_engine::application::service_impl::ProgressCallback>>,
+    written: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl exec_svc::ParallelExecutionService for WritingExecutionService {
+    async fn execute_graph(
+        &self,
+        input: exec_dto::ExecuteGraphInput,
+    ) -> Result<exec_dto::ExecuteGraphOutput, crate::execution_engine::domain::ExecutionError> {
+        // The callbacks are `Fn` inside a `Mutex`, and the guard must not be held across the
+        // await at the end of this future: publish through a closure that takes the lock per call.
+        let total = u32::try_from(self.plans.len()).unwrap_or(1);
+        let publish =
+            |name: &str, status: crate::execution_engine::domain::NodeStatus, done: u32| {
+                let callbacks = self.callbacks.lock().expect("not poisoned");
+                for callback in callbacks.iter() {
+                    callback(
+                        crate::execution_engine::application::service::ExecutionProgress {
+                            dag_id: input.dag_id,
+                            node_id: Uuid::new_v4(),
+                            state: crate::execution_engine::domain::NodeExecutionState {
+                                node_id: Uuid::new_v4(),
+                                node_name: name.to_string(),
+                                status,
+                                ..crate::execution_engine::domain::NodeExecutionState::new(
+                                    Uuid::new_v4(),
+                                    name,
+                                )
+                            },
+                            total_nodes: total,
+                            completed_count: done,
+                            failed_count: 0,
+                            skipped_count: 0,
+                        },
+                    );
+                }
+            };
+
+        if self.overlap {
+            for (name, _) in &self.plans {
+                publish(
+                    name,
+                    crate::execution_engine::domain::NodeStatus::Running,
+                    0,
+                );
+            }
+        }
+        for (index, (name, files)) in self.plans.iter().enumerate() {
+            if !self.overlap {
+                publish(
+                    name,
+                    crate::execution_engine::domain::NodeStatus::Running,
+                    0,
+                );
+            }
+            for (path, contents) in files {
+                std::fs::write(self.root().join(path), contents).expect("the fixture writes");
+                self.written.fetch_add(1, Ordering::SeqCst);
+            }
+            if !self.overlap {
+                let done = u32::try_from(index + 1).unwrap_or(1);
+                publish(
+                    name,
+                    crate::execution_engine::domain::NodeStatus::Completed,
+                    done,
+                );
+            }
+        }
+        if self.overlap {
+            for (index, (name, _)) in self.plans.iter().enumerate() {
+                let done = u32::try_from(index + 1).unwrap_or(1);
+                publish(
+                    name,
+                    crate::execution_engine::domain::NodeStatus::Completed,
+                    done,
+                );
+            }
+        }
+
+        // A real result per node, so the record the attestation is built from has task results with
+        // the names the receipt declares. A mock that returns an empty result would make every step
+        // read as "no result", which is a fact about the mock and not about the step.
+        let mut result = crate::execution_engine::domain::ExecutionResult::new(input.dag_id);
+        let now = chrono::Utc::now();
+        for (index, (name, _)) in self.plans.iter().enumerate() {
+            let node_id = Uuid::new_v4();
+            result.node_results.insert(
+                node_id,
+                crate::execution_engine::domain::TaskResult {
+                    node_id,
+                    node_name: name.clone(),
+                    success: true,
+                    output: Some(format!("{name} done")),
+                    duration_ms: 1,
+                    retry_attempts: 0,
+                    error: None,
+                    failure_type: None,
+                    started_at: now,
+                    completed_at: now,
+                },
+            );
+            let _ = index;
+        }
+        result.completed_count = u32::try_from(self.plans.len()).unwrap_or(0);
+        result.total_nodes = result.completed_count;
+        result.completed_at = now;
+
+        Ok(exec_dto::ExecuteGraphOutput {
+            result,
+            completed_at: now,
+            approval_pending: false,
+            pending_approval_steps: Vec::new(),
+        })
+    }
+
+    async fn execute_node(
+        &self,
+        input: exec_dto::ExecuteNodeInput,
+    ) -> Result<exec_dto::ExecuteNodeOutput, crate::execution_engine::domain::ExecutionError> {
+        crate::orchestrator::application::orchestrator_mocks::MockExecutionService
+            .execute_node(input)
+            .await
+    }
+
+    async fn get_execution_state(
+        &self,
+        input: exec_dto::GetExecutionStateInput,
+    ) -> Result<exec_dto::GetExecutionStateOutput, crate::execution_engine::domain::ExecutionError>
+    {
+        crate::orchestrator::application::orchestrator_mocks::MockExecutionService
+            .get_execution_state(input)
+            .await
+    }
+
+    async fn pause_execution(
+        &self,
+        input: exec_dto::PauseExecutionInput,
+    ) -> Result<exec_dto::PauseExecutionOutput, crate::execution_engine::domain::ExecutionError>
+    {
+        crate::orchestrator::application::orchestrator_mocks::MockExecutionService
+            .pause_execution(input)
+            .await
+    }
+
+    async fn resume_execution(
+        &self,
+        input: exec_dto::ResumeExecutionInput,
+    ) -> Result<exec_dto::ResumeExecutionOutput, crate::execution_engine::domain::ExecutionError>
+    {
+        crate::orchestrator::application::orchestrator_mocks::MockExecutionService
+            .resume_execution(input)
+            .await
+    }
+
+    async fn approve_node(
+        &self,
+        input: exec_dto::ApproveNodeInput,
+    ) -> Result<exec_dto::ApproveNodeOutput, crate::execution_engine::domain::ExecutionError> {
+        crate::orchestrator::application::orchestrator_mocks::MockExecutionService
+            .approve_node(input)
+            .await
+    }
+
+    async fn hydrate_execution(
+        &self,
+        input: exec_dto::HydrateExecutionInput,
+    ) -> Result<exec_dto::HydrateExecutionOutput, crate::execution_engine::domain::ExecutionError>
+    {
+        crate::orchestrator::application::orchestrator_mocks::MockExecutionService
+            .hydrate_execution(input)
+            .await
+    }
+
+    async fn abort_execution(
+        &self,
+        input: exec_dto::AbortExecutionInput,
+    ) -> Result<exec_dto::AbortExecutionOutput, crate::execution_engine::domain::ExecutionError>
+    {
+        crate::orchestrator::application::orchestrator_mocks::MockExecutionService
+            .abort_execution(input)
+            .await
+    }
+
+    fn on_progress(
+        &self,
+        callback: crate::execution_engine::application::service_impl::ProgressCallback,
+    ) {
+        self.callbacks.lock().unwrap().push(callback);
+    }
+}
+
+impl WritingExecutionService {
+    fn root(&self) -> std::path::PathBuf {
+        self.root_dir.clone()
+    }
+}
+
+/// The harness for the observation cases: mocks everywhere except the executor (writes files) and
+/// audit (captured), with the state dir outside the workspace.
+async fn writing_service(
+    root: std::path::PathBuf,
+    plans: Vec<(String, Vec<(String, String)>)>,
+    overlap: bool,
+    written: Arc<AtomicUsize>,
+    captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>>,
+) -> OrchestratorServiceImpl {
+    use crate::orchestrator::application::orchestrator_mocks as mocks;
+    OrchestratorServiceImpl::new(
+        crate::orchestrator::domain::OrchestratorConfig::default(),
+        Arc::new(mocks::MockPlanningService::new()),
+        Arc::new(WritingExecutionService {
+            root_dir: root,
+            plans,
+            overlap,
+            callbacks: std::sync::Mutex::new(Vec::new()),
+            written,
+        }),
+        Arc::new(mocks::MockStateService::new()),
+        Arc::new(mocks::MockCancellationService),
+        Arc::new(mocks::MockEventBusService::new()),
+        None,
+        Arc::new(mocks::MockBudgetService),
+        None,
+    )
+    .with_audit_service(Arc::new(CapturingAuditService { captured }))
+}
+
+/// The attestation of the run in `state`, read back with its key.
+fn sealed_attestation(
+    state: &std::path::Path,
+    execution_id: Uuid,
+) -> crate::receipt::domain::attestation::VerifiedAttestation {
+    let path = state
+        .join("attestations")
+        .join(format!("{execution_id}.json"));
+    let bytes = std::fs::read(&path).expect("the attestation is sealed");
+    crate::receipt::verify_attestation(&bytes, KEY.as_bytes()).expect("it verifies")
+}
+
+/// A sequential step records exactly what it wrote, and a digest of the bytes it left.
+#[tokio::test]
+async fn a_sequential_step_observes_its_own_write_and_digests_the_bytes() {
+    let repo = TempRepo::new();
+    let identity = crate::receipt::workspace_identity(&repo.root()).expect("the fixture is a repo");
+    let execution_id = Uuid::new_v4();
+    let contents = "what the step wrote\n";
+    let receipt = receipt_with(
+        &identity,
+        execution_id,
+        vec![receipt_step_with_digest(
+            "write",
+            "out.txt",
+            &crate::receipt::sha256_hex(contents.as_bytes()),
+        )],
+    );
+
+    let written = Arc::new(AtomicUsize::new(0));
+    let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let orch = writing_service(
+        repo.path.clone(),
+        vec![(
+            "write".to_string(),
+            vec![("out.txt".to_string(), contents.to_string())],
+        )],
+        false,
+        written,
+        captured,
+    )
+    .await
+    .with_attestation_key(Some(KEY.to_string()))
+    .with_sealed_state_dir(state_dir(&repo));
+
+    orch.run_from_template(input(repo.root(), receipt))
+        .await
+        .expect("the run completes");
+
+    let sealed = sealed_attestation(&state_dir(&repo), execution_id);
+    let attestation = sealed.attestation();
+
+    // The run-level set is the one that settles a dispute: the path, and the digest of the bytes.
+    assert_eq!(attestation.observed_effects().len(), 1);
+    assert_eq!(attestation.observed_effects()[0].path, "out.txt");
+    assert_eq!(
+        attestation.observed_effects()[0].content_digest,
+        crate::receipt::sha256_hex(contents.as_bytes()),
+        "the digest is over the bytes on disk, not over the declaration"
+    );
+    assert!(
+        attestation.undeclared_writes().is_empty(),
+        "the step declared out.txt, so nothing is undeclared"
+    );
+
+    // And the step's own set is exact, because its window was its own.
+    assert_eq!(attestation.steps().len(), 1);
+    let step = &attestation.steps()[0];
+    assert_eq!(step.step_id, "write");
+    assert_eq!(step.observed_effects.len(), 1);
+    assert_eq!(step.observed_effects[0].path, "out.txt");
+    assert!(
+        step.expectation_met,
+        "the write was declared and observed: {:?}",
+        step.expectation_detail
+    );
+    assert_eq!(step.expectation_detail, None, "no overlap is reported");
+}
+
+/// A path no step declared is reported once, at the run level.
+#[tokio::test]
+async fn an_undeclared_write_is_named_at_the_run_level() {
+    let repo = TempRepo::new();
+    let identity = crate::receipt::workspace_identity(&repo.root()).expect("the fixture is a repo");
+    let execution_id = Uuid::new_v4();
+    let receipt = receipt_with(
+        &identity,
+        execution_id,
+        vec![receipt_step_with_digest(
+            "write",
+            "out.txt",
+            &crate::receipt::sha256_hex(b"declared\n"),
+        )],
+    );
+
+    let written = Arc::new(AtomicUsize::new(0));
+    let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let orch = writing_service(
+        repo.path.clone(),
+        vec![(
+            "write".to_string(),
+            vec![
+                ("out.txt".to_string(), "declared\n".to_string()),
+                ("secret.txt".to_string(), "not declared\n".to_string()),
+            ],
+        )],
+        false,
+        written,
+        captured,
+    )
+    .await
+    .with_attestation_key(Some(KEY.to_string()))
+    .with_sealed_state_dir(state_dir(&repo));
+
+    orch.run_from_template(input(repo.root(), receipt))
+        .await
+        .expect("the run completes");
+
+    let sealed = sealed_attestation(&state_dir(&repo), execution_id);
+    let attestation = sealed.attestation();
+
+    assert_eq!(
+        attestation.undeclared_writes(),
+        ["secret.txt".to_string()],
+        "exactly the path no step declared, named once"
+    );
+    let paths: Vec<&str> = attestation
+        .observed_effects()
+        .iter()
+        .map(|e| e.path.as_str())
+        .collect();
+    assert_eq!(paths, ["out.txt", "secret.txt"], "both are recorded");
+
+    // The step wrote a path it did not declare, so its own expectation is not met and the reason
+    // names it — attribution is exact here, so the per-step comparison runs.
+    let step = &attestation.steps()[0];
+    assert!(!step.expectation_met);
+    let detail = step.expectation_detail.clone().unwrap_or_default();
+    assert!(detail.contains("secret.txt"), "{detail}");
+    assert!(detail.contains("did not declare"), "{detail}");
+}
+
+/// Two steps whose windows overlap each carry the union and say so — neither is credited alone.
+#[tokio::test]
+async fn a_frontier_credits_neither_step_alone_and_says_why() {
+    let repo = TempRepo::new();
+    let identity = crate::receipt::workspace_identity(&repo.root()).expect("the fixture is a repo");
+    let execution_id = Uuid::new_v4();
+    let receipt = receipt_with(
+        &identity,
+        execution_id,
+        vec![receipt_step("a", "a.txt"), receipt_step("b", "b.txt")],
+    );
+
+    let written = Arc::new(AtomicUsize::new(0));
+    let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let orch = writing_service(
+        repo.path.clone(),
+        vec![
+            (
+                "a".to_string(),
+                vec![("a.txt".to_string(), "a\n".to_string())],
+            ),
+            (
+                "b".to_string(),
+                vec![("b.txt".to_string(), "b\n".to_string())],
+            ),
+        ],
+        // Both nodes enter `Running` before either writes: the intervals intersect.
+        true,
+        written,
+        captured,
+    )
+    .await
+    .with_attestation_key(Some(KEY.to_string()))
+    .with_sealed_state_dir(state_dir(&repo));
+
+    orch.run_from_template(input(repo.root(), receipt))
+        .await
+        .expect("the run completes");
+
+    let sealed = sealed_attestation(&state_dir(&repo), execution_id);
+    let attestation = sealed.attestation();
+
+    for step in attestation.steps() {
+        let paths: Vec<&str> = step
+            .observed_effects
+            .iter()
+            .map(|e| e.path.as_str())
+            .collect();
+        assert_eq!(
+            paths,
+            ["a.txt", "b.txt"],
+            "a shared window means the union: {} was credited {}",
+            step.step_id,
+            paths.join(", ")
+        );
+        let detail = step.expectation_detail.clone().unwrap_or_default();
+        assert!(
+            detail.contains("concurrent with"),
+            "the record says why the set is a union: {detail}"
+        );
+    }
+
+    // The union is not treated as an undeclared write: both paths were declared, by different steps,
+    // and the run-level comparison is over the union of the declarations.
+    assert!(attestation.undeclared_writes().is_empty());
 }

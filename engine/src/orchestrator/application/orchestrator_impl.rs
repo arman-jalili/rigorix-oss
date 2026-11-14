@@ -54,6 +54,7 @@ use crate::sequence_policy::application::service::SequencePolicyService;
 use crate::state_persistence::application::{dto as state_dto, service as state_svc};
 
 mod effect_key;
+mod effects;
 mod helpers;
 mod policy_pipeline;
 
@@ -167,9 +168,39 @@ impl OrchestratorServiceImpl {
         input: &RunFromTemplateInput,
         verified: Option<&crate::receipt::VerifiedReceipt>,
         record: &ExecutionRecord,
+        observations: Option<&effects::Observations>,
     ) -> Option<String> {
         let verified = verified?;
         let receipt = verified.receipt();
+
+        // The run-level set is what settles a dispute, so it is passed whatever else is available;
+        // the per-step sets are used only where the recorder found the step's window disjoint.
+        let digests: std::collections::BTreeMap<&str, &str> = observations
+            .map(|o| {
+                o.run
+                    .iter()
+                    .map(|e| (e.path.as_str(), e.content_digest.as_str()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let observed_for = |step_id: &str| -> Vec<crate::receipt::ObservedEffect> {
+            observations
+                .and_then(|o| o.per_step.get(step_id))
+                .map(|step| {
+                    step.paths
+                        .iter()
+                        .map(|path| crate::receipt::ObservedEffect {
+                            path: path.clone(),
+                            content_digest: digests
+                                .get(path.as_str())
+                                .copied()
+                                .unwrap_or_default()
+                                .to_string(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
 
         let mut builder = crate::receipt::AttestationBuilder::from_verified(verified);
         for step in &receipt.steps {
@@ -190,19 +221,80 @@ impl OrchestratorServiceImpl {
                     TaskStatus::Pending => (false, Some("the step never ran".to_string())),
                 },
             };
+            let observed_effects = observed_for(&step.id);
+            let shared = observations
+                .and_then(|o| o.per_step.get(&step.id))
+                .map(|o| o.concurrent_with.clone())
+                .unwrap_or_default();
+
+            // Three things can make a step's expectation "not met", and the detail says which: the
+            // step did not run, its window was shared with another step (so the set is a union and a
+            // per-step comparison would blame it for another's writes), or it wrote a path it did not
+            // declare.
+            let (met, detail) = if shared.is_empty() {
+                let refusals = crate::receipt::compare_declared_observed(
+                    &step.id,
+                    &step.declared_effects,
+                    &observed_effects,
+                );
+                if refusals.is_empty() {
+                    (met, detail)
+                } else {
+                    (
+                        false,
+                        Some(
+                            refusals
+                                .iter()
+                                .map(std::string::ToString::to_string)
+                                .collect::<Vec<_>>()
+                                .join("; "),
+                        ),
+                    )
+                }
+            } else {
+                let note = format!(
+                    "concurrent with {}: attribution is the union",
+                    shared.join(", ")
+                );
+                (
+                    met,
+                    Some(match detail {
+                        Some(reason) => format!("{reason}; {note}"),
+                        None => note,
+                    }),
+                )
+            };
+
             builder.observe_step(crate::receipt::ObservedStep {
                 step_id: step.id.clone(),
-                // Empty on purpose, and it says what it is: this change does not collect the paths a
-                // step wrote, so an empty list here means "no file-level observation was taken",
-                // not "nothing was written". `compare_declared_observed` over an empty observed set
-                // reports no undeclared write for that reason, which is why the field is not
-                // allowed to imply a clean bill of health anywhere it is read.
-                observed_effects: Vec::new(),
+                observed_effects,
                 expectation_met: met,
                 expectation_detail: detail,
             });
         }
         builder.identity(input.identity.as_ref().map(|i| i.subject.clone()));
+
+        // The run-level finding: paths this run changed that no step of the declaration named. Named
+        // here rather than per step because on a frontier the engine can say *that* a path was
+        // undeclared without being able to say which step wrote it.
+        let declared: std::collections::BTreeSet<&str> = receipt
+            .steps
+            .iter()
+            .flat_map(|s| s.declared_effects.paths.iter().map(String::as_str))
+            .collect();
+        let undeclared: Vec<String> = observations
+            .map(|o| {
+                o.run
+                    .iter()
+                    .map(|e| e.path.clone())
+                    .filter(|path| !declared.contains(path.as_str()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        builder.observe_run(
+            observations.map(|o| o.run.clone()).unwrap_or_default(),
+            undeclared,
+        );
         let attestation = builder.build(
             u32::try_from(record.task_results.len()).unwrap_or(u32::MAX),
             u64::from(record.planning.total_tokens),
@@ -1197,6 +1289,17 @@ impl OrchestratorService for OrchestratorServiceImpl {
             }
         }
 
+        // 2b. Start observing effects (#1570). The recorder snapshots the run's changed paths before
+        // the graph and again after it, and each node's window from the executor's own progress
+        // transitions, so the attestation can say what changed — per step where attribution is sound
+        // and as a run-level set always.
+        let recorder = verified_receipt.as_ref().map(|_| {
+            let recorder =
+                std::sync::Arc::new(effects::EffectRecorder::new(&input.repo_root, execution_id));
+            self.execution_service.on_progress(recorder.callback());
+            recorder
+        });
+
         // 3. Execute DAG — keep a clone of the graph so an approval pause can
         // be persisted for cross-process resume (GAP-3).
         let graph_for_resume = graph.clone();
@@ -1464,7 +1567,16 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // record), and the absence is reported rather than papered over: no digest in the envelope,
         // and the store's reason in the log at `error`, because a receipt-driven run that produced
         // no attestation is a deployment defect rather than a normal state.
-        let attestation_digest = self.seal_attestation(&input, verified_receipt.as_ref(), &record);
+        let observations = match (recorder.as_ref(), verified_receipt.as_ref()) {
+            (Some(recorder), Some(verified)) => Some(recorder.finish(verified.receipt())),
+            _ => None,
+        };
+        let attestation_digest = self.seal_attestation(
+            &input,
+            verified_receipt.as_ref(),
+            &record,
+            observations.as_ref(),
+        );
 
         // 10. Evidence: built, signed, persisted and delivered — and the run says
         // which of those happened (#1480). The result is consumed, never dropped.

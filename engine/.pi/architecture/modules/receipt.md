@@ -49,6 +49,9 @@ inside the module provides the parsing, so `grep 'impl.*Deserialize.*for Attesta
 | `receipt_digest` | echoed from the verified receipt, not restated |
 | `steps[]` | observed effects and whether each expectation was met, with the reason when not |
 | `quality` | `source: Engine { step_id }` **only** when a step in this execution established a level above the caller's claim; otherwise `source: Caller`, and no field reads as passed |
+| `observed_effects` | every path the run changed, with a sha256 of the bytes at seal time — taken around the whole execution, so it is sound whatever the schedule (#1570) |
+| `undeclared_writes` | paths the run changed that no step declared, named at the run level (#1570) |
+| `steps[].observed_effects` | the paths attributable to that step: exact when its window intersects no other step's, the union with `expectation_detail` naming the overlap otherwise (#1570) |
 | `budget` | `{ declared, observed, enforced: false }` |
 | `signature` | HMAC-SHA256 over the canonical body, the audit envelope's mechanism; absent when no key is configured (signing is never silently simulated) |
 
