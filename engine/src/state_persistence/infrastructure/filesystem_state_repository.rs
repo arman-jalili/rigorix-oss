@@ -47,7 +47,13 @@ impl FileSystemStateRepository {
             fs::create_dir_all(&state_dir)
                 .await
                 .map_err(|e| StateError::DirectoryError {
-                    detail: format!("Failed to create state directory {:?}: {}", state_dir, e),
+                    // Named at construction because this is where an operator can still act on it:
+                    // the resolved path, and the variable that overrides it (#1572).
+                    detail: format!(
+                        "Failed to create state directory {:?}: {}. Set RIGORIX_STATE_DIR to a \
+                         writable path outside the workspace if this location is not one",
+                        state_dir, e
+                    ),
                 })?;
         }
 
@@ -58,6 +64,25 @@ impl FileSystemStateRepository {
         }
 
         Ok(Self { state_dir })
+    }
+
+    /// Ensure this store's directory exists before a write (#1572).
+    ///
+    /// The constructor creates it, and that guarantee does not survive the process: a deployment that
+    /// names its runtime directory per run can remove the parent while the server is alive, and the
+    /// failure then lands at the **end** of a governed run — after the steps executed — which is the
+    /// worst of the three outcomes (a refusal before dispatch, a completed record, or half of each).
+    /// The cost is one `create_dir_all` per write; the directory is usually already there.
+    async fn ensure_dir(&self) -> Result<(), StateError> {
+        // sink: state-persistence:state-store
+        fs::create_dir_all(&self.state_dir)
+            .await
+            .map_err(|e| StateError::DirectoryError {
+                detail: format!(
+                    "Failed to create state directory {:?}: {}",
+                    self.state_dir, e
+                ),
+            })
     }
 
     /// Get the path to the state file for an execution ID.
@@ -74,6 +99,7 @@ impl FileSystemStateRepository {
 #[async_trait]
 impl StateRepository for FileSystemStateRepository {
     async fn save(&self, state: &ExecutionState) -> Result<(), StateError> {
+        self.ensure_dir().await?;
         let path = self.state_path(state.execution_id);
         let temp = self.temp_path(state.execution_id);
 
@@ -227,6 +253,38 @@ mod tests {
         state.exec_node_states = Some(exec);
 
         state
+    }
+
+    /// #1572: a directory that disappears under a running store does not lose the record.
+    ///
+    /// The constructor creates the directory, and the deployment this issue is about removes it while
+    /// the server is alive — so the guarantee has to be re-established at the write, or a governed run
+    /// executes its steps and then cannot persist the record. That is the failure this asserts against.
+    #[tokio::test]
+    async fn test_save_recreates_a_directory_removed_after_construction() {
+        let dir = TempDir::new().unwrap();
+        let state_dir = dir.path().join("nested").join(".runtime");
+        let repo = FileSystemStateRepository::new(state_dir.clone())
+            .await
+            .expect("the constructor creates it");
+        assert!(state_dir.is_dir());
+
+        // The parent goes away, taking the store's directory with it — the shape of a runtime
+        // directory that is recreated per run.
+        std::fs::remove_dir_all(dir.path().join("nested")).expect("the fixture removes it");
+        assert!(!state_dir.exists());
+
+        let state = ExecutionState::new(Uuid::new_v4(), "hash".to_string());
+        let execution_id = state.execution_id;
+        repo.save(&state)
+            .await
+            .expect("the write re-creates its own directory");
+
+        let read_back = repo
+            .load(execution_id)
+            .await
+            .expect("and the record is there");
+        assert_eq!(read_back.execution_id, execution_id);
     }
 
     async fn create_repo() -> (FileSystemStateRepository, TempDir) {
