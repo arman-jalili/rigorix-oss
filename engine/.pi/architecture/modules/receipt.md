@@ -93,10 +93,17 @@ Three refusals, all before a byte is written:
 |---|---|---|
 | `StateDirInsideWorkspace` | the resolved state directory is inside the resolved repository | the rule is about where the store *is*: `sub/../.rigorix/state` is refused even though the string does not start with the repository |
 | `Unsigned` | no signing key was wired, so the attestation carries no signature | the module's only reader (`verify_attestation`) requires a signature; a file that looks like evidence and cannot be verified is worse than no file, and signing is never simulated |
-| `WriteFailed { stage }` | `create`, `write` or `rename` failed | "persistence failed" without the stage is not something an operator can act on |
+| `SealedDigestChanged` | a record for this execution exists with a **different** digest | a seal is authoritative: the first record is what every later read resolves, and a second one is refused rather than replacing it. The same canonical body re-signed is the same record and is accepted as already sealed, with nothing written |
+| `WriteFailed { stage }` | `create`, `read`, `write` or `rename` failed | "persistence failed" without the stage is not something an operator can act on |
+
+The re-seal comparison is made by the module's own reader: `put` reads the record on disk and runs
+`verify_attestation` over it, so the digest it compares is the one the record actually has rather than
+a name or a timestamp. `AttestationStoreError::Refused` carries a `ReceiptRefusal`, so the rules the
+store enforces are stated once, in the vocabulary a caller already branches on.
 
 The envelope carries the attestation's **digest** and never a copy: one sealed record, one home, no
-second trail. A run with no receipt, no key, or a refused store carries no `attestation_digest`, and
+second trail. A legitimate re-run gets a new `execution_id`; it does not get to overwrite the
+evidence of the run before it (ADR-024 §6 rule 3). A run with no receipt, no key, or a refused store carries no `attestation_digest`, and
 the store's own words are logged at `error` — for a receipt-driven run, a missing record is a finding,
 not a normal state.
 

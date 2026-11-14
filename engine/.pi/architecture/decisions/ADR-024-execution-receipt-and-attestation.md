@@ -192,12 +192,15 @@ So the mechanism is not a new adapter. It is a **location rule plus a refusal at
    naming both canonical paths.
 2. The sealed receipt and its fixture digests are written **once** into the state dir, and every verification reads them
    from there, never from a path R0 supplies. R0 supplies the digest; the engine resolves the bytes.
-3. Re-sealing the same `(execution_id | intent_key)` with a different digest is refused. **Not implemented
-   (#1548):** there is no seal record to compare a second seal against, so the vocabulary has no
-   `SealedDigestChanged` variant — it was declared, displayed, documented, and unreachable, which is a verdict a caller
-   may branch on and never receive. The rule is stated here because it is this ADR's; the variant returns with the
-   store that gives it a subject, and `engine/tests/unit/receipt/receipt_verification_test.rs` fails when a variant
-   lands without a construction site outside `domain/refusal.rs`.
+3. Re-sealing the same `(execution_id | intent_key)` with a different digest is refused. **Implemented (#1527):**
+   `FileAttestationStore::put` reads the record already on disk, verifies it with the deployment's key, and compares
+   digests before replacing anything: the same canonical body is accepted as already sealed (a copy of one fact), a
+   different one is `SealedDigestChanged`, naming both digests and the execution. That store is the variant's only
+   construction site, so `engine/tests/unit/receipt/receipt_verification_test.rs`'s reachability scan keeps the rule
+   honest in the direction it was built for — a variant with no producer fails. "Different" is a different canonical
+   body: the same observation re-signed is the same record, and a legitimate re-run gets a new `execution_id` rather
+   than overwriting the evidence of the run before it. The store is the attestation's; the sealed *receipt* is not
+   written to the state directory yet (rule 2 remains a rule), so this is item 3 with a subject, not all of §6.
 
 | option for the location | consequence |
 |---|---|

@@ -18,13 +18,10 @@ use crate::receipt::{refuse_state_dir_inside_workspace, sign};
 /// Why an attestation could not be stored.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AttestationStoreError {
-    /// The state directory resolves inside the workspace the agent can write (ADR-024 §6, rule 1).
-    StateDirInsideWorkspace {
-        /// The canonical state directory.
-        state_dir: String,
-        /// The canonical workspace root it was found inside.
-        repo_root: String,
-    },
+    /// A rule of the receipt vocabulary refused the record — the seal's location, or a re-seal that
+    /// would replace one. The refusal carries its own sentence and kind, so a caller branches on the
+    /// vocabulary it already reads rather than on a second copy of the same rules.
+    Refused(crate::receipt::ReceiptRefusal),
     /// The attestation carries no signature, so `verify_attestation` could only refuse it.
     Unsigned {
         /// The execution it was about, so the operator can find the run that produced it.
@@ -46,14 +43,7 @@ pub enum AttestationStoreError {
 impl std::fmt::Display for AttestationStoreError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::StateDirInsideWorkspace {
-                state_dir,
-                repo_root,
-            } => write!(
-                f,
-                "the attestation store {state_dir} is inside the workspace {repo_root}, which the \
-                 executing agent can write"
-            ),
+            Self::Refused(refusal) => write!(f, "{refusal}"),
             Self::Unsigned { execution_id } => write!(
                 f,
                 "the attestation for execution {execution_id} is unsigned, and an unsigned record \
@@ -78,8 +68,10 @@ impl std::error::Error for AttestationStoreError {}
 pub struct StoredAttestation {
     /// sha256 over the attestation's canonical body — the same string the envelope carries.
     pub digest: String,
-    /// The file the record was written to.
+    /// The file the record lives in.
     pub path: PathBuf,
+    /// Whether the record was already there with this digest, in which case nothing was written.
+    pub already_sealed: bool,
 }
 
 /// The file-backed attestation store: `<state dir>/attestations/<execution_id>.json`.
@@ -141,22 +133,8 @@ impl FileAttestationStore {
 
         // The rule is checked on resolved paths, so `<repo>/x/../.rigorix/state` is refused even
         // though the string does not start with the repository.
-        refuse_state_dir_inside_workspace(&self.state_dir, &self.repo_root).map_err(|refusal| {
-            match refusal {
-                crate::receipt::ReceiptRefusal::StateDirInsideWorkspace {
-                    state_dir,
-                    repo_root,
-                } => AttestationStoreError::StateDirInsideWorkspace {
-                    state_dir,
-                    repo_root,
-                },
-                other => AttestationStoreError::WriteFailed {
-                    stage: "refuse_state_dir_inside_workspace",
-                    path: self.state_dir.to_string_lossy().to_string(),
-                    detail: other.to_string(),
-                },
-            }
-        })?;
+        refuse_state_dir_inside_workspace(&self.state_dir, &self.repo_root)
+            .map_err(AttestationStoreError::Refused)?;
 
         if !attestation.is_signed() {
             return Err(AttestationStoreError::Unsigned {
@@ -180,6 +158,54 @@ impl FileAttestationStore {
             detail: e.to_string(),
         })?;
         let path = dir.join(format!("{}.json", attestation.execution_id()));
+
+        // A seal is authoritative (ADR-024 §6, rule 3): read what is there before replacing it.
+        //
+        // The comparison is made by the module's own reader — `verify_attestation` over the sealed
+        // bytes — rather than by trusting a name or a timestamp, so the digest being compared is the
+        // one the record actually has. The same body re-signed is the same record, and writing it
+        // again would be a copy of the same fact: it is accepted and reported as already sealed.
+        if path.exists() {
+            let sealed_bytes =
+                std::fs::read(&path).map_err(|e| AttestationStoreError::WriteFailed {
+                    stage: "read",
+                    path: path.to_string_lossy().to_string(),
+                    detail: e.to_string(),
+                })?;
+            let key = self.signing_key.as_deref().unwrap_or_default();
+            let sealed = crate::receipt::verify_attestation(&sealed_bytes, key.as_bytes())
+                .map_err(|detail| {
+                    AttestationStoreError::Refused(
+                        crate::receipt::ReceiptRefusal::MalformedDocument {
+                            detail: format!(
+                                "the sealed attestation at {} does not verify: {detail}",
+                                path.display()
+                            ),
+                        },
+                    )
+                })?;
+            let sealed_digest = sealed.attestation().digest().map_err(|detail| {
+                AttestationStoreError::WriteFailed {
+                    stage: "canonicalise-sealed",
+                    path: path.to_string_lossy().to_string(),
+                    detail,
+                }
+            })?;
+            if sealed_digest != digest {
+                return Err(AttestationStoreError::Refused(
+                    crate::receipt::ReceiptRefusal::SealedDigestChanged {
+                        execution_id: attestation.execution_id().to_string(),
+                        sealed: sealed_digest,
+                        presented: digest,
+                    },
+                ));
+            }
+            return Ok(StoredAttestation {
+                digest,
+                path,
+                already_sealed: true,
+            });
+        }
 
         // The module's own wire shape: `Attestation` has no `Deserialize`, and `verify_attestation`
         // is the only door from bytes back to a value. Serialising here is the write half of that
@@ -211,6 +237,10 @@ impl FileAttestationStore {
             detail: e.to_string(),
         })?;
 
-        Ok(StoredAttestation { digest, path })
+        Ok(StoredAttestation {
+            digest,
+            path,
+            already_sealed: false,
+        })
     }
 }

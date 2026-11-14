@@ -11,8 +11,9 @@
 //!   a caller may branch on and never receive. `Receipt::from_document` is the door for the two
 //!   closed vocabularies (`SchemaVersion`, `UnsupportedWorkspaceKind`), because serde would answer
 //!   with its own sentence instead; a test scans for a variant with no construction site.
-//! - **ADR-024 §6's re-seal rule has no variant here**, because nothing persists a seal yet. The
-//!   rule is recorded in the ADR rather than advertised in this type.
+//! - **ADR-024 §6's re-seal rule is here**, because `FileAttestationStore::put` persists a seal and
+//!   compares against the one already on disk: `SealedDigestChanged` has exactly one construction
+//!   site, and it is the store that gives the rule a subject.
 
 use serde::{Deserialize, Serialize};
 
@@ -113,6 +114,21 @@ pub enum ReceiptRefusal {
         /// What the engine observed.
         observed: String,
     },
+    /// The same execution was sealed with a different digest (ADR-024 §6, rule 3).
+    ///
+    /// A seal is authoritative for its execution: the first record written is the one every later
+    /// read resolves, and a second record with a different digest is refused rather than silently
+    /// replacing it. "Different" is a different canonical body — the same observation re-signed is
+    /// the same record and is accepted as such. A legitimate re-run gets a new `execution_id`; it
+    /// does not get to overwrite the evidence of the run that came before it.
+    SealedDigestChanged {
+        /// The execution whose seal exists.
+        execution_id: String,
+        /// The digest already sealed.
+        sealed: String,
+        /// The digest the second record would have written.
+        presented: String,
+    },
     /// The state directory is inside the workspace the agent can write (ADR-024 §6).
     StateDirInsideWorkspace {
         /// The canonical state directory.
@@ -148,6 +164,7 @@ impl ReceiptRefusal {
             Self::WorkspaceIdentityUnavailable { .. } => "workspace_identity_unavailable",
             Self::UndeclaredWrite { .. } => "undeclared_write",
             Self::ContentDigestMismatch { .. } => "content_digest_mismatch",
+            Self::SealedDigestChanged { .. } => "sealed_digest_changed",
             Self::StateDirInsideWorkspace { .. } => "state_dir_inside_workspace",
             Self::MalformedDocument { .. } => "malformed_document",
         }
@@ -215,6 +232,15 @@ impl std::fmt::Display for ReceiptRefusal {
             } => write!(
                 f,
                 "step '{step}' wrote '{path}' with digest {observed}, not the declared {declared}"
+            ),
+            Self::SealedDigestChanged {
+                execution_id,
+                sealed,
+                presented,
+            } => write!(
+                f,
+                "execution {execution_id} is already sealed as {sealed}; this record would write \
+                 {presented}, and a seal is not a draft"
             ),
             Self::StateDirInsideWorkspace {
                 state_dir,
