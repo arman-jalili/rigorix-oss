@@ -22,6 +22,7 @@ contract: a receipt that lies is **refused**, an attestation that lies **cannot 
 | `ReceiptRefusal` | `src/receipt/domain/refusal.rs` | the closed refusal vocabulary, and `ReceiptVerdict = Verified \| Refused(..)` | #refusals |
 | canonical form | `src/receipt/domain/digest.rs` | one function, one digest — what every seal and signature is taken over | #canonical |
 | `verify` / `AttestationBuilder` | `src/receipt/application/service.rs` | verify before dispatch; attest after the last step; the state-directory rule | #verify |
+| `FileAttestationStore` | `src/receipt/infrastructure/attestation_store.rs` | where a sealed attestation is written, and the refusals that keep it out of the workspace | #store |
 
 ## Receipt
 
@@ -73,6 +74,32 @@ admissible; deriving the runbook from it is a later change, and until then the c
 what runs — so "the receipt was verified" means "the declaration was admissible", not "the run was
 the declaration".
 
+## Where the record lives {#store}
+
+`<state dir>/attestations/<execution_id>.json`, one file per execution, written by
+`FileAttestationStore` as a temporary file plus a rename. `<state dir>` is `default_state_dir`'s
+answer — `RIGORIX_STATE_DIR` when the operator set one, otherwise `<repo>/../.execution-state/<slug>`,
+a sibling of the repository.
+
+This replaced a module doc that said the attestation would be persisted "beside the audit envelope, in
+the same repository". That was wrong on the ADR's own terms: `<repo>/.rigorix/audit` is inside the
+tree the agent's write tools are contained to, so a seal stored there is a seal the agent can lower
+before it is evaluated (ADR-024 §6). The envelope store is also ADR-016's `local_unanchored` regime by
+design; a signed observation of what a run did has a different job and a different home.
+
+Three refusals, all before a byte is written:
+
+| refusal | when | why it is a refusal rather than a warning |
+|---|---|---|
+| `StateDirInsideWorkspace` | the resolved state directory is inside the resolved repository | the rule is about where the store *is*: `sub/../.rigorix/state` is refused even though the string does not start with the repository |
+| `Unsigned` | no signing key was wired, so the attestation carries no signature | the module's only reader (`verify_attestation`) requires a signature; a file that looks like evidence and cannot be verified is worse than no file, and signing is never simulated |
+| `WriteFailed { stage }` | `create`, `write` or `rename` failed | "persistence failed" without the stage is not something an operator can act on |
+
+The envelope carries the attestation's **digest** and never a copy: one sealed record, one home, no
+second trail. A run with no receipt, no key, or a refused store carries no `attestation_digest`, and
+the store's own words are logged at `error` — for a receipt-driven run, a missing record is a finding,
+not a normal state.
+
 ## Verify
 
 1. schema version ∈ supported;
@@ -80,7 +107,12 @@ the declaration".
 3. workspace identity = the identity the **engine** computed (never the receipt's own string);
 4. sandbox present;
 5. every `depends_on` names a step; no cycle; declared effects pairwise;
-6. the credential scan — at construction, so nothing downstream copies a secret.
+6. the credential scan — at construction, so nothing downstream copies a secret;
+7. the receipt names **this** execution (`refuse_foreign_execution`): a receipt for another run is a
+   declaration for a run that is not this one, and an attestation built from it would record this
+   run's observations under that run's id. It is a separate function rather than a third argument to
+   `verify` because the caller supplies the id — a value derived from the receipt would make every
+   call vacuous.
 
 A refusal list is never empty when returned, and a `VerifiedReceipt` is the only way to reach the
 `AttestationBuilder`. So "the receipt was refused" and "nothing was dispatched" are one statement.

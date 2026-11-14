@@ -56,7 +56,14 @@ ever started and no envelope was built. That is asserted as an absence
 (`orchestrator_impl/tests/receipt_gate.rs`), not read off the refusal's message:
 an assertion on the message passes with the verification moved after the graph.
 The workspace identity compared against is the engine's own
-(`git rev-parse HEAD^{tree}`), never a string the receipt carries.
+(`git rev-parse HEAD^{tree}`), never a string the receipt carries, and the receipt must name **this**
+execution before anything else is checked — a receipt for another run is refused before its workspace
+is even resolved, because the answer would be about a different run.
+
+**9b, after execution and before the envelope**: a run that declared a receipt seals an attestation of
+what it observed (`FileAttestationStore`, `<state dir>/attestations/<execution_id>.json`) and passes
+its **digest** to `record_evidence`, which is what the envelope's `attestation_digest` references. The
+envelope never carries the record itself.
 
 ### Cancellation Path
 
@@ -185,7 +192,7 @@ let result = orchestrator.run(RunInput { intent }).await?;
 |-----|:-----------:|--------|
 | RunInput | Input | intent: String, config: Config, repo_root: String, repository: Option\<String\>, author: Option\<String\> (legacy, self-asserted), identity: Option\<IdentityClaim\>, enforcement_preset: Option\<String\> |
 | RunFromTemplateInput | Input | steps: Vec\<TemplateStepDef\>, repo_root: String, execution_id: Option\<Uuid\>, template_name: String, repository: Option\<String\>, author: Option\<String\>, identity: Option\<IdentityRef\>, identity_verification_failure: Option\<String\>, enforcement_preset: Option\<String\>, receipt: Option\<Receipt\> (additive, #1527) |
-| RunOutput | Output | execution_id, record: ExecutionRecord, evidence: EvidenceStatus, receipt_digest: Option\<String\> (additive, #1527) |
+| RunOutput | Output | execution_id, record: ExecutionRecord, evidence: EvidenceStatus, receipt_digest: Option\<String\> (additive, #1527), attestation_digest: Option\<String\> (additive, #1527 P3) |
 | PlanFromTemplateInput | Input | steps: Vec\<TemplateStepDef\>, repo_root: String, template_name: String |
 | PlanOnlyInput | Input | intent: UserIntent, config: Config, repo_root: PathBuf |
 | PlanOnlyOutput | Output | plan: PlanningResult, graph: TaskGraph |

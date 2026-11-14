@@ -212,10 +212,10 @@ fn step_def() -> crate::orchestrator::dto::TemplateStepDef {
     }
 }
 
-/// A receipt that names `workspace` as the tree it applies to.
-fn receipt_for(workspace: &str) -> Receipt {
+/// A receipt that names `workspace` as the tree it applies to, for `execution_id`.
+fn receipt_for(workspace: &str, execution_id: Uuid) -> Receipt {
     Receipt::new(
-        Uuid::nil(),
+        execution_id,
         Workspace {
             kind: WorkspaceKind::CommitTree,
             value: workspace.to_string(),
@@ -259,7 +259,7 @@ fn input(repo_root: String, receipt: Receipt) -> RunFromTemplateInput {
     RunFromTemplateInput {
         steps: vec![step_def()],
         repo_root,
-        execution_id: Some(Uuid::new_v4()),
+        execution_id: Some(receipt.execution_id),
         template_name: "receipt-gate".to_string(),
         repository: None,
         author: Some("test@example.com".to_string()),
@@ -321,10 +321,11 @@ async fn a_refused_receipt_dispatches_nothing_and_builds_no_envelope() {
 
     // The receipt names a tree that is not this repository's, so `verify` refuses it on the rule it
     // is about — the workspace — rather than on schema, digest or structure.
+    let foreign = Uuid::new_v4();
     let err = orch
         .run_from_template(input(
             repo.root(),
-            receipt_for("0000000000000000000000000000000000000000"),
+            receipt_for("0000000000000000000000000000000000000000", foreign),
         ))
         .await
         .expect_err("a receipt naming another tree must be refused");
@@ -366,7 +367,8 @@ async fn a_refused_receipt_dispatches_nothing_and_builds_no_envelope() {
 async fn a_verified_receipt_runs_once_and_its_digest_reaches_the_envelope() {
     let repo = TempRepo::new();
     let identity = crate::receipt::workspace_identity(&repo.root()).expect("the fixture is a repo");
-    let receipt = receipt_for(&identity);
+    let execution_id = Uuid::new_v4();
+    let receipt = receipt_for(&identity, execution_id);
     // The expectation is the verifier's own answer, computed here rather than read off the run:
     // `verify` is the function that decides a digest is admissible, so asserting the run recorded
     // *that* digest is the claim. Anything else would let the run define its own answer.
@@ -435,7 +437,7 @@ async fn a_run_without_a_receipt_carries_no_reference() {
 
     let mut input = input(
         repo.root(),
-        receipt_for("0000000000000000000000000000000000000000"),
+        receipt_for("0000000000000000000000000000000000000000", Uuid::new_v4()),
     );
     input.receipt = None;
 
@@ -448,4 +450,216 @@ async fn a_run_without_a_receipt_carries_no_reference() {
     assert_eq!(out.receipt_digest, None);
     let envelope_input = captured.lock().unwrap().take().expect("envelope");
     assert_eq!(envelope_input.receipt_digest, None);
+}
+
+// ---------------------------------------------------------------------------
+// P3: the attestation is sealed beside the repository, and referenced by digest
+// ---------------------------------------------------------------------------
+
+/// A key the store can sign with, and the bytes `verify_attestation` will be handed.
+const KEY: &str = "attestation-test-key";
+
+/// A sibling of the repository, unique to this fixture.
+///
+/// `temp_dir()/state` would be shared by every test in this file — the repository is
+/// `temp_dir()/rigorix-receipt-gate-<pid>-<n>`, so its parent is the temporary directory itself.
+/// A sibling named after the repository is still outside the workspace, and is one test's alone.
+fn state_dir(repo: &TempRepo) -> std::path::PathBuf {
+    let name = repo
+        .path
+        .file_name()
+        .expect("the fixture names itself")
+        .to_string_lossy()
+        .to_string();
+    repo.path.with_file_name(format!("{name}.state"))
+}
+
+/// The record is written once, outside the workspace, and the envelope references its digest.
+#[tokio::test]
+async fn a_verified_receipt_seals_one_attestation_outside_the_workspace() {
+    let repo = TempRepo::new();
+    let identity = crate::receipt::workspace_identity(&repo.root()).expect("the fixture is a repo");
+    let execution_id = Uuid::new_v4();
+    let receipt = receipt_for(&identity, execution_id);
+    let receipt_digest = crate::receipt::verify(&receipt, &identity)
+        .expect("verifies")
+        .digest()
+        .to_string();
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let policy = Arc::new(policy_recorder());
+    let orch = service(calls, captured.clone(), policy)
+        .await
+        .with_attestation_key(Some(KEY.to_string()))
+        .with_attestation_state_dir(state_dir(&repo));
+
+    let out = orch
+        .run_from_template(input(repo.root(), receipt))
+        .await
+        .expect("a receipt naming this tree verifies");
+
+    let digest = out
+        .attestation_digest
+        .clone()
+        .expect("a keyed run seals an attestation");
+    assert_eq!(digest.len(), 64, "a sha256 in hex");
+
+    // One record, in the state directory, named by the execution.
+    let path = state_dir(&repo)
+        .join("attestations")
+        .join(format!("{}.json", out.execution_id));
+    let bytes = std::fs::read(&path).expect("the attestation file exists");
+    // Not in the envelope store: that directory is inside the agent-writable tree, which is the
+    // whole reason the record lives here instead (ADR-024 §6).
+    assert!(
+        !path.canonicalize().expect("the record exists").starts_with(
+            repo.path
+                .canonicalize()
+                .expect("the fixture repository exists")
+        ),
+        "the attestation must not be inside the workspace: {}",
+        path.display()
+    );
+
+    // The record verifies with the key, and it answers the receipt the run was admitted under.
+    let verified = crate::receipt::verify_attestation(&bytes, KEY.as_bytes())
+        .expect("the sealed record verifies");
+    assert_eq!(verified.attestation().receipt_digest(), receipt_digest);
+    assert_eq!(
+        verified.attestation().digest().expect("canonical"),
+        digest,
+        "the digest the run reports is the digest of the bytes that were written"
+    );
+    // The step ran and the observation says so — a record of nothing would also verify.
+    let observed = verified.attestation().steps();
+    assert_eq!(
+        observed.len(),
+        1,
+        "one step in the receipt, one observation"
+    );
+    assert_eq!(observed[0].step_id, "write");
+
+    // And the envelope carries the reference rather than a copy.
+    let envelope = captured.lock().unwrap().take().expect("envelope");
+    assert_eq!(
+        envelope.attestation_digest.as_deref(),
+        Some(digest.as_str())
+    );
+    assert_eq!(
+        envelope.receipt_digest.as_deref(),
+        Some(receipt_digest.as_str())
+    );
+}
+
+/// Without a key nothing is sealed — and the absence is visible, not silent.
+#[tokio::test]
+async fn without_a_key_no_attestation_is_written_and_no_digest_is_claimed() {
+    let repo = TempRepo::new();
+    let identity = crate::receipt::workspace_identity(&repo.root()).expect("the fixture is a repo");
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let policy = Arc::new(policy_recorder());
+    let orch = service(calls, captured.clone(), policy)
+        .await
+        // No key: the store refuses to write an unsigned record, so there is no record at all.
+        .with_attestation_key(None)
+        .with_attestation_state_dir(state_dir(&repo));
+
+    let out = orch
+        .run_from_template(input(repo.root(), receipt_for(&identity, Uuid::new_v4())))
+        .await
+        .expect("an unsigned deployment still runs the work");
+
+    assert_eq!(
+        out.attestation_digest, None,
+        "an unsigned record cannot be verified by the only reader the module has, so none is claimed"
+    );
+    assert!(
+        !state_dir(&repo).join("attestations").exists(),
+        "nothing is written when nothing can be signed"
+    );
+    let envelope = captured.lock().unwrap().take().expect("envelope");
+    assert_eq!(envelope.attestation_digest, None);
+    assert!(
+        envelope.receipt_digest.is_some(),
+        "the receipt reference is still there: the declaration was verified even though nothing \
+         was sealed"
+    );
+}
+
+/// A state directory inside the workspace is refused, on resolved paths, before any write.
+#[tokio::test]
+async fn a_state_dir_inside_the_workspace_refuses_the_seal() {
+    let repo = TempRepo::new();
+    let identity = crate::receipt::workspace_identity(&repo.root()).expect("the fixture is a repo");
+    // The string does not start with the repository, and the resolved path does — the rule is about
+    // where the store is, not about how it was spelled.
+    let inside = repo
+        .path
+        .join("sub")
+        .join("..")
+        .join(".rigorix")
+        .join("state");
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let policy = Arc::new(policy_recorder());
+    let orch = service(calls, captured.clone(), policy)
+        .await
+        .with_attestation_key(Some(KEY.to_string()))
+        .with_attestation_state_dir(inside.clone());
+
+    let out = orch
+        .run_from_template(input(repo.root(), receipt_for(&identity, Uuid::new_v4())))
+        .await
+        .expect("a refused store does not fail the run; it withholds the record");
+
+    assert_eq!(out.attestation_digest, None);
+    assert!(
+        !inside.join("attestations").exists(),
+        "the store refuses before it creates a directory: {}",
+        inside.display()
+    );
+}
+
+/// A receipt is for one execution, and a receipt for another is refused before anything runs.
+#[tokio::test]
+async fn a_receipt_for_another_execution_is_refused() {
+    let repo = TempRepo::new();
+    let identity = crate::receipt::workspace_identity(&repo.root()).expect("the fixture is a repo");
+    // A receipt that names this tree — so the workspace check would pass — and a different run.
+    let receipt = receipt_for(&identity, Uuid::new_v4());
+    let this_run = Uuid::new_v4();
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let policy = Arc::new(policy_recorder());
+    let orch = service(calls.clone(), captured.clone(), policy.clone()).await;
+
+    let mut input = input(repo.root(), receipt);
+    input.execution_id = Some(this_run);
+
+    let err = orch
+        .run_from_template(input)
+        .await
+        .expect_err("a receipt for another execution is not this run's declaration");
+    match &err {
+        OrchestratorError::ReceiptRefused { kinds, detail } => {
+            assert_eq!(kinds, "execution_id_mismatch", "{kinds}");
+            assert!(
+                detail.contains(&this_run.to_string()),
+                "the refusal names the run it was handed to: {detail}"
+            );
+        }
+        other => panic!("the refusal must be the receipt's own variant, got: {other:?}"),
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(policy.order.lock().unwrap().is_empty());
+    assert!(captured.lock().unwrap().is_none());
 }

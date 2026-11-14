@@ -86,6 +86,29 @@ pub fn workspace_identity(repo_root: &str) -> Result<String, ReceiptRefusal> {
     Ok(tree)
 }
 
+/// Refuse a receipt that names a different execution than the one about to run (#1527).
+///
+/// Separate from [`verify`] rather than a third argument to it, for a reason that shows up in a
+/// test: `verify` is called with the workspace the *engine* computed, and it can be called at all
+/// only where an execution exists. Here the caller supplies the execution id, so a test can hand it
+/// a different one and watch the refusal — an argument derived from the receipt would make every
+/// call vacuous.
+///
+/// # Errors
+/// `ExecutionIdMismatch`, naming both ids.
+pub fn refuse_foreign_execution(
+    receipt: &Receipt,
+    execution_id: uuid::Uuid,
+) -> Result<(), ReceiptRefusal> {
+    if receipt.execution_id == execution_id {
+        return Ok(());
+    }
+    Err(ReceiptRefusal::ExecutionIdMismatch {
+        receipt: receipt.execution_id.to_string(),
+        execution: execution_id.to_string(),
+    })
+}
+
 /// Verify a receipt against the workspace identity the engine computed.
 ///
 /// `workspace_identity` is the engine's answer (for `CommitTree`, the tree OID of the tree it was

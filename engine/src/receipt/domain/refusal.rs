@@ -34,6 +34,17 @@ pub enum ReceiptRefusal {
         /// What the bytes say now.
         actual: String,
     },
+    /// The receipt names a different execution than the one it was handed to (#1527).
+    ///
+    /// A receipt answers **one** execution (ADR-024 §4). A receipt for another one is a declaration
+    /// for a run that is not this one, and an attestation built from it would record this run's
+    /// observations under that run's id — a true record filed as evidence about something else.
+    ExecutionIdMismatch {
+        /// The execution the receipt names.
+        receipt: String,
+        /// The execution the engine was about to run.
+        execution: String,
+    },
     /// The receipt applies to a different workspace than the one presented.
     WorkspaceMismatch {
         /// The identity in the receipt.
@@ -127,6 +138,7 @@ impl ReceiptRefusal {
         match self {
             Self::SchemaVersion { .. } => "schema_version",
             Self::DigestMismatch { .. } => "digest_mismatch",
+            Self::ExecutionIdMismatch { .. } => "execution_id_mismatch",
             Self::WorkspaceMismatch { .. } => "workspace_mismatch",
             Self::UnknownStep { .. } => "unknown_step",
             Self::DependencyCycle { .. } => "dependency_cycle",
@@ -152,6 +164,10 @@ impl std::fmt::Display for ReceiptRefusal {
             Self::DigestMismatch { expected, actual } => write!(
                 f,
                 "receipt digest does not match its bytes: sealed {expected}, computed {actual}"
+            ),
+            Self::ExecutionIdMismatch { receipt, execution } => write!(
+                f,
+                "receipt is for execution {receipt}, but this run is {execution}"
             ),
             Self::WorkspaceMismatch { receipt, workspace } => write!(
                 f,

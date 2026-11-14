@@ -75,6 +75,16 @@ pub struct RunOutput {
     /// caller's; a copy here would be a second declaration to keep in step with theirs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receipt_digest: Option<String>,
+
+    /// The digest of the signed attestation sealed for this run (#1527 P3).
+    ///
+    /// `None` when the run declared no receipt, when no signing key was wired, or when the store
+    /// refused — three states the log distinguishes and this field does not, because a digest is
+    /// either a reference to a record that exists or it is nothing. It is the same string the audit
+    /// envelope carries in `attestation_digest`, and it is a **reference**: the record lives in the
+    /// state directory, outside the workspace (ADR-024 §6), and is never copied here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attestation_digest: Option<String>,
 }
 
 /// The state of a run's audit evidence (#1480).

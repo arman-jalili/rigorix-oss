@@ -29,9 +29,11 @@ pub mod infrastructure;
 
 pub use application::service::{
     AttestationBuilder, VerifiedReceipt, compare_declared_observed, default_state_dir,
-    refuse_state_dir_inside_workspace, sign, verify, workspace_identity,
+    refuse_foreign_execution, refuse_state_dir_inside_workspace, sign, verify, workspace_identity,
 };
-pub use domain::attestation::{Attestation, QualityRecord, QualitySource, verify_attestation};
+pub use domain::attestation::{
+    Attestation, ObservedEffect, ObservedStep, QualityRecord, QualitySource, verify_attestation,
+};
 pub use domain::digest::{ReceiptDigest, canonical_json, sha256_hex};
 pub use domain::receipt::{
     BudgetDeclared, DeclaredEffect, Expectation, Receipt, ReceiptStep, Role, Sandbox,
