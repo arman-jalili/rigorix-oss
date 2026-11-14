@@ -19,6 +19,14 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- **A stage reports the failures inside it, not its own last command** (#1572's run). `stage_end` recorded
+  the end timestamp and returned that command's status, which is always 0 — so a run printed
+  `✅ stage lint — 17 passed` next to a `FAIL validate-ci.sh (engine) — exit 1` row, and the green line was
+  the one a reader watches. The stage's status is now its steps' status (`stage_has_failures` over the
+  stage's own record), asserted in the self-test with a passing and a failing record: 18/18 cases in each
+  of the six mirrored copies. The run-level verdict was already right — it sums the same records — which is
+  exactly why the discrepancy survived: two readers of one fact, disagreeing.
+
 - **A state directory that disappears under a running server no longer loses the record** (#1572). Every
   store in `state_persistence` created its directory in its constructor and then assumed the guarantee held
   for the life of the process — so a deployment that recreates its runtime directory per run made a
