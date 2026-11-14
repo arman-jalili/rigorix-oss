@@ -78,6 +78,19 @@ pub enum ReceiptRefusal {
         /// What it did declare.
         declared: Vec<String>,
     },
+    /// The engine could not compute the workspace's identity, so it could not verify a receipt
+    /// against it (#1527).
+    ///
+    /// A refusal of the **run**, not of the document: the receipt may be perfectly well-formed and
+    /// still be unverifiable here, and the engine says which of the two it is. Nothing is dispatched,
+    /// which is the same outcome as a refused receipt and the reason this is in the same vocabulary
+    /// rather than a separate error type at the boundary.
+    WorkspaceIdentityUnavailable {
+        /// The repository root the engine was given.
+        repo_root: String,
+        /// Why the identity could not be computed — `git`'s own words when it ran and failed.
+        detail: String,
+    },
     /// A step wrote content whose digest differs from the declared digest.
     ContentDigestMismatch {
         /// The step.
@@ -120,6 +133,7 @@ impl ReceiptRefusal {
             Self::SandboxMissing => "sandbox_missing",
             Self::SecretInParameters { .. } => "secret_in_parameters",
             Self::UnsupportedWorkspaceKind { .. } => "unsupported_workspace_kind",
+            Self::WorkspaceIdentityUnavailable { .. } => "workspace_identity_unavailable",
             Self::UndeclaredWrite { .. } => "undeclared_write",
             Self::ContentDigestMismatch { .. } => "content_digest_mismatch",
             Self::StateDirInsideWorkspace { .. } => "state_dir_inside_workspace",
@@ -164,6 +178,10 @@ impl std::fmt::Display for ReceiptRefusal {
             Self::UnsupportedWorkspaceKind { kind, supported } => write!(
                 f,
                 "workspace kind '{kind}' is not implemented (supported: {supported:?})"
+            ),
+            Self::WorkspaceIdentityUnavailable { repo_root, detail } => write!(
+                f,
+                "the engine could not compute the workspace identity for {repo_root}: {detail}"
             ),
             Self::UndeclaredWrite {
                 step,

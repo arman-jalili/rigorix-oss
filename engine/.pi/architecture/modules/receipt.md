@@ -50,6 +50,29 @@ inside the module provides the parsing, so `grep 'impl.*Deserialize.*for Attesta
 | `budget` | `{ declared, observed, enforced: false }` |
 | `signature` | HMAC-SHA256 over the canonical body, the audit envelope's mechanism; absent when no key is configured (signing is never silently simulated) |
 
+## Where verify is called (#1527 P2)
+
+`run_from_template` verifies the caller's receipt as step **R0**, before the identity gate, the
+sequence-policy pipeline, any state write and `build_graph_from_steps`
+(`orchestrator/application/orchestrator_impl.rs`). The workspace identity is computed by
+`workspace_identity(repo_root)` — `git rev-parse HEAD^{tree}` in the repository the caller named —
+and a receipt that names its own tree is compared against *that*, never against its own string.
+
+A refusal becomes `OrchestratorError::ReceiptRefused { kinds, detail }`: `kinds` is every refusal's
+stable kind, comma-separated, and `detail` keeps every refusal's own sentence. An identity that
+cannot be computed is `WorkspaceIdentityUnavailable`, a refusal of the **run** rather than of the
+document, because the receipt may be well-formed and still unverifiable here.
+
+The verified digest then reaches three places and no fourth: `RunOutput::receipt_digest`, the MCP
+`ExecutionResult::receipt_digest` (a field, never a new tool name — the five names are frozen), and
+the audit envelope's `receipt_digest` reference. It is a **reference** in all three: the sealed bytes
+stay in the state directory, so an envelope is not a second copy of a declaration.
+
+What this does not do: the receipt's steps are not yet the plan. R0 proves the declaration was
+admissible; deriving the runbook from it is a later change, and until then the caller's `steps` are
+what runs — so "the receipt was verified" means "the declaration was admissible", not "the run was
+the declaration".
+
 ## Verify
 
 1. schema version ∈ supported;

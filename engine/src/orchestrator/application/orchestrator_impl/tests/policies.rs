@@ -172,6 +172,7 @@ async fn test_sequence_policy_deny_refuses_runbook_before_any_step() {
             identity_verification_failure: None,
             author: None,
             enforcement_preset: None,
+            receipt: None,
         })
         .await
         .unwrap_err();
@@ -253,6 +254,7 @@ async fn test_sequence_policy_corrupt_config_refuses_run_no_steps_execute() {
             identity_verification_failure: None,
             author: None,
             enforcement_preset: None,
+            receipt: None,
         })
         .await
         .unwrap_err();
@@ -337,6 +339,7 @@ async fn test_sequence_policy_promotion_recorded_in_envelope_events_redacted() {
             identity_verification_failure: None,
             author: None,
             enforcement_preset: None,
+            receipt: None,
         })
         .await
         .expect("promoted runbook pauses (not an error)");
@@ -737,6 +740,7 @@ async fn test_r7_cross_run_same_principal_remove_then_add_refused_at_plan_time()
             identity_verification_failure: None,
             author: Some("jeff@corp".to_string()),
             enforcement_preset: None,
+            receipt: None,
         })
         .await
         .expect_err("run 2 must be refused at plan time (cross-run R7)");

@@ -66,6 +66,15 @@ pub struct RunOutput {
     /// audit was disabled or unwired — the honest state, not a silent `Complete`.
     #[serde(default)]
     pub evidence: EvidenceStatus,
+
+    /// The digest of the receipt this run was admitted under (#1527).
+    ///
+    /// `None` for a run that declared none — which, until hosts send one, is every run. The value is
+    /// the digest `verify` computed, not one the caller supplied, and it is the same string the
+    /// audit envelope carries in `receipt_digest`: a **reference**. The receipt's bytes are the
+    /// caller's; a copy here would be a second declaration to keep in step with theirs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receipt_digest: Option<String>,
 }
 
 /// The state of a run's audit evidence (#1480).
@@ -248,6 +257,20 @@ pub struct RunFromTemplateInput {
 
     /// Optional enforcement preset override.
     pub enforcement_preset: Option<String>,
+
+    /// The declaration this run is asked to satisfy (#1527, ADR-024 §4).
+    ///
+    /// Verified **before** the identity gate, the policy pipeline, any state write and any graph: a
+    /// refused receipt returns [`OrchestratorError::ReceiptRefused`](crate::orchestrator::domain::error::OrchestratorError::ReceiptRefused)
+    /// and nothing is dispatched, so "the receipt was refused" and "no step ran" are the same
+    /// statement rather than two claims a reader has to correlate.
+    ///
+    /// `None` means the caller declared nothing, which is what every caller did before this field
+    /// existed. A verified receipt's digest reaches [`RunOutput::receipt_digest`] and the audit
+    /// envelope; its steps are **not** yet the plan (see the PR: P2 verifies the declaration, it does
+    /// not derive the runbook from it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receipt: Option<crate::receipt::domain::receipt::Receipt>,
 }
 
 /// Input for a plan-from-template operation (no execution).

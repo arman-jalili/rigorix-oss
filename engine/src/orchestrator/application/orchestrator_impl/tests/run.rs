@@ -35,6 +35,7 @@ async fn test_run_from_template_records_effect_key_on_envelope() {
         identity_verification_failure: None,
         author: Some("user@org".to_string()),
         enforcement_preset: None,
+        receipt: None,
     })
     .await
     .expect("run_from_template should succeed");
@@ -118,6 +119,7 @@ async fn test_run_from_template_refused_when_budget_exhausted() {
         identity_verification_failure: None,
         author: None,
         enforcement_preset: None,
+        receipt: None,
     };
 
     let err = orch.run_from_template(input).await.unwrap_err();
@@ -172,6 +174,7 @@ async fn test_run_reports_degraded_evidence_instead_of_inferring_success() {
             identity_verification_failure: None,
             author: None,
             enforcement_preset: None,
+            receipt: None,
         })
         .await
         .expect("the run itself succeeds; only its evidence is degraded");

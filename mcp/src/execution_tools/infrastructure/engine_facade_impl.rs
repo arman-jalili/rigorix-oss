@@ -330,6 +330,7 @@ impl EngineFacade for EngineFacadeImpl {
             identity,
             identity_verification_failure: verification_failure,
             enforcement_preset: None,
+            receipt: None,
         };
 
         let run_output = timeout(
@@ -374,7 +375,9 @@ impl EngineFacade for EngineFacadeImpl {
         // made a lost envelope indistinguishable from a complete one at the surface.
         .with_evidence(crate::execution_tools::domain::value::EvidenceStatus::from(
             &run_output.evidence,
-        ));
+        ))
+        // #1527: the receipt the run was admitted under crosses the facade for the same reason.
+        .with_receipt_digest(run_output.receipt_digest.clone());
 
         self.repository.save_execution(&result).await?;
         Ok(result)

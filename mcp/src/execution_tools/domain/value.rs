@@ -307,6 +307,15 @@ pub struct ExecutionResult {
     /// absent field is indistinguishable from a client that does not know it.
     #[serde(default)]
     evidence: EvidenceStatus,
+
+    /// The digest of the receipt the run was admitted under (#1527).
+    ///
+    /// Absent when the caller declared no receipt, which is every run today — an absent field reads
+    /// as "nothing was declared" rather than as a digest nobody can check. Present, it is the digest
+    /// the engine's `verify` computed and the same string the audit envelope carries, so a client can
+    /// correlate the answer it got with the record the engine kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    receipt_digest: Option<String>,
 }
 
 impl ExecutionResult {
@@ -328,6 +337,7 @@ impl ExecutionResult {
             tokens_used,
             audit_uri,
             evidence: EvidenceStatus::NotRequested,
+            receipt_digest: None,
         }
     }
 
@@ -359,6 +369,19 @@ impl ExecutionResult {
     /// Audit record URI.
     pub fn audit_uri(&self) -> &str {
         &self.audit_uri
+    }
+
+    /// Record the receipt the run was admitted under (#1527).
+    #[must_use]
+    pub fn with_receipt_digest(mut self, receipt_digest: Option<String>) -> Self {
+        self.receipt_digest = receipt_digest;
+        self
+    }
+
+    /// The digest of the receipt the run was admitted under, when it declared one.
+    #[must_use]
+    pub fn receipt_digest(&self) -> Option<&str> {
+        self.receipt_digest.as_deref()
     }
 
     /// Record whether the run's evidence is complete (#1491).

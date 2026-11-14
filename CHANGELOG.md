@@ -19,6 +19,28 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **A run declares its receipt, and the declaration is verified before the graph exists** (#1527, P2).
+  `RunFromTemplateInput` gained `receipt: Option<Receipt>`, and `run_from_template` verifies it as R0 —
+  before the identity gate, the sequence-policy pipeline, any state write and
+  `build_graph_from_steps`. A refusal is `OrchestratorError::ReceiptRefused { kinds, detail }`,
+  carrying every refusal rather than the first, and it means nothing ran: the gates were never
+  consulted, no graph was built, no node started, no envelope was written. The identity a receipt is
+  compared against is the engine's own — `git rev-parse HEAD^{tree}` in the repository the caller
+  named (`receipt::workspace_identity`) — never a string the receipt carries, and an identity that
+  cannot be computed is `WorkspaceIdentityUnavailable`, a refusal of the run rather than of the
+  document.
+  The verified digest reaches three places and no fourth: `RunOutput::receipt_digest`, the MCP
+  `ExecutionResult::receipt_digest` (a **field**, because the five `EXECUTION_TOOL_NAMES` are a
+  cross-repository contract — now asserted literally in `frozen_surface` so an added name fails a
+  test rather than a client), and the audit envelope's `receipt_digest` reference from P1.
+  Three cases in `orchestrator_impl/tests/receipt_gate.rs`, and the ordering is what they assert:
+  a refused receipt means the executor was never called and the policy gates were never consulted,
+  paired with a control that runs (one executor call, the gates consulted in order, the digest on the
+  envelope). Moving `verify` after `build_graph` turns the refusal case red on the gate assertion —
+  the executor counter alone would have stayed at zero, which is why the gate count is the assertion.
+  The receipt's steps are **not** yet the plan: R0 proves the declaration was admissible, and
+  deriving the runbook from it is a later change.
+
 - **The audit envelope's receipt and attestation references are reachable, not hardcoded** (#1527, P1).
   `receipt_digest` and `attestation_digest` were appended to `AuditEnvelope` in #1528 and set to `None`
   in every build path, so no envelope could name the declaration it was admitted under. They are now

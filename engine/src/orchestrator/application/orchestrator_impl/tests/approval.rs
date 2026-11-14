@@ -56,6 +56,7 @@ async fn test_run_from_template_pauses_for_approval_and_resumes() {
         identity: None,
         identity_verification_failure: None,
         enforcement_preset: None,
+        receipt: None,
     };
 
     // 1. First run pauses at the approval boundary — NOT terminal.
@@ -113,6 +114,7 @@ async fn test_sequence_policy_promote_pauses_runbook_and_approve_executes_later_
         identity_verification_failure: None,
         author: None,
         enforcement_preset: None,
+        receipt: None,
     };
 
     // 1. First run pauses at the promoted step — the runbook declares no
@@ -200,6 +202,7 @@ async fn test_sequence_policy_declined_later_step_is_never_dispatched() {
             identity_verification_failure: None,
             author: None,
             enforcement_preset: None,
+            receipt: None,
         })
         .await
         .unwrap();
@@ -296,6 +299,7 @@ async fn test_sequence_policy_absent_config_run_executes_unchanged() {
             identity_verification_failure: None,
             author: None,
             enforcement_preset: None,
+            receipt: None,
         })
         .await
         .expect("absent config must not refuse the run");
