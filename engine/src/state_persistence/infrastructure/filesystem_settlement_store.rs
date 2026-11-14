@@ -55,6 +55,41 @@ impl FileSystemSettlementStore {
 impl SettlementStore for FileSystemSettlementStore {
     async fn put(&self, settlement: &ExecutionSettlement) -> Result<(), StateError> {
         let path = self.path(settlement.execution_id);
+
+        // Read before write (ADR-024 §6 rule 3, #1569). What is sealed is **which receipt** the record
+        // answers, not the whole file: a settlement accrues effects and a terminal over its life, so
+        // byte equality would refuse the close that makes it useful. A record that cannot be read is
+        // refused rather than overwritten — "unparseable" is not evidence that nothing is there.
+        match fs::read(&path).await {
+            Ok(existing) => {
+                let sealed: ExecutionSettlement =
+                    serde_json::from_slice(&existing).map_err(|e| StateError::CorruptedState {
+                        path: path.to_string_lossy().to_string(),
+                        detail: format!(
+                            "Settlement {path:?} exists but cannot be read, so it is not replaced: {e}"
+                        ),
+                    })?;
+                if sealed.receipt_digest != settlement.receipt_digest {
+                    return Err(StateError::SettlementSealedChanged {
+                        execution_id: settlement.execution_id.to_string(),
+                        sealed: sealed
+                            .receipt_digest
+                            .clone()
+                            .unwrap_or_else(|| "<no receipt>".to_string()),
+                        presented: settlement
+                            .receipt_digest
+                            .clone()
+                            .unwrap_or_else(|| "<no receipt>".to_string()),
+                    });
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(StateError::IoError {
+                    detail: format!("Failed to read settlement {path:?} before writing it: {e}"),
+                });
+            }
+        }
         let tmp = path.with_extension("json.tmp");
         let bytes =
             serde_json::to_vec_pretty(settlement).map_err(|e| StateError::SerialisationError {

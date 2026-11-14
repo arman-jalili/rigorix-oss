@@ -305,3 +305,159 @@ fn execution_settlement_the_aggregate_carries_no_effect_field_of_its_own() {
 /// comment.
 #[allow(dead_code)]
 fn keep(_guard: SettlementGuard) {}
+
+// ---------------------------------------------------------------------------
+// #1569: a settlement is sealed under the receipt it answers
+// ---------------------------------------------------------------------------
+
+/// A second `open` under another receipt is refused, and the record still says what it said.
+#[tokio::test]
+async fn execution_settlement_a_second_receipt_is_refused_and_the_seal_stands() {
+    let dir = tempdir("reseal");
+    let service = SettlementService::new(store_at(&dir).await);
+    let mut first = service
+        .open(execution(), Some(RECEIPT.to_string()), "t0".to_string())
+        .await
+        .expect("the first open seals");
+    first
+        .record_effect("record-a", SettlementState::Committed)
+        .await
+        .expect("records");
+    first
+        .close_completed("t1".to_string())
+        .await
+        .expect("closes");
+    let before = std::fs::read(dir.join(format!("{}.settlement.json", execution()))).expect("file");
+
+    let err = match service
+        .open(
+            execution(),
+            Some("a-different-receipt".to_string()),
+            "t2".to_string(),
+        )
+        .await
+    {
+        Err(error) => error,
+        Ok(_) => panic!("a settlement for another receipt is refused"),
+    };
+    match err {
+        rigorix_engine::state_persistence::domain::StateError::SettlementSealedChanged {
+            execution_id,
+            sealed,
+            presented,
+        } => {
+            assert_eq!(execution_id, execution().to_string());
+            assert_eq!(sealed, RECEIPT);
+            assert_eq!(presented, "a-different-receipt");
+        }
+        other => panic!("the re-seal must name both digests, got: {other}"),
+    }
+
+    // The seal is exactly what it was: the effects and the terminal the first run wrote still stand.
+    let after = std::fs::read(dir.join(format!("{}.settlement.json", execution()))).expect("file");
+    assert_eq!(after, before, "a refused open must not touch the record");
+    let read_back = service.settlement_for(execution()).await.expect("reads");
+    assert_eq!(read_back.receipt_digest.as_deref(), Some(RECEIPT));
+    assert_eq!(read_back.terminal, Some(SettlementTerminal::Completed));
+    assert_eq!(
+        read_back.effects.len(),
+        1,
+        "the first run's effects survive"
+    );
+}
+
+/// The same receipt may be opened and closed as often as its lifecycle needs.
+#[tokio::test]
+async fn execution_settlement_the_same_receipt_still_closes() {
+    let dir = tempdir("same-seal");
+    let service = SettlementService::new(store_at(&dir).await);
+    let mut guard = service
+        .open(execution(), Some(RECEIPT.to_string()), "t0".to_string())
+        .await
+        .expect("opens");
+    guard
+        .record_effect("record-a", SettlementState::Committed)
+        .await
+        .expect("records");
+    // The close is a second write for the same execution: the guard is on the seal, not on the write.
+    guard
+        .close_completed("t1".to_string())
+        .await
+        .expect("closes");
+    let read_back = service.settlement_for(execution()).await.expect("reads");
+    assert_eq!(read_back.terminal, Some(SettlementTerminal::Completed));
+    assert_eq!(read_back.receipt_digest.as_deref(), Some(RECEIPT));
+}
+
+/// A record that cannot be parsed is refused rather than replaced.
+#[tokio::test]
+async fn execution_settlement_an_unreadable_record_is_not_overwritten() {
+    let dir = tempdir("unreadable");
+    let path = dir.join(format!("{}.settlement.json", execution()));
+    std::fs::write(&path, b"{ not json").expect("the fixture writes");
+    let store = store_at(&dir).await;
+
+    let err = store
+        .put(
+            &rigorix_engine::effect_commitment::domain::settlement::ExecutionSettlement::open(
+                execution(),
+                Some(RECEIPT.to_string()),
+                "t0".to_string(),
+            ),
+        )
+        .await
+        .expect_err("an unreadable record is not evidence that nothing is there");
+    assert!(
+        matches!(
+            err,
+            rigorix_engine::state_persistence::domain::StateError::CorruptedState { .. }
+        ),
+        "expected CorruptedState, got {err}"
+    );
+    assert_eq!(
+        std::fs::read(&path).expect("still there"),
+        b"{ not json",
+        "the bytes are untouched"
+    );
+}
+
+/// The adapter refuses on its own, not only behind the use case.
+///
+/// Two layers, two tests on purpose: the use case refuses before constructing anything, and the store
+/// refuses before replacing anything. A test that only exercised the use case would stay green with the
+/// adapter's guard removed — measured, which is why this one exists.
+#[tokio::test]
+async fn execution_settlement_the_store_itself_refuses_a_foreign_receipt() {
+    use rigorix_engine::effect_commitment::domain::settlement::ExecutionSettlement;
+
+    let dir = tempdir("store-seal");
+    let store = store_at(&dir).await;
+    store
+        .put(&ExecutionSettlement::open(
+            execution(),
+            Some(RECEIPT.to_string()),
+            "t0".to_string(),
+        ))
+        .await
+        .expect("the first write seals");
+
+    let err = store
+        .put(&ExecutionSettlement::open(
+            execution(),
+            Some("another-receipt".to_string()),
+            "t1".to_string(),
+        ))
+        .await
+        .expect_err("the store refuses a different receipt for a sealed execution");
+    match err {
+        rigorix_engine::state_persistence::domain::StateError::SettlementSealedChanged {
+            sealed,
+            presented,
+            ..
+        } => {
+            assert_eq!(sealed, RECEIPT);
+            assert_eq!(presented, "another-receipt");
+        }
+        other => panic!("expected SettlementSealedChanged, got: {other}"),
+    }
+}

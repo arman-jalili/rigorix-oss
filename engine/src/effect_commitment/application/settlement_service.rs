@@ -63,6 +63,21 @@ impl SettlementService {
         receipt_digest: Option<String>,
         started_at: String,
     ) -> Result<SettlementGuard, StateError> {
+        // The same rule at the door, not only at the adapter: a second `open` for an execution already
+        // sealed under another receipt is refused before anything is constructed, so a different
+        // `SettlementStore` implementing this port cannot skip the check.
+        if let Some(presented) = receipt_digest.as_deref()
+            && let Ok(existing) = self.store.get(execution_id).await
+            && let Some(sealed) = existing.receipt_digest.as_deref()
+            && sealed != presented
+        {
+            return Err(StateError::SettlementSealedChanged {
+                execution_id: execution_id.to_string(),
+                sealed: sealed.to_string(),
+                presented: presented.to_string(),
+            });
+        }
+
         let settlement = ExecutionSettlement::open(execution_id, receipt_digest, started_at);
         self.store.put(&settlement).await?;
         Ok(SettlementGuard {

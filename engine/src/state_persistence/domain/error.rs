@@ -17,6 +17,28 @@ use thiserror::Error;
 /// Errors that can occur during state persistence operations.
 #[derive(Debug, Error)]
 pub enum StateError {
+    /// A settlement already exists for this execution, sealed under a different receipt (#1569).
+    ///
+    /// ADR-024 §6 rule 3: a seal is authoritative for its execution. The settlement record carries the
+    /// receipt the run answers, and a second `open` under another receipt would replace the effects and
+    /// the terminal state the first run left — which is how a run's record changes the story of what it
+    /// was admitted under.
+    ///
+    /// The same rule as `receipt::ReceiptRefusal::SealedDigestChanged`, stated in this module's own
+    /// vocabulary because `StateError` is this module's frozen contract and a settlement is a different
+    /// record with a different lifetime: the rule is one, the records are two.
+    #[error(
+        "execution {execution_id} is already sealed as {sealed}; this settlement would write {presented}"
+    )]
+    SettlementSealedChanged {
+        /// The execution whose settlement exists.
+        execution_id: String,
+        /// The receipt digest already sealed.
+        sealed: String,
+        /// The receipt digest the second settlement would write.
+        presented: String,
+    },
+
     /// The state file was not found for the given execution ID.
     #[error("State not found for execution {execution_id}")]
     StateNotFound {
