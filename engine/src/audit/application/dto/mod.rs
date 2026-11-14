@@ -119,6 +119,18 @@ pub struct BuildEnvelopeInput {
     /// Scoring results from scored evaluation nodes, keyed by node_id.
     #[serde(default)]
     pub scoring_results: HashMap<String, crate::audit::domain::ScoringResultRef>,
+
+    /// The receipt this execution was admitted under (#1527), when it was receipt-driven.
+    ///
+    /// A **reference**, never a copy: R1 records the declaration's digest and the sealed bytes stay
+    /// in the state directory (ADR-024 §6), so an envelope cannot become a second trail for them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receipt_digest: Option<String>,
+
+    /// The digest of the signed attestation produced for this execution (#1527), for the same
+    /// reason: the record lives under the state directory and this names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attestation_digest: Option<String>,
 }
 
 /// Output from building an audit envelope.

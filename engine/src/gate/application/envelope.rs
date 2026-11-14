@@ -66,6 +66,8 @@ pub(super) async fn decision_evidence(
         // An unsigned envelope is a record without an attestation, not a forged one.
         sign: context.signing_key.is_some(),
         scoring_results: std::collections::HashMap::new(),
+        receipt_digest: None,
+        attestation_digest: None,
     };
 
     let factory = AuditEnvelopeFactoryImpl::new(

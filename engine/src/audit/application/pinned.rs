@@ -95,6 +95,8 @@ pub fn refusal_envelope_input(pinned: &PinnedInputs) -> BuildEnvelopeInput {
         metadata: None,
         sign: true,
         scoring_results: std::collections::HashMap::new(),
+        receipt_digest: None,
+        attestation_digest: None,
     }
 }
 

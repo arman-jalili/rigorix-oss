@@ -128,6 +128,8 @@ async fn test_envelope_precondition_findings_records_evidence_and_redacts_values
         file_paths: vec![],
         metadata: None,
         scoring_results: std::collections::HashMap::new(),
+        receipt_digest: None,
+        attestation_digest: None,
         sign: false,
         repository: None,
         author: None,

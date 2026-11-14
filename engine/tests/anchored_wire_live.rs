@@ -159,6 +159,8 @@ fn envelope_input() -> BuildEnvelopeInput {
         metadata: None,
         sign: false,
         scoring_results: std::collections::HashMap::new(),
+        receipt_digest: None,
+        attestation_digest: None,
     }
 }
 

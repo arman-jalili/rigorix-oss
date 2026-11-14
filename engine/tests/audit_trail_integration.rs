@@ -37,6 +37,8 @@ async fn test_audit_envelope_has_hmac_signature() {
         ])),
         source: None,
         scoring_results: HashMap::new(),
+        receipt_digest: None,
+        attestation_digest: None,
         sign: true,
         repository: None,
         author: None,

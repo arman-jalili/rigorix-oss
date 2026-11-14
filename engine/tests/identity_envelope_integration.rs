@@ -51,6 +51,8 @@ fn envelope_input(identity: Option<IdentityRef>) -> BuildEnvelopeInput {
         file_paths: vec![],
         metadata: None,
         scoring_results: std::collections::HashMap::new(),
+        receipt_digest: None,
+        attestation_digest: None,
         sign: false,
     }
 }

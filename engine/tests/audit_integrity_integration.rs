@@ -54,6 +54,8 @@ fn input(node: &str) -> BuildEnvelopeInput {
         file_paths: vec![],
         metadata: None,
         scoring_results: std::collections::HashMap::new(),
+        receipt_digest: None,
+        attestation_digest: None,
         sign: true,
     }
 }

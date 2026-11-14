@@ -212,6 +212,28 @@ recorded in the envelope (`history_policy`). MCP `rigorix_read_audit` recomputes
 the stored record's HMAC and rejects a mismatch. **Tail deletion is not
 detectable locally** (ADR-016 boundary) — only the anchor (Phase C) closes it.
 
+### Receipt and attestation references (Contract Amendment, ADR-024)
+
+Three additive references let a signed envelope be traced to the run's own artifacts without becoming
+a second copy of them. All three are `Option<String>`, `#[serde(default, skip_serializing_if = "Option::is_none")]`,
+and **appended after every other field**, because the canonical form is the struct in declaration order
+(`audit/application/envelope_factory_impl.rs:110-118`) — a field inserted in the middle re-orders the
+bytes every envelope is signed over.
+
+| Field | Type | Source | Notes |
+|-------|------|--------|-------|
+| `settlement_id` | `Option<String>` | effect-commitment | the settlement record this run belongs to (#1528) |
+| `settlement_digest` | `Option<String>` | effect-commitment | digest of the settlement record, so the envelope names the run without carrying its effects |
+| `receipt_digest` | `Option<String>` | the orchestrator's `BuildEnvelopeInput` (#1527) | the declaration the run was admitted under. A **reference**: the sealed bytes stay in the state directory (ADR-024 §6), never copied here |
+| `attestation_digest` | `Option<String>` | the orchestrator's `BuildEnvelopeInput` (#1527) | names the signed observation record, which lives under the state directory beside the seal, not beside this envelope |
+
+The last two reached the envelope's field set in #1527's first change and became reachable from
+`BuildEnvelopeInput` in the same one; the live path supplies them once a run is receipt-driven, so
+every envelope written before that keeps byte-identical canonical bytes (a `None` is omitted entirely).
+`engine/tests` does not assert this by recomputing the digest — `envelope_factory_impl.rs`'s
+`canonical_bytes_without_a_receipt_match_the_recorded_vector` compares against a **recorded** constant,
+because a value derived from the function it tests passes for any field order.
+
 ### AuditSender
 
 **Purpose:** Deliver envelopes via HTTP with retry logic

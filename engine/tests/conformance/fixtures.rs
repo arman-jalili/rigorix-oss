@@ -67,6 +67,8 @@ fn base_input() -> BuildEnvelopeInput {
         file_paths: vec!["data/registrations.json".to_string()],
         metadata: None,
         scoring_results: std::collections::HashMap::new(),
+        receipt_digest: None,
+        attestation_digest: None,
         sign: true,
     }
 }

@@ -702,6 +702,8 @@ impl AppState {
                                 metadata: None,
                                 sign: true,
                                 scoring_results: Default::default(),
+                                receipt_digest: None,
+                                attestation_digest: None,
                             })
                             .await;
                     }

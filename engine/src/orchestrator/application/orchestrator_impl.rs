@@ -221,6 +221,8 @@ impl OrchestratorServiceImpl {
                 file_paths: Self::extract_file_paths(&record.task_results),
                 metadata: self.isolation_metadata(),
                 scoring_results: self.collect_scoring_results(record.execution_id).await,
+                receipt_digest: None,
+                attestation_digest: None,
                 sign: true,
                 repository,
                 author,

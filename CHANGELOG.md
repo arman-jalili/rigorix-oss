@@ -19,6 +19,19 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **The audit envelope's receipt and attestation references are reachable, not hardcoded** (#1527, P1).
+  `receipt_digest` and `attestation_digest` were appended to `AuditEnvelope` in #1528 and set to `None`
+  in every build path, so no envelope could name the declaration it was admitted under. They are now
+  fields on `BuildEnvelopeInput` and the factory copies them, which is the wiring P2 needs; the live
+  path still supplies `None`, so every envelope written today keeps byte-identical canonical bytes —
+  an absent `Option` is omitted from the canonical form entirely. Two tests own the claim rather than
+  illustrating it: `canonical_bytes_without_a_receipt_match_the_recorded_vector` compares the digest of
+  the canonical bytes against a **recorded constant** (reordering one field in `AuditEnvelope` moved it
+  from `266d95c7…` to `57857e69…` and failed the test, which is what it is for — a value derived from
+  the function under test passes for any field order), and
+  `a_supplied_receipt_digest_is_inside_the_signed_bytes` asserts both references appear in the HMAC'd
+  bytes and that changing one character of the receipt reference breaks verification.
+
 - **A fenced block is a quotation or a result, not an unproven claim** (#1558). The check added in
   #1549 refused every fenced block that did not begin with the invocation that printed it, which read
   a quoted issue template, spec section or ADR excerpt as a false claim — and because
