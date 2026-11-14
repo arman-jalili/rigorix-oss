@@ -80,6 +80,19 @@ pub struct OrchestratorServiceImpl {
     /// regime. Two runs whose `run_command` steps ran under different boundaries
     /// must not be indistinguishable in the record.
     sandbox: Option<Arc<crate::tools::application::shell_policy::SandboxDeclaration>>,
+    /// The key an attestation is signed with, when the deployment wired one (#1527 P3).
+    ///
+    /// The same variable the audit envelope is signed with — one deployment, one key — read once at
+    /// construction rather than at the write, so a run cannot be signed by a key its host did not
+    /// have when it was built.
+    attestation_key: Option<String>,
+    /// Where attestations are written, when the host named it (#1527 P3).
+    ///
+    /// `None` means [`crate::receipt::default_state_dir`]'s answer for the run's repository — a
+    /// sibling of the repository. The seam exists because the operator's `RIGORIX_STATE_DIR` is read
+    /// there, and because a test that had to set an environment variable to place a file would be
+    /// testing the environment.
+    attestation_state_dir: Option<std::path::PathBuf>,
     current_execution: Arc<RwLock<Option<CurrentExecutionState>>>,
 }
 
@@ -137,6 +150,97 @@ impl OrchestratorServiceImpl {
         OrchestratorError::ReceiptRefused { kinds, detail }
     }
 
+    /// Build the attestation this run can honestly write, and seal it (#1527 P3).
+    ///
+    /// `None` when the run declared no receipt: there is nothing to answer, and an attestation with
+    /// no receipt digest would be an observation of a promise nobody made. `None` also when the
+    /// store refused — an unsigned record, a state directory inside the workspace, or a write
+    /// failure — and each of those is logged with the store's own words rather than flattened into
+    /// "persistence failed".
+    ///
+    /// What is observed here is what this engine has: the execution's own per-node results. The
+    /// receipt's step ids are matched to node names, so a receipt whose ids do not match its steps'
+    /// names produces observations that say so (`expectation_met: false`, detail naming the missing
+    /// result) instead of silently reporting success.
+    fn seal_attestation(
+        &self,
+        input: &RunFromTemplateInput,
+        verified: Option<&crate::receipt::VerifiedReceipt>,
+        record: &ExecutionRecord,
+    ) -> Option<String> {
+        let verified = verified?;
+        let receipt = verified.receipt();
+
+        let mut builder = crate::receipt::AttestationBuilder::from_verified(verified);
+        for step in &receipt.steps {
+            let observed = record
+                .task_results
+                .iter()
+                .find(|tr| tr.node_name == step.id);
+            let (met, detail) = match observed {
+                None => (false, Some(format!("no result for step '{}'", step.id))),
+                Some(tr) => match tr.status {
+                    TaskStatus::Success => (true, None),
+                    TaskStatus::Failure => (false, tr.error.clone()),
+                    // A step that did not run met nothing. The three remaining outcomes are named
+                    // rather than caught by a wildcard, so a new one is a compile error here instead
+                    // of silently reading as "expectation met".
+                    TaskStatus::Skipped => (false, Some("the step was skipped".to_string())),
+                    TaskStatus::Cancelled => (false, Some("the step was cancelled".to_string())),
+                    TaskStatus::Pending => (false, Some("the step never ran".to_string())),
+                },
+            };
+            builder.observe_step(crate::receipt::ObservedStep {
+                step_id: step.id.clone(),
+                // Empty on purpose, and it says what it is: this change does not collect the paths a
+                // step wrote, so an empty list here means "no file-level observation was taken",
+                // not "nothing was written". `compare_declared_observed` over an empty observed set
+                // reports no undeclared write for that reason, which is why the field is not
+                // allowed to imply a clean bill of health anywhere it is read.
+                observed_effects: Vec::new(),
+                expectation_met: met,
+                expectation_detail: detail,
+            });
+        }
+        builder.identity(input.identity.as_ref().map(|i| i.subject.clone()));
+        let attestation = builder.build(
+            u32::try_from(record.task_results.len()).unwrap_or(u32::MAX),
+            u64::from(record.planning.total_tokens),
+        );
+
+        let mut attestation = attestation;
+        let state_dir = self
+            .attestation_state_dir
+            .clone()
+            .unwrap_or_else(|| crate::receipt::default_state_dir(&input.repo_root));
+        let store = crate::receipt::infrastructure::FileAttestationStore::new(
+            state_dir,
+            &input.repo_root,
+            self.attestation_key.clone(),
+        );
+        match store.put(&mut attestation) {
+            Ok(stored) => {
+                tracing::info!(
+                    execution_id = %record.execution_id,
+                    %stored.digest,
+                    path = %stored.path.display(),
+                    receipt_digest = %verified.digest(),
+                    "attestation sealed"
+                );
+                Some(stored.digest)
+            }
+            Err(error) => {
+                // `error`, not `warn`: for a receipt-driven run the missing record is the finding.
+                tracing::error!(
+                    execution_id = %record.execution_id,
+                    %error,
+                    "attestation not sealed; the envelope will carry no attestation_digest"
+                );
+                None
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: OrchestratorConfig,
@@ -165,6 +269,11 @@ impl OrchestratorServiceImpl {
             validation_loop_service: None,
             sequence_policy_service: None,
             sandbox: None,
+            // sink: orchestrator:attestation-key-env
+            attestation_key: std::env::var("RIGORIX_HMAC_KEY")
+                .ok()
+                .filter(|k| !k.trim().is_empty()),
+            attestation_state_dir: None,
             current_execution: Arc::new(RwLock::new(None)),
         }
     }
@@ -336,6 +445,24 @@ impl OrchestratorServiceImpl {
     /// ADR-016: the envelope records what produced a decision, including its
     /// regime. Without this, two runs whose `run_command` steps ran under
     /// different boundaries produce indistinguishable evidence.
+    /// Override the key an attestation is signed with (#1527 P3).
+    ///
+    /// `None` is a fact the run reports: no key means no attestation is sealed, and the envelope
+    /// carries no `attestation_digest` rather than a digest of an unverifiable record.
+    pub fn with_attestation_key(mut self, key: Option<String>) -> Self {
+        self.attestation_key = key.filter(|k| !k.trim().is_empty());
+        self
+    }
+
+    /// Override where attestations are written (#1527 P3).
+    ///
+    /// The default is `default_state_dir(repo_root)`; a directory inside the workspace is refused by
+    /// the store itself, so this setter cannot be used to defeat ADR-024 §6.
+    pub fn with_attestation_state_dir(mut self, state_dir: impl Into<std::path::PathBuf>) -> Self {
+        self.attestation_state_dir = Some(state_dir.into());
+        self
+    }
+
     pub fn with_sandbox_declaration(
         mut self,
         declaration: Arc<crate::tools::application::shell_policy::SandboxDeclaration>,
@@ -410,6 +537,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 // audit service is consulted here, and saying so is the point.
                 evidence: EvidenceStatus::NotRequested,
                 receipt_digest: None,
+                attestation_digest: None,
             });
         }
 
@@ -717,7 +845,9 @@ impl OrchestratorService for OrchestratorServiceImpl {
             Some(pmeta),
             task_results,
             ExecutionContext {
-                repo_root: input.repo_root,
+                // Cloned so the receipt path below can still name the workspace it sealed into; one
+                // `String` is cheaper than threading the path through four signatures.
+                repo_root: input.repo_root.clone(),
                 symbol_graph_hash: None,
                 git_commit,
                 git_branch,
@@ -756,6 +886,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             // `run()` plans from an intent and declares no receipt: the caller's declaration
             // belongs to the from-template path, where the steps are already concrete.
             receipt_digest: None,
+            attestation_digest: None,
         })
     }
 
@@ -864,16 +995,21 @@ impl OrchestratorService for OrchestratorServiceImpl {
         // The identity is the engine's own (`git rev-parse HEAD^{tree}`), never a string the receipt
         // carries: `receipt::verify` compares the two, and a receipt compared against its own claim
         // proves nothing.
-        let receipt_digest: Option<String> = match input.receipt.as_ref() {
+        let verified_receipt: Option<crate::receipt::VerifiedReceipt> = match input.receipt.as_ref()
+        {
             None => None,
             Some(receipt) => {
+                // The execution binding first: a receipt for another run is refused before its own
+                // workspace is even resolved, because the answer would be about a different run.
+                crate::receipt::refuse_foreign_execution(receipt, execution_id)
+                    .map_err(|refusal| Self::receipt_refused(vec![refusal]))?;
                 let workspace = crate::receipt::workspace_identity(&input.repo_root)
                     .map_err(|refusal| Self::receipt_refused(vec![refusal]))?;
-                let verified =
-                    crate::receipt::verify(receipt, &workspace).map_err(Self::receipt_refused)?;
-                Some(verified.digest().to_string())
+                Some(crate::receipt::verify(receipt, &workspace).map_err(Self::receipt_refused)?)
             }
         };
+        let receipt_digest: Option<String> =
+            verified_receipt.as_ref().map(|v| v.digest().to_string());
 
         // L1 identity gate (F-20260907-05) — run BEFORE the sequence-policy
         // gate so the error names the missing identity rather than a
@@ -1245,7 +1381,9 @@ impl OrchestratorService for OrchestratorServiceImpl {
             Some(pmeta),
             task_results,
             ExecutionContext {
-                repo_root: input.repo_root,
+                // Cloned so the receipt path below can still name the workspace it sealed into; one
+                // `String` is cheaper than threading the path through four signatures.
+                repo_root: input.repo_root.clone(),
                 symbol_graph_hash: None,
                 git_commit,
                 git_branch,
@@ -1257,6 +1395,19 @@ impl OrchestratorService for OrchestratorServiceImpl {
             events,
         );
 
+        // 9b. Seal what was observed, before the envelope summarises it (#1527 P3).
+        //
+        // The attestation answers the receipt: which steps ran, whether each did what it declared,
+        // and the caller's own quality claim (echoed, never upgraded). It is written to the state
+        // directory — a sibling of the repository, outside every workspace — and the envelope
+        // carries its **digest**, never a copy: one sealed record, one home.
+        //
+        // A missing key means nothing is sealed (`FileAttestationStore::put` refuses an unsigned
+        // record), and the absence is reported rather than papered over: no digest in the envelope,
+        // and the store's reason in the log at `error`, because a receipt-driven run that produced
+        // no attestation is a deployment defect rather than a normal state.
+        let attestation_digest = self.seal_attestation(&input, verified_receipt.as_ref(), &record);
+
         // 10. Evidence: built, signed, persisted and delivered — and the run says
         // which of those happened (#1480). The result is consumed, never dropped.
         let evidence = self
@@ -1267,7 +1418,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 input.identity.clone(),
                 EnvelopeReferences {
                     receipt_digest: receipt_digest.clone(),
-                    attestation_digest: None,
+                    attestation_digest: attestation_digest.clone(),
                 },
             )
             .await;
@@ -1313,6 +1464,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             record,
             evidence,
             receipt_digest,
+            attestation_digest,
         })
     }
 

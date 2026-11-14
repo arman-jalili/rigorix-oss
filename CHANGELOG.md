@@ -19,6 +19,30 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **The attestation is sealed beside the repository, and the envelope references its digest** (#1527, P3).
+  A receipt-driven run now writes `<state dir>/attestations/<execution_id>.json` through
+  `FileAttestationStore`, and `RunOutput::attestation_digest` plus the audit envelope carry that
+  record's **digest** — never a copy, so there is one sealed record and no second trail. `<state dir>`
+  is `default_state_dir`'s answer: `RIGORIX_STATE_DIR`, or a sibling of the repository, outside every
+  workspace. The store refuses three things before writing a byte: a state directory that **resolves**
+  inside the workspace (ADR-024 §6 rule 1, and the first production site for
+  `StateDirInsideWorkspace`), an **unsigned** attestation — the module's only reader requires a
+  signature, and signing is never simulated — and a write that failed, naming the stage (`create`,
+  `write`, `rename`) instead of saying "persistence failed".
+  This corrects a module doc that claimed the opposite: `receipt/infrastructure/mod.rs` said the
+  attestation would live "beside the audit envelope, in the same repository", which is inside the tree
+  the agent's write tools are contained to. The envelope store is also ADR-016's `local_unanchored`
+  regime by design; a signed observation of what a run did has a different home, and the correction
+  ships in the commit that writes the first record.
+  A receipt must also name **this** execution (`refuse_foreign_execution`): a receipt for another run
+  is refused before its workspace is resolved, because an attestation built from it would file this
+  run's observations under that run's id. It is a separate function rather than a third argument to
+  `verify`, so a test can hand it a different id and watch the refusal.
+  Four cases in `receipt_gate.rs`: the record verifies with the key and its digest is the one the run
+  reports; nothing is written without a key and no digest is claimed; a state directory inside the
+  workspace is refused on resolved paths (removing the check turns the case red); and a receipt for
+  another execution is refused with nothing dispatched.
+
 - **A run declares its receipt, and the declaration is verified before the graph exists** (#1527, P2).
   `RunFromTemplateInput` gained `receipt: Option<Receipt>`, and `run_from_template` verifies it as R0 —
   before the identity gate, the sequence-policy pipeline, any state write and

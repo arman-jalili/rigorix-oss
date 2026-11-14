@@ -501,6 +501,7 @@ mod tests {
                 evidence:
                     rigorix_engine::orchestrator::application::dto::EvidenceStatus::NotRequested,
                 receipt_digest: None,
+                attestation_digest: None,
             })
         }
 
@@ -597,6 +598,7 @@ mod tests {
                 evidence:
                     rigorix_engine::orchestrator::application::dto::EvidenceStatus::NotRequested,
                 receipt_digest: None,
+                attestation_digest: None,
             })
         }
 
