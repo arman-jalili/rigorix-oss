@@ -152,9 +152,74 @@ pub trait ParallelExecutionService: Send + Sync {
 
     /// Register a callback for execution progress notifications.
     ///
-    /// The callback is invoked each time a node reaches a terminal state
-    /// (Completed, Failed, Skipped). Useful for TUI updates and logging.
-    fn on_progress(&self, callback: Box<dyn Fn(ExecutionProgress) + Send + Sync>);
+    /// The callback is invoked on each node transition — `Running` when a node starts, and a terminal
+    /// status when it ends — which is what makes a node's window an interval rather than a timestamp.
+    ///
+    /// The returned [`ProgressSubscription`] removes the callback when it is dropped, and dropping it
+    /// is the only reliable way to remove one: a run can end through paths its author did not
+    /// enumerate, so a cleanup call the caller must remember is a cleanup call that will be missed on
+    /// the path nobody tested (#1573).
+    #[must_use = "dropping the subscription unregisters the callback immediately"]
+    fn on_progress(
+        &self,
+        callback: Box<dyn Fn(ExecutionProgress) + Send + Sync>,
+    ) -> ProgressSubscription;
+}
+
+/// The registry a subscription removes itself from, by weak reference so it cannot keep its own
+/// executor alive.
+pub type ProgressRegistryRef = std::sync::Weak<
+    std::sync::Mutex<
+        std::collections::HashMap<u64, std::sync::Arc<dyn Fn(ExecutionProgress) + Send + Sync>>,
+    >,
+>;
+
+/// A registered progress callback, and the obligation to unregister it.
+///
+/// `Drop` removes the callback from the service it was registered on. A subscription from a service
+/// that no longer exists is a no-op, which is why the registry reference is weak: a subscription must
+/// not keep its own executor alive.
+pub struct ProgressSubscription {
+    registry: Option<(ProgressRegistryRef, u64)>,
+}
+
+impl ProgressSubscription {
+    /// A subscription to nothing, for a service that keeps no registry (a mock, or a decorator that
+    /// does not forward progress). Dropping it does nothing.
+    #[must_use]
+    pub const fn unsubscribed() -> Self {
+        Self { registry: None }
+    }
+
+    /// The real thing: the registry to remove from, and the id to remove.
+    #[must_use]
+    pub fn new(registry: ProgressRegistryRef, id: u64) -> Self {
+        Self {
+            registry: Some((registry, id)),
+        }
+    }
+}
+
+impl std::fmt::Debug for ProgressSubscription {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.registry {
+            Some((_, id)) => write!(f, "ProgressSubscription({id})"),
+            None => f.write_str("ProgressSubscription(none)"),
+        }
+    }
+}
+
+impl Drop for ProgressSubscription {
+    fn drop(&mut self) {
+        let Some((registry, id)) = self.registry.take() else {
+            return;
+        };
+        if let Some(registry) = registry.upgrade()
+            && let Ok(mut callbacks) = registry.lock()
+        {
+            callbacks.remove(&id);
+        }
+    }
 }
 
 /// Progress notification for an in-flight execution.

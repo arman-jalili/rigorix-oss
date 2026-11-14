@@ -197,7 +197,8 @@ async fn test_on_progress_callback() {
     let called = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let called_clone = called.clone();
 
-    executor.on_progress(Box::new(move |_progress| {
+    // Held for the test's duration: the handle is what keeps the callback registered (#1573).
+    let _subscription = executor.on_progress(Box::new(move |_progress| {
         called_clone.store(true, std::sync::atomic::Ordering::SeqCst);
     }));
 
@@ -378,7 +379,7 @@ async fn test_progress_callback_fires() {
     let called = Arc::new(std::sync::atomic::AtomicU32::new(0));
     let called_clone = called.clone();
 
-    executor.on_progress(Box::new(move |progress| {
+    let _subscription = executor.on_progress(Box::new(move |progress| {
         assert_eq!(progress.dag_id, dag_id);
         called_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }));
@@ -402,5 +403,133 @@ async fn test_progress_callback_fires() {
     assert!(
         fired >= 1,
         "progress callback should fire for completed node, got {fired}"
+    );
+}
+
+/// #1573: dropping the subscription removes the callback.
+///
+/// The registry used to be a `Vec` that nothing removed from, so every caller that registered one —
+/// the TUI once, and since #1570 every receipt-driven run — left it behind forever. The assertion is
+/// about what the callback **stops** receiving, because "the list is smaller" is not observable from
+/// outside and would pass for a registry that clears itself at the wrong moment.
+#[tokio::test]
+async fn test_progress_subscription_removes_the_callback_when_dropped() {
+    let executor = create_executor();
+    let fired = Arc::new(std::sync::atomic::AtomicU32::new(0));
+
+    let subscription = {
+        let fired = fired.clone();
+        executor.on_progress(Box::new(move |_progress| {
+            fired.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }))
+    };
+
+    // Alive: a graph runs and the callback sees it.
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id: Uuid::new_v4(),
+            graph: Some(sample_graph()),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+    let after_first = fired.load(std::sync::atomic::Ordering::SeqCst);
+    assert!(after_first >= 1, "a registered callback fires");
+
+    drop(subscription);
+
+    // Dropped: the same graph runs and the callback does not.
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id: Uuid::new_v4(),
+            graph: Some(sample_graph()),
+            config_override: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        fired.load(std::sync::atomic::Ordering::SeqCst),
+        after_first,
+        "a dropped subscription must stop receiving progress"
+    );
+}
+
+/// #1573: a callback that removes itself mid-notification does not deadlock and does not stop the rest.
+///
+/// This is the case that decides the registry's shape: a `Vec` with removal under the iteration lock
+/// either deadlocks or shifts every later index. The registry clones the arcs out and drops the lock
+/// before calling, so a callback that unsubscribes touches the map while nobody is iterating it.
+#[tokio::test]
+async fn test_a_callback_may_unsubscribe_while_progress_is_being_notified() {
+    let executor = Arc::new(create_executor());
+    let fired_self = Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let fired_other = Arc::new(std::sync::atomic::AtomicU32::new(0));
+
+    // The self-removing subscription, held where the callback can reach it.
+    let held: Arc<
+        std::sync::Mutex<
+            Option<crate::execution_engine::application::service::ProgressSubscription>,
+        >,
+    > = Arc::new(std::sync::Mutex::new(None));
+
+    let self_subscription = {
+        let fired_self = fired_self.clone();
+        let held_by_callback = held.clone();
+        executor.on_progress(Box::new(move |_progress| {
+            fired_self.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if let Some(subscription) = held_by_callback.lock().expect("not poisoned").take() {
+                drop(subscription);
+            }
+        }))
+    };
+    *held.lock().expect("not poisoned") = Some(self_subscription);
+
+    // Held for the life of the test: dropping this handle would remove the callback before the
+    // notification this case is about.
+    let _other_subscription = {
+        let fired_other = fired_other.clone();
+        executor.on_progress(Box::new(move |_progress| {
+            fired_other.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }))
+    };
+
+    executor
+        .execute_graph(ExecuteGraphInput {
+            dag_id: Uuid::new_v4(),
+            graph: Some(sample_graph()),
+            config_override: None,
+        })
+        .await
+        .expect("a self-removing callback must not deadlock the notification");
+
+    assert!(
+        fired_other.load(std::sync::atomic::Ordering::SeqCst) >= 1,
+        "the other callback still fires"
+    );
+}
+
+/// #1573: the registry is what the live subscriptions are, not what was ever registered.
+///
+/// The acceptance criterion the issue asked for, in its own words: after N runs, the count is what it
+/// was before them. Counting notifications cannot answer it — silence is also what a callback that
+/// never fired looks like — so the count is asserted directly.
+#[tokio::test]
+async fn test_progress_registry_holds_only_live_subscriptions() {
+    let executor = create_executor();
+    assert_eq!(executor.registered_progress_callbacks(), 0);
+
+    let mut held = Vec::new();
+    for _ in 0..8 {
+        held.push(executor.on_progress(Box::new(|_| {})));
+    }
+    assert_eq!(executor.registered_progress_callbacks(), 8);
+
+    while let Some(subscription) = held.pop() {
+        drop(subscription);
+    }
+    assert_eq!(
+        executor.registered_progress_callbacks(),
+        0,
+        "eight subscriptions and eight drops leave the registry as it was"
     );
 }

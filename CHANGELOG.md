@@ -19,6 +19,19 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **A progress callback can be unregistered, because the handle that registers it removes it** (#1573).
+  `on_progress` returned nothing and the registry was a `Vec` nothing removed from, so every caller left its
+  callback behind forever — once for the TUI, and once per receipt-driven run since #1570. It now returns a
+  `ProgressSubscription` whose `Drop` removes the callback, marked `#[must_use]` because discarding the handle
+  is the leak itself; the orchestrator holds one for the run, so the early returns release it too.
+  The registry is a `HashMap` keyed by a monotonic id (a position in a `Vec` shifts under removal, and
+  `notify_progress` would then skip or repeat callbacks), `notify_progress` clones the arcs out and drops the
+  lock before calling, and the subscription holds a **weak** reference so it cannot keep its executor alive.
+  Three tests: a dropped subscription stops receiving progress, a callback that unsubscribes during
+  notification neither deadlocks nor starves the others, and eight subscriptions dropped leave the registry
+  empty — the last being the issue's own acceptance criterion, which counting notifications cannot answer
+  (silence and absence look the same).
+
 - **A settlement is sealed under the receipt it answers** (#1569). `FileSystemSettlementStore::put` wrote
   unconditionally, so a second `open` for the same execution under a different receipt replaced the effects
   and the terminal state the first run left — the record changing the story of what the run was admitted

@@ -178,9 +178,9 @@ impl exec_svc::ParallelExecutionService for CountingExecutionService {
         callback: Box<
             dyn Fn(crate::execution_engine::application::service::ExecutionProgress) + Send + Sync,
         >,
-    ) {
+    ) -> crate::execution_engine::application::service::ProgressSubscription {
         crate::orchestrator::application::orchestrator_mocks::MockExecutionService
-            .on_progress(callback);
+            .on_progress(callback)
     }
 
     async fn abort_execution(
@@ -1117,8 +1117,10 @@ impl exec_svc::ParallelExecutionService for WritingExecutionService {
     fn on_progress(
         &self,
         callback: crate::execution_engine::application::service_impl::ProgressCallback,
-    ) {
+    ) -> crate::execution_engine::application::service::ProgressSubscription {
         self.callbacks.lock().unwrap().push(callback);
+        // No removal from this double: the point of the double is to count registrations.
+        crate::execution_engine::application::service::ProgressSubscription::unsubscribed()
     }
 }
 
