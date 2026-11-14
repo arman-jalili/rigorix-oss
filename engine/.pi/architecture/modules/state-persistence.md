@@ -98,6 +98,25 @@ impl StateManager {
 
 ---
 
+### Settlement records (#1569)
+
+`<state dir>/<execution_id>.settlement.json`, written by `FileSystemSettlementStore` as a temporary file
+plus a rename, in the same directory the state repository owns.
+
+**The write reads first.** A settlement carries the receipt the run answers (`receipt_digest`), so it is a
+sealed record under ADR-024 §6 rule 3: a second write for the same execution under a **different** receipt
+is `StateError::SettlementSealedChanged`, naming both digests, and the record on disk is untouched. A record
+that cannot be parsed is `CorruptedState` rather than an invitation to overwrite it.
+
+What is compared is the receipt digest, not the file: a settlement accrues effects and a terminal state over
+its life, so byte equality would refuse the close that makes the record useful. The seal is **which receipt
+the record answers**; everything else about it is meant to change.
+
+The check is at two layers for one reason: `SettlementService::open` refuses before constructing anything, so
+a different `SettlementStore` implementing the port cannot skip it, and the adapter refuses before replacing
+anything, so a file written by anything else cannot replace a seal. Each has its own test, because a test that
+only exercised the use case stays green with the adapter's guard removed — measured.
+
 ## Data Flow
 
 ```mermaid

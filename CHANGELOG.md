@@ -19,6 +19,19 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Added
 
+- **A settlement is sealed under the receipt it answers** (#1569). `FileSystemSettlementStore::put` wrote
+  unconditionally, so a second `open` for the same execution under a different receipt replaced the effects
+  and the terminal state the first run left — the record changing the story of what the run was admitted
+  under. The write now reads first and refuses a different `receipt_digest` with
+  `StateError::SettlementSealedChanged`, naming both digests; a record that cannot be parsed is
+  `CorruptedState` rather than an invitation to overwrite it.
+  What is compared is the receipt digest, not the file: a settlement accrues effects and a terminal over its
+  life, so byte equality would refuse the close that makes the record useful. The guard is at both layers —
+  `SettlementService::open` refuses before constructing anything, so a different store cannot skip the check,
+  and the adapter refuses before replacing anything, so a file written by something else cannot replace a
+  seal. Each layer has its own test, because the use case's guard alone stays green with the adapter's
+  removed: measured, and it is why the second test exists.
+
 - **The attestation records what the run wrote, and the surface hosts use can see it** (#1570, ADR-024 §4).
   `observed_effects` is no longer an empty list: the engine snapshots the run's changed paths before and
   after execution, digests the bytes of each at seal time, and records them on the attestation.
