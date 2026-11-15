@@ -22,6 +22,8 @@ mod orchestrator {
 #[cfg(not(feature = "portable"))]
 #[path = "receipt"]
 mod receipt {
+    #[path = "receipt_plan_divergence_test.rs"]
+    mod receipt_plan_divergence_test;
     #[path = "receipt_verification_test.rs"]
     mod receipt_verification_test;
 }

@@ -28,8 +28,9 @@ pub mod domain;
 pub mod infrastructure;
 
 pub use application::service::{
-    AttestationBuilder, VerifiedReceipt, compare_declared_observed, default_state_dir,
-    refuse_foreign_execution, refuse_state_dir_inside_workspace, sign, verify, workspace_identity,
+    AttestationBuilder, PlanStep, VerifiedReceipt, compare_declared_observed, default_state_dir,
+    refuse_foreign_execution, refuse_state_dir_inside_workspace, sign, verify, verify_against_plan,
+    workspace_identity,
 };
 pub use domain::attestation::{
     Attestation, ObservedEffect, ObservedStep, QualityRecord, QualitySource, verify_attestation,

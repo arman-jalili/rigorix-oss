@@ -81,6 +81,40 @@ pub enum ReceiptRefusal {
         /// The kinds this engine implements.
         supported: Vec<String>,
     },
+    /// The receipt declares a step the plan does not have, at that position (#1588).
+    ///
+    /// A receipt and a plan are two descriptions of one runbook, and until #1588 nothing compared
+    /// them: the receipt supplied the declared effects an attestation's `undeclared_writes` is
+    /// measured against, while the steps that ran came from the plan. A receipt with a step the plan
+    /// has not got describes a different run, so the declaration an auditor reads would not be the
+    /// plan that ran.
+    StepNotInPlan {
+        /// The step the receipt declares.
+        step: String,
+        /// Its position in the receipt.
+        index: usize,
+    },
+    /// The plan has a step the receipt does not declare, at that position (#1588).
+    PlanStepNotDeclared {
+        /// The step the plan names.
+        step: String,
+        /// Its position in the plan.
+        index: usize,
+    },
+    /// The plan and the receipt disagree about whether a step needs approval (#1588).
+    ///
+    /// The direction that matters is the one where the plan requires approval and the receipt does
+    /// not: the approval gate reads the plan, so the step is still gated — but the receipt an auditor
+    /// reads says the opposite, and an approval bound to the receipt digest would be approving a
+    /// declaration that does not mention the requirement.
+    ApprovalRequirementMismatch {
+        /// The step.
+        step: String,
+        /// What the plan says.
+        plan: bool,
+        /// What the receipt says.
+        receipt: bool,
+    },
     /// A step wrote a path it did not declare.
     UndeclaredWrite {
         /// The step.
@@ -162,6 +196,9 @@ impl ReceiptRefusal {
             Self::SecretInParameters { .. } => "secret_in_parameters",
             Self::UnsupportedWorkspaceKind { .. } => "unsupported_workspace_kind",
             Self::WorkspaceIdentityUnavailable { .. } => "workspace_identity_unavailable",
+            Self::StepNotInPlan { .. } => "step_not_in_plan",
+            Self::PlanStepNotDeclared { .. } => "plan_step_not_declared",
+            Self::ApprovalRequirementMismatch { .. } => "approval_requirement_mismatch",
             Self::UndeclaredWrite { .. } => "undeclared_write",
             Self::ContentDigestMismatch { .. } => "content_digest_mismatch",
             Self::SealedDigestChanged { .. } => "sealed_digest_changed",
@@ -232,6 +269,22 @@ impl std::fmt::Display for ReceiptRefusal {
             } => write!(
                 f,
                 "step '{step}' wrote '{path}' with digest {observed}, not the declared {declared}"
+            ),
+            Self::StepNotInPlan { step, index } => write!(
+                f,
+                "receipt declares step '{step}' at position {index}, which the plan does not have"
+            ),
+            Self::PlanStepNotDeclared { step, index } => write!(
+                f,
+                "the plan requires step '{step}' at position {index}, which the receipt does not declare"
+            ),
+            Self::ApprovalRequirementMismatch {
+                step,
+                plan,
+                receipt,
+            } => write!(
+                f,
+                "step '{step}' requires approval = {plan} in the plan and {receipt} in the receipt"
             ),
             Self::SealedDigestChanged {
                 execution_id,

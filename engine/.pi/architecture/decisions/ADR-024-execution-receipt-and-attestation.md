@@ -186,6 +186,31 @@ An empty content digest means the file could not be read at seal time (deleted s
 reached through a symlinked component, which is refused rather than followed). It never means the digest
 of empty bytes: that would be a fact the engine did not observe.
 
+### 5a. The receipt describes the plan, and the plan is what runs (#1588)
+
+§4's receipt carries the steps, their declared effects and their approval flags; the orchestrator builds the graph
+from the **plan** (`input.steps`, after the policy pipeline). The two documents describe one runbook, and until #1588
+nothing compared them — so a receipt naming a different set gave the auditor a declaration about a run that did not
+happen, and a step the plan gates behind an approval could be approved under a declaration that did not mention it.
+
+`verify_against_plan(receipt, plan)` runs in R0, immediately after `verify` and **before** `build_graph_from_steps`,
+before the plan-time gates and before any state write. Its rule is positional: same names, same order, and the same
+`requires_approval` per step.
+
+| divergence | refusal |
+|---|---|
+| the receipt declares a step the plan has not got, at that position | `StepNotInPlan { step, index }` |
+| the plan has a step the receipt does not declare, at that position | `PlanStepNotDeclared { step, index }` |
+| the two disagree about whether a step needs approval | `ApprovalRequirementMismatch { step, plan, receipt }` |
+
+Order is part of a plan: it decides which step runs first against a workspace whose tree was pinned for that order, so
+a reordering is a divergence even when the names are the same, and the comparison reports the first positional
+divergence by naming both sides rather than every later index.
+
+`Expectation` has no counterpart in a plan step and is not compared. An equality check without a subject on the other
+side would be a claim about a field the plan does not carry; what the receipt expects is echoed into the attestation,
+where it can be judged against the observation.
+
 ## 6. E4 — the seal and where it lives (the protected store)
 
 The requirement: the digest over the criteria and every fixture is recomputed before evaluation, a mismatch refuses the
