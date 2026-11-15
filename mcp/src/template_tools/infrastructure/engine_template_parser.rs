@@ -78,10 +78,9 @@ fn plan_json_from_engine(template: &Template) -> Result<serde_json::Value, Templ
         }));
     }
 
-    // `PlanTemplate` carries host timestamps the engine schema does not know. The document's own
-    // `[metadata]` table is not available here, so the conversion stamps the moment of reading: a
-    // plan template's timestamps describe the host's copy, not the document.
-    let now = chrono::Utc::now();
+    // `PlanTemplate` carries host timestamps the engine schema does not know, and this conversion does
+    // not invent them: the create door stamps them (`PlanTemplate::from_create_json`), so the rule has
+    // one owner. A plan template's timestamps describe the host's copy, not the document (#1563).
     Ok(serde_json::json!({
         "name": template.name,
         "description": template.description,
@@ -89,8 +88,6 @@ fn plan_json_from_engine(template: &Template) -> Result<serde_json::Value, Templ
         "tags": template.tags,
         "steps": steps,
         "metadata": {},
-        "created_at": now,
-        "updated_at": now,
     }))
 }
 
@@ -191,18 +188,18 @@ impl TemplateConverter for FilesystemTemplateConverter {
             TemplateError::DeserializationFailed(format!("Failed to parse the template: {e}"))
         })?;
         let json = plan_json_from_engine(&document.template)?;
-        PlanTemplate::from_json(json)
+        PlanTemplate::from_create_json(json)
     }
 
     async fn from_json(&self, json: serde_json::Value) -> Result<PlanTemplate, TemplateError> {
-        PlanTemplate::from_json(json)
+        PlanTemplate::from_create_json(json)
     }
 
     async fn validate_and_convert(
         &self,
         json: serde_json::Value,
     ) -> Result<PlanTemplate, TemplateError> {
-        PlanTemplate::from_json(json)
+        PlanTemplate::from_create_json(json)
     }
 
     async fn validate_toml(&self, toml_str: &str) -> Result<(), TemplateError> {
