@@ -26,6 +26,7 @@ pub mod anchor;
 pub mod app;
 pub mod backend;
 pub mod catalog;
+pub mod cli;
 pub mod event_bridge;
 pub mod events;
 pub mod mcp_http;

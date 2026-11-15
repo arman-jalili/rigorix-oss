@@ -22,14 +22,31 @@ async fn main() {
         eprintln!("Failed to initialize tracing: {e}");
     }
 
+    // The command line, before anything is initialised or bound (#1589). This used to be read by
+    // nobody: `--port 3011` bound 3001 without a word. The environment variable is the supported
+    // surface, so an unrecognised argument refuses the start instead of being silently discarded, and
+    // `--help` prints the surface and exits 0 without binding.
+    let configured_bind = std::env::var("RIGORIX_SERVER_BIND").ok();
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let startup = rigorix_server::cli::parse_args(&args, configured_bind.as_deref());
+    if let Some(code) = startup.exit_code() {
+        match startup {
+            rigorix_server::cli::Startup::Help => {
+                print!("{}", startup.message().unwrap_or_default());
+            }
+            _ => eprintln!("{}", startup.message().unwrap_or_default()),
+        }
+        std::process::exit(code);
+    }
+
     let repo_root = std::env::var("RIGORIX_REPO_ROOT").unwrap_or_else(|_| ".".to_string());
     if let Err(e) = rigorix_mcp::host::init_host(&repo_root).await {
         tracing::error!("Failed to initialize host composition: {e}");
         std::process::exit(1);
     }
 
-    let bind =
-        std::env::var("RIGORIX_SERVER_BIND").unwrap_or_else(|_| "127.0.0.1:3001".to_string());
+    let bind = rigorix_server::cli::effective_bind(configured_bind.as_deref());
+    let bind_from = rigorix_server::cli::bind_provenance(configured_bind.as_deref());
 
     // ADR-0001 D8 / #900: bridge the engine event bus the host already built
     // into the SSE hub, so `GET /events` emits live run events (never a second
@@ -51,7 +68,8 @@ async fn main() {
         }
     };
     tracing::info!(
-        "rigorix-server listening on http://{bind} (POST /rpc, GET /events, MCP Streamable HTTP at /mcp)"
+        "rigorix-server listening on http://{bind} ({bind_from}) (POST /rpc, GET /events, MCP \
+         Streamable HTTP at /mcp)"
     );
 
     if let Err(e) = axum::serve(listener, app).await {
