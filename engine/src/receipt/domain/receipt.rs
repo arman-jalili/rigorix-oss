@@ -17,7 +17,18 @@ use super::digest::ReceiptDigest;
 use super::refusal::{ReceiptRefusal, ReceiptVerdict};
 
 /// The schema this module writes.
-pub const RECEIPT_SCHEMA_VERSION: u16 = 1;
+///
+/// **2** removed `roles` (#1586). A version number denotes exactly one artifact: `1` had a `roles`
+/// array that no host produced, no engine code read, and that would have signed
+/// `context_window`/`structured_output` — two facts the engine cannot observe — with no `source:`
+/// beside them, while `QualityClaim` next to it carries one precisely so a claim is not mistaken for
+/// an observation. ADR-024 §11 assigns roles to the harness, and this repository has no obligation to
+/// carry them.
+///
+/// No released artifact writes receipts: the module landed after the `v1.14.3` tag (`c8d162e1`), so
+/// there is no published `schema_version: 1` receipt to keep parsing the old way. That is what makes
+/// this change free now and expensive after 1.15.0 ships.
+pub const RECEIPT_SCHEMA_VERSION: u16 = 2;
 
 /// The receipt schema versions this engine reads.
 pub const SUPPORTED_RECEIPT_SCHEMA_VERSIONS: &[u16] = &[RECEIPT_SCHEMA_VERSION];
@@ -147,19 +158,6 @@ pub struct ReceiptStep {
     pub timeout_secs: Option<u64>,
 }
 
-/// A role and the model that plays it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Role {
-    /// The role's name.
-    pub role: String,
-    /// The model's id.
-    pub model_id: String,
-    /// Its context window.
-    pub context_window: u32,
-    /// Whether it produces structured output.
-    pub structured_output: bool,
-}
-
 /// The budget a receipt declares (ADR-024 §8). Enforcement is a separate issue, and this type says
 /// so: there is no `enforced` here to set to `true`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -182,9 +180,11 @@ pub struct Receipt {
     /// The sandbox its steps run in.
     pub sandbox: Sandbox,
     /// Its steps.
+    ///
+    /// There is no `roles` field (#1586): a signed field with no producer, no reader and no `source:`
+    /// is a contract nobody keeps, and if a host filled it the engine would sign two of its values it
+    /// cannot observe. Roles belong to the harness (ADR-024 §11).
     pub steps: Vec<ReceiptStep>,
-    /// The roles and models.
-    pub roles: Vec<Role>,
     /// What it may spend.
     pub budget: BudgetDeclared,
     /// The quality level the caller claims it needs, **as a claim**.
@@ -231,7 +231,6 @@ impl Receipt {
         workspace: Workspace,
         sandbox: Sandbox,
         steps: Vec<ReceiptStep>,
-        roles: Vec<Role>,
         budget: BudgetDeclared,
         quality_required: QualityLevel,
     ) -> Result<Self, ReceiptRefusal> {
@@ -249,7 +248,6 @@ impl Receipt {
             workspace,
             sandbox,
             steps,
-            roles,
             budget,
             quality_required: QualityClaim {
                 level: quality_required,

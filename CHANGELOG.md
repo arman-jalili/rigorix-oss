@@ -17,6 +17,16 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+### Changed
+
+- **`Receipt.roles` is gone, and the receipt schema is version 2** (#1586). The field sat in every receipt's canonical
+  bytes, was produced by no host in this repository (`Role { … }` existed only in two test literals), read by no engine
+  code, and every receipt the system could write serialised `"roles": []`. Had a host filled it, the engine would have
+  signed `context_window` and `structured_output` — an integer and a boolean it cannot observe — as bare facts, while
+  `quality_required` next to them carries a `source:` for exactly that reason. ADR-024 §11 assigns roles to the harness, so
+  the field is removed and `RECEIPT_SCHEMA_VERSION` moves to 2: a version number denotes one artifact. No released artifact
+  writes receipts (the module landed after `v1.14.3`), which is what makes the shape change free now.
+
 ### Fixed
 
 - **A receipt is compared with the plan before anything runs** (#1588). The steps that execute come from the plan; the

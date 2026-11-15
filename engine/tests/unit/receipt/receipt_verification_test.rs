@@ -11,8 +11,8 @@ use rigorix_engine::quality_gates::domain::level::QualityLevel;
 use rigorix_engine::receipt::domain::attestation::ObservedEffect;
 use rigorix_engine::receipt::{
     AttestationBuilder, BudgetDeclared, DeclaredEffect, Expectation, QualitySource, Receipt,
-    ReceiptRefusal, ReceiptStep, ReceiptVerdict, Role, Sandbox, SandboxRegime, Workspace,
-    WorkspaceKind, compare_declared_observed, verify,
+    ReceiptRefusal, ReceiptStep, ReceiptVerdict, Sandbox, SandboxRegime, Workspace, WorkspaceKind,
+    compare_declared_observed, verify,
 };
 use uuid::Uuid;
 
@@ -55,12 +55,6 @@ fn receipt(steps: Vec<ReceiptStep>) -> Receipt {
         workspace(),
         sandbox(),
         steps,
-        vec![Role {
-            role: "executor".to_string(),
-            model_id: "m".to_string(),
-            context_window: 8192,
-            structured_output: false,
-        }],
         BudgetDeclared {
             max_iterations: 10,
             max_tokens: 1000,
@@ -86,7 +80,19 @@ fn receipt_verification_schema_version_names_the_supported_set() {
     match refusals.as_slice() {
         [ReceiptRefusal::SchemaVersion { found, supported }] => {
             assert_eq!(*found, 99);
-            assert_eq!(supported, &vec![1]);
+            // The supported set is the module's constant, not a literal: it moved to 2 when `roles`
+            // left the canonical bytes (#1586), and a test that pinned `1` would have needed editing
+            // by whoever moved it rather than telling them what it means.
+            assert_eq!(
+                supported,
+                &rigorix_engine::receipt::domain::receipt::SUPPORTED_RECEIPT_SCHEMA_VERSIONS
+                    .to_vec()
+            );
+            assert_eq!(
+                supported,
+                &vec![2],
+                "roles leaving the canonical bytes is schema version 2"
+            );
         }
         other => panic!("expected one SchemaVersion refusal, got {other:?}"),
     }
@@ -164,7 +170,6 @@ fn receipt_verification_a_credential_is_refused_at_construction_and_not_quoted()
         workspace(),
         sandbox(),
         vec![leaky],
-        vec![],
         BudgetDeclared {
             max_iterations: 1,
             max_tokens: 1,
@@ -207,14 +212,21 @@ fn receipt_verification_the_canonical_form_ignores_member_order_and_not_content(
     // has another. The canonical form is the reason, so this is asserted on the value, not on a
     // hand-written string.
     let first = receipt(vec![step("a", &[])]);
+    // Two spellings of one parameter object: same keys and values, different insertion order. serde_json
+    // preserves insertion order, so the canonical form has to normalise it — that is the property, and
+    // a step parameter is the place to assert it now that `roles` (the field this used to reorder) is
+    // gone (#1586).
     let mut reordered = first.clone();
-    reordered.roles = vec![Role {
-        structured_output: false,
-        context_window: first.roles[0].context_window,
-        model_id: first.roles[0].model_id.clone(),
-        role: first.roles[0].role.clone(),
-    }];
-    assert_eq!(first.digest().unwrap(), reordered.digest().unwrap());
+    reordered.steps[0].parameters = serde_json::json!({
+        "second": 2,
+        "first": 1,
+    });
+    let mut canonical = first.clone();
+    canonical.steps[0].parameters = serde_json::json!({
+        "first": 1,
+        "second": 2,
+    });
+    assert_eq!(canonical.digest().unwrap(), reordered.digest().unwrap());
 
     let mut changed = first.clone();
     changed.steps[0].declared_effects.paths[0] = "elsewhere.txt".to_string();

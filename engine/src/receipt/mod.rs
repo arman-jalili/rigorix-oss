@@ -37,7 +37,7 @@ pub use domain::attestation::{
 };
 pub use domain::digest::{ReceiptDigest, canonical_json, sha256_hex};
 pub use domain::receipt::{
-    BudgetDeclared, DeclaredEffect, Expectation, Receipt, ReceiptStep, Role, Sandbox,
-    SandboxRegime, Workspace, WorkspaceKind,
+    BudgetDeclared, DeclaredEffect, Expectation, Receipt, ReceiptStep, Sandbox, SandboxRegime,
+    Workspace, WorkspaceKind,
 };
 pub use domain::refusal::{ReceiptRefusal, ReceiptVerdict};
