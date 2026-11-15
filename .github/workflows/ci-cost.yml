@@ -1,4 +1,4 @@
-name: CI Cost
+name: CI Cost (observation)
 
 # The pipeline's cost, reported and budgeted (#1437, child 1 of #1436).
 #

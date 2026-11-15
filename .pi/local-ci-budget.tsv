@@ -8,6 +8,12 @@
 #   cold — the run compiled COLD_CRATES or more: the cache was stale, and the compile is charged to
 #          whichever stage touched each crate first
 #
+# "Compiled" is counted from cargo's own machine stream — `cargo <subcommand>: N crate(s) built`, printed
+# by the language wrapper from the `compiler-artifact` messages that are not fresh, deduplicated by
+# package. A run where no step printed such a line is **unmeasured**, and it is judged on the cold
+# column: judging it warm would be calling an unmeasured run cheap (see #1599, where a masked wrapper
+# made an eleven-minute stage count zero crates and the warm ceilings were applied to a cold run).
+#
 # Columns, per stage: the ceiling in each regime, and the sample it was derived from —
 # `runs` (how many measured runs) and `slowest` (the slowest of them). A ceiling without its sample is
 # a number with no provenance, which is what this row exists to prevent.
