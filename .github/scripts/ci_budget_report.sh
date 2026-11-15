@@ -8,7 +8,11 @@
 #
 # Three rules, each with a seed in `--self-test`:
 #
-#   1. a stage whose slowest leg exceeds its budget fails, naming the stage and the overage;
+#   1. a stage whose slowest leg exceeds its budget by more than FAIL_OVERAGE_MINUTES fails, naming
+#      the stage and the overage; an overage below that threshold **warns** and does not fail (#1523).
+#      The threshold is 1.5 min because `.github/ci-budgets.tsv` records the run-to-run variance of a
+#      stage as 0.4-1.3 minutes: a number inside that band cannot distinguish a regression from the
+#      same code measured twice, so failing on it teaches people to raise ceilings until it stops.
 #   2. a total that exceeds its ceiling fails even when every stage is inside its own budget —
 #      the sum is the subject of the total, not of any one stage;
 #   3. a budget may be **lowered** and may not be **raised** without a fresh `set_from`. That is
@@ -119,15 +123,20 @@ for stage in order:
         findings.append(f"`{stage}` has a budget and did not run — a budget for a stage that no longer "
                         f"exists cannot be breached, so it cannot be a check")
 
-# ── 2. a slowest leg over budget fails ──────────────────────────────────────
+# ── 2. a slowest leg over budget fails beyond the noise floor, warns inside it ─
+#
+# Measured variance, quoted in `.github/ci-budgets.tsv`: two runs of one workflow differ by 0.4-1.3
+# min per stage. Failing inside that band reports the measurement, not the code.
+FAIL_OVERAGE = 1.5
 for stage in order:
     if stage not in STAGES:
         continue
     value = budgets[stage][0]
     measured_value = STAGES[stage]["max_leg"]
-    if measured_value > value:
+    overage = measured_value - value
+    if overage > FAIL_OVERAGE:
         findings.append(f"`{stage}` took {measured_value:.1f} min on its slowest leg, budget {value:.0f} "
-                        f"— over by {measured_value - value:.1f} min")
+                        f"— over by {overage:.1f} min, past the {FAIL_OVERAGE:.1f} min noise floor")
 
 # ── 3. a total over its ceiling fails, even when every stage is inside ──────
 for total, measured_value in TOTALS.items():
@@ -135,9 +144,10 @@ for total, measured_value in TOTALS.items():
         findings.append(f"`{total}` has no ceiling — a sum nobody declared cannot be exceeded, or managed")
         continue
     value = budgets[total][0]
-    if measured_value > value:
+    overage = measured_value - value
+    if overage > FAIL_OVERAGE:
         findings.append(f"`{total}` is {measured_value:.1f} min, ceiling {value:.0f} "
-                        f"— over by {measured_value - value:.1f} min")
+                        f"— over by {overage:.1f} min, past the {FAIL_OVERAGE:.1f} min noise floor")
 
 # ── 4. the ratchet: lowered is a win, raised needs a new measurement ────────
 if base_path:
@@ -161,6 +171,7 @@ print(f"run {measured['run']}  {measured.get('branch')}  {measured.get('sha')}  
       f"wall {measured['wall_minutes']:.1f} min  job-minutes {measured['job_minutes']:.1f}")
 print(f"  {'row':<20} {'measured':>9} {'budget':>7}  verdict")
 failed_rows = set()
+warned_rows = set()
 for stage in order:
     if stage in STAGES:
         measured_value, column = STAGES[stage]["max_leg"], "max leg"
@@ -171,11 +182,23 @@ for stage in order:
         failed_rows.add(stage)
         continue
     value = budgets[stage][0]
-    over = measured_value > value
-    if over:
+    overage = measured_value - value
+    if overage > FAIL_OVERAGE:
         failed_rows.add(stage)
-    mark = f"❌ over by {measured_value - value:.1f}" if over else "ok"
+        mark = f"❌ over by {overage:.1f}"
+    elif overage > 0:
+        warned_rows.add(stage)
+        mark = f"⚠  over by {overage:.1f} (within the noise floor)"
+    else:
+        mark = "ok"
     print(f"  {stage:<20} {measured_value:>9.1f} {value:>7.0f}  {mark}   ({column})")
+    # Attribution (#1523): a stage figure that is over says nothing about which job moved, so the
+    # legs that make it up are printed beside it. The information exists in the measurement and
+    # discarding it leaves the reader with a number and no remedy.
+    if overage > 0 and stage in STAGES:
+        legs = STAGES[stage].get("legs_detail") or []
+        for leg in sorted(legs, key=lambda l: -l["minutes"])[:8]:
+            print(f"      {leg['name'][:40]:<42} {leg['minutes']:>6.1f} min")
 
 errors = [f for f in findings if not f.startswith("base ")]
 if findings:
@@ -185,8 +208,13 @@ if findings:
 
 print()
 if errors:
-    print(f"❌ ci budget: {len(errors)} breach(es)")
+    print(f"❌ ci budget: {len(errors)} breach(es) past the {FAIL_OVERAGE:.1f} min noise floor")
     sys.exit(1)
+if warned_rows:
+    print(f"⚠  ci budget: {len(STAGES)} stage(s) and {len(TOTALS)} total(s) priced — "
+          f"{len(warned_rows)} over budget but inside the {FAIL_OVERAGE:.1f} min noise floor: "
+          f"{', '.join(sorted(warned_rows))}")
+    sys.exit(0)
 print(f"✅ ci budget: {len(STAGES)} stage(s) and {len(TOTALS)} total(s) inside their declared budgets")
 PY
 )
@@ -215,7 +243,8 @@ for item in [s for s in stages.split(",") if s]:
     name, value = item.split(":")
     rows.append({"stage": name, "legs": 1, "minutes": float(value), "max_leg": float(value),
                  "start_offset": 0.0, "end_offset": float(value), "conclusions": ["success"],
-                 "declared": True})
+                 "declared": True,
+                 "legs_detail": [{"name": f"{name}-leg", "minutes": float(value)}]})
 json.dump({"run": 1, "branch": "main", "sha": "0000000", "conclusion": "success",
            "wall_minutes": float(wall), "job_minutes": float(jobmin), "jobs": len(rows),
            "stages": rows, "critical_path": []}, open(path, "w"), indent=2)
@@ -256,10 +285,24 @@ PY
   write_measured "$TMP/good.json" 43.5 159.4 "lint:7.7,coverage:15.3"
   expect 0 "a run inside every budget passes" "" "$TMP/good.json" "$TMP/good.tsv"
 
+  # 9.6 against a budget of 8 is 1.6 min over — past the measured noise floor, so it is a failure
+  # rather than a warning (the seed below it is the other side of the same threshold).
   budgets_ok "$TMP/tight.tsv" 8 44
-  write_measured "$TMP/slowleg.json" 43.5 159.4 "lint:9.0,coverage:15.3"
-  expect 1 "a slowest leg over budget fails, naming the stage" '`lint` took 9.0 min' \
+  write_measured "$TMP/slowleg.json" 43.5 159.4 "lint:9.6,coverage:15.3"
+  expect 1 "a slowest leg past the noise floor fails, naming the stage" '`lint` took 9.6 min' \
       "$TMP/slowleg.json" "$TMP/tight.tsv"
+
+  # #1523's two thresholds, each with a seed: an overage inside the measured noise floor warns and
+  # still exits 0 (the conformance 7.8/7 and integration 11.4/10 case), and one past it fails.
+  budgets_ok "$TMP/floor.tsv" 7 44
+  write_measured "$TMP/within-noise.json" 43.5 159.4 "lint:7.8,coverage:15.3"
+  expect 0 "an overage inside the noise floor warns instead of failing" 'within the noise floor' \
+      "$TMP/within-noise.json" "$TMP/floor.tsv"
+
+  budgets_ok "$TMP/floor.tsv" 4 44
+  write_measured "$TMP/past-noise.json" 43.5 159.4 "lint:6.0,coverage:15.3"
+  expect 1 "an overage past the noise floor fails" 'past the 1.5 min noise floor' \
+      "$TMP/past-noise.json" "$TMP/floor.tsv"
 
   budgets_ok "$TMP/ceiling.tsv" 8 20
   write_measured "$TMP/sum.json" 30 159.4 "lint:7.7,coverage:15.3"

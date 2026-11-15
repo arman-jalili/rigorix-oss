@@ -172,7 +172,7 @@ for job in jobs:
     stage = stage_of(name)
     entry = stages.setdefault(stage, {
         "stage": stage, "legs": 0, "minutes": 0.0, "max_leg": 0.0,
-        "start": start, "end": end, "conclusions": set(),
+        "start": start, "end": end, "conclusions": set(), "legs_detail": [],
     })
     minutes = (end - start).total_seconds() / 60
     entry["legs"] += 1
@@ -181,6 +181,9 @@ for job in jobs:
     entry["start"] = min(entry["start"], start)
     entry["end"] = max(entry["end"], end)
     entry["conclusions"].add(job.get("conclusion") or "?")
+    # The job's own time, kept for attribution: a stage figure that is over says nothing about which
+    # job moved, and the report cannot name a remedy without it (#1523).
+    entry["legs_detail"].append({"name": name, "minutes": round(minutes, 1)})
 
 run_start = stamp(run["run_started_at"])
 wall = (stamp(run["updated_at"]) - run_start).total_seconds() / 60
@@ -239,6 +242,7 @@ report = {
             "start_offset": round((s["start"] - run_start).total_seconds() / 60, 1),
             "end_offset": round((s["end"] - run_start).total_seconds() / 60, 1),
             "conclusions": sorted(s["conclusions"]),
+            "legs_detail": sorted(s["legs_detail"], key=lambda leg: -leg["minutes"]),
             "declared": s["stage"] in needs,
         }
         for s in sorted(stages.values(), key=lambda s: (s["start"], s["stage"]))

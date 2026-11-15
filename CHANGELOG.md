@@ -27,6 +27,17 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   the field is removed and `RECEIPT_SCHEMA_VERSION` moves to 2: a version number denotes one artifact. No released artifact
   writes receipts (the module landed after `v1.14.3`), which is what makes the shape change free now.
 
+### Changed
+
+- **The cost workflow is an observation with two thresholds, and it attributes what it reports** (#1523). The nightly
+  job claimed to be a gate while running only on a schedule, so nothing on the merge path ever read it, and a single
+  number per stage could not say whether the work grew or the ceiling was stale. It is now named `💸 Cost (observation)`
+  and has two thresholds, stated in the workflow file: an overage of up to 1.5 minutes **warns** — that is the measured
+  run-to-run variance this repository records (0.4–1.3 min per stage) — and past it the run **fails**. Under that rule
+  `conformance` 7.8/7 and `integration` 11.4/10 are warnings, and no ceiling moved. Every over-budget row now prints the
+  per-job times that make it up, because a stage figure that is over says nothing about which job to look at. The
+  duplicated measurement paragraph in `.github/ci-budgets.tsv` is gone.
+
 ### Fixed
 
 - **`rigorix-server` refuses its command line instead of discarding it** (#1589). `main.rs` read no arguments, so

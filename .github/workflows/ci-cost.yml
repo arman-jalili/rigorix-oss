@@ -8,9 +8,21 @@ name: CI Cost
 #
 #   · this workflow is **not** on the merge path. A breach is a number to fix, not a reason to
 #     block the change that exposed it; the stage gates keep their own verdicts.
-#   · it fails when a budget is exceeded, when a stage the run reports has no budget, and when a
-#     budget was raised without a new `set_from`. Those are the three ways a number stops being
-#     a check.
+#   · it is an **observation**, not a gate (#1523), and the job name says so: nothing on the merge
+#     path reads it. What it does is attribution — the per-job timings that make up an over-budget
+#     leg are printed beside it, so the next red names the job that grew rather than the leg that
+#     spilled.
+#
+# Two thresholds, and they differ for a measured reason. `.github/ci-budgets.tsv` records the
+# run-to-run variance of a stage as 0.4-1.3 minutes on this machine and these runners, so:
+#
+#   · over budget by up to 1.5 min  → ⚠ warning; the run stays green
+#   · over budget by more than 1.5   → ❌ failure; the run exits 1
+#
+# A ceiling that fires inside its own variance teaches people to raise ceilings until it stops
+# firing, which is how a budget becomes a chart. 1.5 cannot be produced by the noise that was
+# measured. The other three failures are unchanged: a stage the run reports with no budget, a
+# budget raised without a new `set_from`, and a budget row deleted.
 #
 # `workflow_dispatch` takes a run id so a specific run can be priced by hand, which is how the
 # two halves of the epic's before/after are quoted in the issues.
@@ -34,7 +46,7 @@ concurrency:
 
 jobs:
   budget:
-    name: 💸 Cost and budget
+    name: 💸 Cost (observation)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
