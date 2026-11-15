@@ -308,6 +308,29 @@ fn receipt_for(workspace: &str, execution_id: Uuid) -> Receipt {
     .expect("the fixture carries no credentials")
 }
 
+/// The plan that declares exactly the receipt's steps, with the receipt's approval flags.
+///
+/// Since #1588 a receipt is compared with the plan, so a fixture about a *different* rule (the seal,
+/// the frontier) has to describe one runbook in both documents. Building the plan from the receipt is
+/// the honest way to do that in a test: it cannot drift from the fixture it is meant to match.
+fn plan_matching(receipt: &Receipt) -> Vec<crate::orchestrator::dto::TemplateStepDef> {
+    receipt
+        .steps
+        .iter()
+        .map(|step| crate::orchestrator::dto::TemplateStepDef {
+            name: step.id.clone(),
+            tool: step.tool.clone(),
+            description: format!("declared by the receipt: {}", step.id),
+            parameters: step.parameters.clone(),
+            require_identity: false,
+            requires_approval: step.requires_approval,
+            timeout_secs: step.timeout_secs,
+            evaluate_score: false,
+            depends_on: Vec::new(),
+        })
+        .collect()
+}
+
 fn input(repo_root: String, receipt: Receipt) -> RunFromTemplateInput {
     RunFromTemplateInput {
         steps: vec![step_def()],
@@ -410,6 +433,109 @@ async fn a_refused_receipt_dispatches_nothing_and_builds_no_envelope() {
         captured.lock().unwrap().is_none(),
         "a refused receipt builds no audit envelope: no record exists to summarise"
     );
+}
+
+/// A receipt that declares a different step set than the plan is refused before anything runs
+/// (#1588) — and the refusal is the receipt's own, so it happens in the same place as every other
+/// gate: no graph, no policy evaluation, no envelope.
+#[tokio::test]
+async fn a_receipt_that_diverges_from_the_plan_dispatches_nothing() {
+    let repo = TempRepo::new();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let policy = Arc::new(policy_recorder());
+    let orch = service(calls.clone(), captured.clone(), policy.clone()).await;
+
+    // The plan has one step, `write`. The receipt declares a step the plan does not have, and the
+    // workspace is this repository's, so the workspace check passes and the divergence is what fires.
+    let workspace = crate::receipt::workspace_identity(&repo.root())
+        .expect("the fixture repository has a tree");
+    let execution_id = Uuid::new_v4();
+    let diverging = receipt_with(
+        &workspace,
+        execution_id,
+        vec![receipt_step("exfiltrate", "out.txt")],
+    );
+
+    let mut run_input = input(repo.root(), diverging);
+    run_input.execution_id = Some(execution_id);
+
+    let err = orch
+        .run_from_template(run_input)
+        .await
+        .expect_err("a receipt describing a different runbook must be refused");
+
+    let (kinds, detail) = match &err {
+        OrchestratorError::ReceiptRefused { kinds, detail } => (kinds.clone(), detail.clone()),
+        other => panic!("the refusal must be the receipt's own variant, got: {other:?}"),
+    };
+    assert!(
+        kinds.split(',').any(|k| k == "step_not_in_plan"),
+        "the kind names the rule that fired: {kinds}"
+    );
+    assert!(
+        detail.contains("exfiltrate"),
+        "the sentence names the step the receipt declared: {detail}"
+    );
+    assert!(
+        detail.contains("plan_step_not_declared") || detail.contains("write"),
+        "and the step the plan has instead: {detail}"
+    );
+
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        0,
+        "the comparison runs before build_graph, so the executor is never asked to run"
+    );
+    assert!(
+        policy.order.lock().unwrap().is_empty(),
+        "and before the plan-time gates: {:?}",
+        policy.order.lock().unwrap()
+    );
+    assert!(
+        captured.lock().unwrap().is_none(),
+        "a refused receipt builds no audit envelope"
+    );
+}
+
+/// The mirror: the plan has a step the receipt does not declare.
+#[tokio::test]
+async fn a_plan_step_the_receipt_omits_is_refused_before_dispatch() {
+    let repo = TempRepo::new();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let policy = Arc::new(policy_recorder());
+    let orch = service(calls.clone(), captured.clone(), policy.clone()).await;
+
+    let workspace = crate::receipt::workspace_identity(&repo.root())
+        .expect("the fixture repository has a tree");
+    let execution_id = Uuid::new_v4();
+    // A well-formed receipt that declares no steps at all: the subset case, at its extreme.
+    let empty = receipt_with(&workspace, execution_id, Vec::new());
+    let mut run_input = input(repo.root(), empty);
+    run_input.execution_id = Some(execution_id);
+
+    let err = orch
+        .run_from_template(run_input)
+        .await
+        .expect_err("a receipt that declares nothing cannot describe a one-step plan");
+
+    let (kinds, detail) = match &err {
+        OrchestratorError::ReceiptRefused { kinds, detail } => (kinds.clone(), detail.clone()),
+        other => panic!("the refusal must be the receipt's own variant, got: {other:?}"),
+    };
+    assert!(
+        kinds.split(',').any(|k| k == "plan_step_not_declared"),
+        "the kind names the rule that fired: {kinds}"
+    );
+    assert!(
+        detail.contains("write"),
+        "the sentence names the step: {detail}"
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(policy.order.lock().unwrap().is_empty());
 }
 
 /// The control: a verified receipt runs, and its digest reaches the envelope and the output.
@@ -800,7 +926,10 @@ async fn a_second_digest_for_the_same_execution_is_refused_and_the_seal_stands()
     let mut wider = receipt_for(&identity, execution_id);
     let mut extra = wider.steps[0].clone();
     extra.id = "write-more".to_string();
-    wider.steps.push(extra);
+    wider.steps.push(extra.clone());
+    // The plan matches the wider declaration, so the rule that fires is the seal's (#1588 compares the
+    // receipt with the plan, and a fixture about sealing must not be refused for diverging first).
+    let wider_plan = plan_matching(&wider);
 
     let calls = Arc::new(AtomicUsize::new(0));
     let captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>> =
@@ -810,7 +939,10 @@ async fn a_second_digest_for_the_same_execution_is_refused_and_the_seal_stands()
         .await
         .with_attestation_key(Some(KEY.to_string()))
         .with_sealed_state_dir(state_dir(&repo))
-        .run_from_template(input(repo.root(), wider))
+        .run_from_template(RunFromTemplateInput {
+            steps: wider_plan,
+            ..input(repo.root(), wider)
+        })
         .await
         .expect_err("a different declaration for a sealed execution is refused");
     match &err {
@@ -1340,9 +1472,13 @@ async fn a_frontier_credits_neither_step_alone_and_says_why() {
     .with_attestation_key(Some(KEY.to_string()))
     .with_sealed_state_dir(state_dir(&repo));
 
-    orch.run_from_template(input(repo.root(), receipt))
-        .await
-        .expect("the run completes");
+    let plan = plan_matching(&receipt);
+    orch.run_from_template(RunFromTemplateInput {
+        steps: plan,
+        ..input(repo.root(), receipt)
+    })
+    .await
+    .expect("the run completes");
 
     let sealed = sealed_attestation(&state_dir(&repo), execution_id);
     let attestation = sealed.attestation();

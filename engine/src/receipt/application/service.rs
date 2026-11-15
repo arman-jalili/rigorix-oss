@@ -42,6 +42,99 @@ impl VerifiedReceipt {
     }
 }
 
+/// One step as a plan declares it — the neutral shape a receipt is compared against (#1588).
+///
+/// The receipt module does not know about the orchestrator's DTOs: a plan is "names, in order, and
+/// whether each step needs approval", and that is all the comparison needs. The orchestrator maps its
+/// own step type into this at the gate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanStep {
+    /// The step's name, which is the receipt's `id`.
+    pub name: String,
+    /// Whether the plan requires a human approval before this step runs.
+    pub requires_approval: bool,
+}
+
+impl PlanStep {
+    /// A plan step.
+    #[must_use]
+    pub fn new(name: impl Into<String>, requires_approval: bool) -> Self {
+        Self {
+            name: name.into(),
+            requires_approval,
+        }
+    }
+}
+
+/// Compare a receipt's steps with the plan's (#1588).
+///
+/// A receipt and a plan are two descriptions of one runbook. `verify` checks the receipt as a value —
+/// schema, digest, workspace, cycle, sandbox, credentials — and until this function existed nothing
+/// compared it with the plan it claims to describe. The steps that run come from the plan; the
+/// declared effects an attestation measures `undeclared_writes` against come from the receipt. A
+/// receipt that names a different set therefore gives the auditor a declaration about a run that did
+/// not happen, and a step the plan gates behind an approval can be approved under a declaration that
+/// does not mention it.
+///
+/// The comparison is positional, not set-based: order is part of a plan — it decides which step runs
+/// first against a workspace whose tree was pinned for that order — so a reordering is a divergence
+/// even when the names are the same.
+///
+/// # Errors
+/// One refusal per divergence found, naming the position and the side that disagrees.
+pub fn verify_against_plan(
+    receipt: &Receipt,
+    plan: &[PlanStep],
+) -> Result<(), Vec<ReceiptRefusal>> {
+    let mut refusals = Vec::new();
+
+    for index in 0..plan.len().max(receipt.steps.len()) {
+        match (plan.get(index), receipt.steps.get(index)) {
+            (Some(planned), Some(declared)) => {
+                if planned.name != declared.id {
+                    // The first positional divergence, naming both sides and stopping: after it the
+                    // two lists are no longer describing the same runbook, and continuing would
+                    // report every later index as a mismatch whether or not it is one.
+                    refusals.push(ReceiptRefusal::StepNotInPlan {
+                        step: declared.id.clone(),
+                        index,
+                    });
+                    refusals.push(ReceiptRefusal::PlanStepNotDeclared {
+                        step: planned.name.clone(),
+                        index,
+                    });
+                    break;
+                }
+                if planned.requires_approval != declared.requires_approval {
+                    refusals.push(ReceiptRefusal::ApprovalRequirementMismatch {
+                        step: planned.name.clone(),
+                        plan: planned.requires_approval,
+                        receipt: declared.requires_approval,
+                    });
+                }
+            }
+            (Some(planned), None) => refusals.push(ReceiptRefusal::PlanStepNotDeclared {
+                step: planned.name.clone(),
+                index,
+            }),
+            (None, Some(declared)) => refusals.push(ReceiptRefusal::StepNotInPlan {
+                step: declared.id.clone(),
+                index,
+            }),
+            // The range is bounded by the longer side, so this arm is empty rather than a panic: a
+            // comparison that panics on its own loop bound turns a mistakes in the bound into a crash,
+            // and the caller asked for a verdict, not an abort.
+            (None, None) => {}
+        }
+    }
+
+    if refusals.is_empty() {
+        Ok(())
+    } else {
+        Err(refusals)
+    }
+}
+
 /// The engine's own answer to "which tree is this?" (ADR-024 §5).
 ///
 /// `git rev-parse HEAD^{tree}` in the repository the caller named. The engine computes the identity

@@ -19,6 +19,15 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- **A receipt is compared with the plan before anything runs** (#1588). The steps that execute come from the plan; the
+  declared effects an attestation measures `undeclared_writes` against come from the receipt — and nothing compared the
+  two, so a receipt naming a different step set handed the auditor a declaration about a run that did not happen, and a
+  step the plan gates behind an approval could be approved under a declaration that omitted the requirement.
+  `verify_against_plan` runs in R0, right after `verify` and before the graph, the plan-time gates and any state write,
+  and refuses with `StepNotInPlan`, `PlanStepNotDeclared` or `ApprovalRequirementMismatch`. The comparison is positional:
+  order decides which step runs first against a tree pinned for that order, so a reordering is a divergence. ADR-024
+  §5a records the rule and why `expectation` has no counterpart to compare against.
+
 - **The Action publishes the level the engine classified, and publishes nothing when there is none** (#1587). The
   `quality_level` step output was a constant on both paths: `quality_level: None` in `main.rs` and `Some("workspace")` in
   the PR comment, while the engine classified a level and logged it. `write_quality_outputs` now writes the received claim

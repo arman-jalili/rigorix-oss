@@ -1136,6 +1136,21 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 let verified =
                     crate::receipt::verify(receipt, &workspace).map_err(Self::receipt_refused)?;
 
+                // ADR-024 §5 (#1588) — the receipt is compared with the plan it claims to describe,
+                // **before** the graph is built and before any state is written. The steps that run
+                // come from the plan; the declared effects an attestation measures `undeclared_writes`
+                // against come from the receipt. Without this, a receipt naming a different set gives
+                // the auditor a declaration about a run that did not happen.
+                let plan_steps: Vec<crate::receipt::PlanStep> = input
+                    .steps
+                    .iter()
+                    .map(|step| {
+                        crate::receipt::PlanStep::new(step.name.clone(), step.requires_approval)
+                    })
+                    .collect();
+                crate::receipt::verify_against_plan(receipt, &plan_steps)
+                    .map_err(Self::receipt_refused)?;
+
                 // ADR-024 §6 rule 2 — the declaration is kept, not just its digest, and it is kept
                 // **now**: before a gate, before any state write, before the graph. A run that
                 // crashes on the next line has still left the document it was admitted under, and a
