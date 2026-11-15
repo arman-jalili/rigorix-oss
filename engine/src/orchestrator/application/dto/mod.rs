@@ -85,6 +85,18 @@ pub struct RunOutput {
     /// state directory, outside the workspace (ADR-024 §6), and is never copied here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attestation_digest: Option<String>,
+
+    /// The quality level this run's steps support, and whose claim it is (#1585).
+    ///
+    /// `None` when no quality-gate service is wired. When present, `source: Engine` means the level
+    /// was derived from outcomes the steps actually reported — the tool each ran and whether it passed
+    /// — and `source: Caller` means there was nothing to derive from and the floor is the answer.
+    ///
+    /// Before this field existed the classification was computed and then dropped into a
+    /// `tracing::info!`, so the one value an attestation would stamp `source: Engine` was both
+    /// fabricated (at both call sites) and unreachable (at every surface).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quality: Option<crate::quality_gates::application::dto::ClassifyTestScopeOutput>,
 }
 
 /// The state of a run's audit evidence (#1480).

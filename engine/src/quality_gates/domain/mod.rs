@@ -23,6 +23,7 @@ pub mod error;
 pub mod event;
 pub mod level;
 pub mod outcome;
+pub mod recorded;
 
 pub use config::QualityGateConfig;
 pub use contract::GreenContract;
@@ -30,3 +31,4 @@ pub use error::QualityGateError;
 pub use event::QualityGateEvent;
 pub use level::QualityLevel;
 pub use outcome::QualityGateOutcome;
+pub use recorded::{CheckKind, ClaimSource, RecordedOutcome};

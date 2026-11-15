@@ -266,6 +266,58 @@ impl OrchestratorServiceImpl {
         Ok(graph)
     }
 
+    /// The outcomes a run's steps actually reported, as the quality classifier reads them (#1585).
+    ///
+    /// The join is the whole point: the graph carries what each step was *told* to run (`tool`, and
+    /// the serialized `intent`), the task result carries whether it succeeded. Neither alone is an
+    /// outcome — the tool without the status is an intention, the status without the tool is a
+    /// boolean about bookkeeping, which is exactly what `iteration > 2` and
+    /// `final_status != Failed` were.
+    ///
+    /// A result with no node in the graph is skipped rather than guessed at: it names no tool, so it
+    /// is evidence about nothing this classifier can read.
+    pub(super) fn recorded_outcomes(
+        graph: &crate::dag_engine::domain::TaskGraph,
+        results: &[TaskResult],
+    ) -> Vec<crate::quality_gates::domain::RecordedOutcome> {
+        use crate::quality_gates::domain::RecordedOutcome;
+
+        let mut outcomes = Vec::with_capacity(results.len());
+        for result in results {
+            let Ok(node_id) = Uuid::parse_str(&result.node_id) else {
+                continue;
+            };
+            let Some(node) = graph.get_node(node_id) else {
+                continue;
+            };
+            let subject = Self::step_subject(&node.intent);
+            let mut outcome = RecordedOutcome::new(
+                result.node_id.clone(),
+                node.tool.clone(),
+                result.status == crate::orchestrator::domain::record::TaskStatus::Success,
+            )
+            .with_name(result.node_name.clone());
+            if let Some(subject) = subject {
+                outcome = outcome.with_subject(subject);
+            }
+            outcomes.push(outcome);
+        }
+        outcomes
+    }
+
+    /// What a node ran, taken from its serialized parameters: the `command` a `run_command` step
+    /// declared, and otherwise the parameters themselves.
+    fn step_subject(intent: &str) -> Option<String> {
+        let parsed: serde_json::Value = serde_json::from_str(intent).ok()?;
+        if let Some(command) = parsed.get("command").and_then(|c| c.as_str()) {
+            return Some(command.to_string());
+        }
+        if parsed.as_object().is_some_and(serde_json::Map::is_empty) {
+            return None;
+        }
+        Some(intent.to_string())
+    }
+
     /// Extract file paths from task result outputs.
     /// Uses simple heuristics to find file path patterns in node output text.
     pub(super) fn extract_file_paths(task_results: &[TaskResult]) -> Vec<String> {

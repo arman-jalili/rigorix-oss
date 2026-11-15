@@ -406,6 +406,7 @@ mod approval;
 mod dispatch;
 mod plan;
 mod policies;
+mod quality;
 mod receipt_gate;
 mod run;
 mod step_dependencies;

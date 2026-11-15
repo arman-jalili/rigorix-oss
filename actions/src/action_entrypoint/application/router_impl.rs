@@ -502,6 +502,8 @@ mod tests {
                     rigorix_engine::orchestrator::application::dto::EvidenceStatus::NotRequested,
                 receipt_digest: None,
                 attestation_digest: None,
+                // These are fixtures, not runs: no step executed, so no level was observed.
+                quality: None,
             })
         }
 
@@ -599,6 +601,8 @@ mod tests {
                     rigorix_engine::orchestrator::application::dto::EvidenceStatus::NotRequested,
                 receipt_digest: None,
                 attestation_digest: None,
+                // These are fixtures, not runs: no step executed, so no level was observed.
+                quality: None,
             })
         }
 

@@ -245,3 +245,33 @@ required_level = "merge_ready"
 
 **Status:** Planned  
 **Implementation priority:** P0 — structural quality enforcement
+
+## The level's subject (#1585)
+
+`QualityLevel` has four tiers and one classifier. Until #1585 the classifier took six booleans, and both
+production callers wrote them from control flow rather than from an outcome:
+
+| producer | what it claimed |
+|---|---|
+| `plan_validation::factory_impl` | `targeted_tests_run: true`, `workspace_tests_run: input.iteration > 2` |
+| `orchestrator_impl` (§6 and the legacy §7a) | `workspace_tests_run: final_status != ExecutionStatus::Failed` |
+
+`lint_passed` was the literal `false` at both sites, so `MergeReady` was unreachable by construction, and
+"workspace tests passed" was an assertion about the loop's own bookkeeping. Any `source: Engine` stamped
+from either would have put a counter's arithmetic into a signed record.
+
+`ClassifyTestScopeInput` now carries `Vec<RecordedOutcome>` — the step, the tool it ran, what it ran
+(`subject`), and whether it reported success — and `classify_from_outcomes` derives the tier from the
+passing outcomes only, naming the steps it used. A failure never raises a tier and is named separately.
+
+`ClassifyTestScopeOutput` gains two fields that decide whether the value may travel as an engine claim:
+
+- `source: ClaimSource` — `Engine` only when the level came from recorded outcomes; `Caller` when there
+  were none. A validation loop executes no plan step, so it supplies nothing and its claim is `Caller`.
+- `evidence: Vec<String>` — the step ids that decided the tier. Empty exactly when the claim is the floor.
+
+The orchestrator joins the graph (tool + serialized `intent`) with the executed results (status) in
+`recorded_outcomes`, and carries the classification out on `RunOutput.quality` instead of dropping it into
+a `tracing::info!`. A step whose command was not recorded yields `CheckKind::Other` rather than a guess:
+"no `--workspace` and no `-p`" is read as the narrower scope, because an unrecognised argv cannot raise
+the level.

@@ -19,6 +19,15 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- **The quality level is derived from a recorded outcome, not from a counter or a status** (#1585). Both producers
+  fabricated the classifier's six booleans: `workspace_tests_run: input.iteration > 2` in the validation loop and
+  `final_status != ExecutionStatus::Failed` in the orchestrator, with `lint_passed` the literal `false` at both — so
+  `MergeReady` was unreachable and "workspace tests passed" was a statement about the loop's bookkeeping. The subject is
+  now `Vec<RecordedOutcome>` (step, tool, what it ran, whether it passed), the tier is derived from the passing outcomes
+  with the step ids named in the explanation, and a failing run never raises a tier. The output carries `source`
+  (`Engine` only when derived from outcomes, `Caller` when there were none) and `evidence` (the deciding step ids), and
+  the orchestrator returns the classification on `RunOutput.quality` instead of dropping it into a `tracing::info!`.
+
 - **The budget table states the rule its numbers follow, and a guard checks it** (#1582). Seven of eighteen
   ceilings were not the number the header stated: six were one second tighter than `ceil(1.10 × slowest)` — what a
   truncated multiplication produces — one was a floating-point residue (`ceil(1.10 × 700)` is 771 because `700 × 1.1`
