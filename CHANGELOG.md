@@ -29,6 +29,15 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- **`rigorix-server` refuses its command line instead of discarding it** (#1589). `main.rs` read no arguments, so
+  `--port 3011` bound `127.0.0.1:3001` without a word and `--help` started a server. The environment variable
+  (`RIGORIX_SERVER_BIND`) is the supported surface, so an unrecognised argument is now a refusal: exit 2, naming the
+  argument, the address it would have used and the variable that actually sets it. `--help` prints the surface and exits 0
+  without binding, and the startup log line says whether the address came from the variable or from the default. The tests
+  run the binary under a watchdog, because a test whose subject is "the process does not start" must not block when it does.
+
+### Fixed
+
 - **A receipt is compared with the plan before anything runs** (#1588). The steps that execute come from the plan; the
   declared effects an attestation measures `undeclared_writes` against come from the receipt — and nothing compared the
   two, so a receipt naming a different step set handed the auditor a declaration about a run that did not happen, and a
