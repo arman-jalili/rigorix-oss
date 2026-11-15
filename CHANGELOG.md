@@ -19,6 +19,16 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- **A check that has not reported yet is no longer a failed check** (#1560). The rollup aggregation in
+  `mr-validation.sh` sent every entry without a `conclusion`/`state`/`status` to the string `unknown`, and its final
+  `else` — the arm that absorbs whatever nobody enumerated — read `unknown` as `failure`. A rollup is never fully
+  populated at creation, so the first minute of every pull request read as `CI checks failed`; and because the same
+  filter answered `unknown` when `gh` or `jq` failed, an unreachable GitHub was reported as the PR's code failing.
+  The verdict is now a closed vocabulary — `success`, `pending`, `failure`, `undetermined`, and `empty` — with an
+  unresolved entry counted and named (`2 of 4 have not reported`), an empty rollup saying the subject is empty rather
+  than passing, and a failed read reported as `could not determine` with the command's own error text. Six fixtures in
+  `--self-test` assert the printed verdict, in the root tree and in all five crate copies.
+
 - **A stage reports the failures inside it, not its own last command** (#1572's run). `stage_end` recorded
   the end timestamp and returned that command's status, which is always 0 — so a run printed
   `✅ stage lint — 17 passed` next to a `FAIL validate-ci.sh (engine) — exit 1` row, and the green line was

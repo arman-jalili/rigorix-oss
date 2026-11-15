@@ -22,6 +22,95 @@ pass() { echo -e "${GREEN}✅ PASS${NC} $1"; PASS_COUNT=$((PASS_COUNT + 1)); }
 fail() { echo -e "${RED}❌ FAIL${NC} $1"; ERRORS+=("$1"); }
 warn() { echo -e "${YELLOW}⚠️  WARN${NC} $1"; }
 
+# ── The CI verdict (#1560) ──────────────────────────────────────────────────
+# `statusCheckRollup` mixes CheckRun entries (`status` + `conclusion`) with StatusContext entries
+# (`state`), and an entry that has not reported carries *neither* — GitHub lists it with a name and
+# nothing else. The previous filter fell through to a literal "unknown", which the `else` arm read as
+# a failure, so a PR whose checks were still starting was reported as "CI checks failed". The defect
+# is a missing state counted as a negative one.
+#
+# So the entry state is nullable and the verdict has five values: `empty` (no subject at all),
+# `success`, `pending` (reported work outstanding *or* entries that have not reported), `failure`
+# (a reported entry failed) and `undetermined` (the question could not be asked). An unresolved entry
+# is never `failure`: a check that has not run yet is not evidence about the code, and calling it a
+# failure made the gate's message false in the direction that stops work.
+rollup_verdict() {  # reads a statusCheckRollup object on stdin; prints verdict<TAB>unresolved<TAB>total<TAB>failed names
+	jq -r '
+		[ .statusCheckRollup[]?
+		  | { name: ( .name // .context // "unnamed" ),
+		      state: ( if (.conclusion? // null) != null then .conclusion
+		               elif (.state? // null) != null then .state
+		               elif (.status? // null) != null then .status
+		               else null end ) } ] as $checks
+		| ( $checks | length ) as $total
+		| ( $checks | map( select(.state == null) ) | length ) as $unresolved
+		| ( $checks | map( select(.state != null) | (.state | ascii_downcase) ) ) as $reported
+		| ( $checks | map( select(.state != null and ( ( (.state|ascii_downcase) as $s
+		      | ["failure","timed_out","cancelled","action_required","startup_failure"] | index($s) ) != null ) ) | .name ) ) as $failed
+		| ( if $total == 0 then "empty"
+		    elif ( $failed | length ) > 0 then "failure"
+		    elif ( $reported | map( select( ( . as $s
+		          | ["pending","queued","in_progress","expected","waiting","requested"] | index($s) ) != null ) ) | length ) > 0 then "pending"
+		    elif $unresolved > 0 then "pending"
+		    elif ( $reported | all( ( . as $s | ["success","neutral","skipped"] | index($s) ) != null ) ) then "success"
+		    else "failure" end ) as $verdict
+		| [ $verdict, ($unresolved|tostring), ($total|tostring), ($failed|join(", ")) ] | @tsv
+	'
+}
+
+self_test_rollup() {
+	local failures=0 case_name expected actual
+	run_case() {  # $1 name, $2 json, $3 expected verdict, $4 expected unresolved
+		case_name="$1"; expected="$3"
+		actual="$(printf '%s' "$2" | rollup_verdict | cut -f1,2)"
+		if [[ "$actual" == "$expected" ]]; then
+			echo -e "  ${GREEN}✅${NC} $case_name → $actual"
+		else
+			echo -e "  ${RED}❌${NC} $case_name → $actual (wanted $expected)"
+			failures=$((failures + 1))
+		fi
+	}
+	echo "── mr-validation self-test: the CI verdict ──"
+	run_case "an empty rollup is not a pass" \
+		'{"statusCheckRollup": []}' 'empty	0'
+	run_case "every check succeeded" \
+		'{"statusCheckRollup":[
+		  {"name":"build","conclusion":"SUCCESS"},
+		  {"name":"legacy","state":"SUCCESS"},
+		  {"name":"optional","conclusion":"SKIPPED"}]}' 'success	0'
+	# The issue's own replay, one entry longer: two entries that have not reported must not become a
+	# verdict, and the count is what the step prints instead.
+	run_case "two checks have not reported yet" \
+		'{"statusCheckRollup":[
+		  {"name":"build","conclusion":"SUCCESS"},
+		  {"name":"test","state":"SUCCESS"},
+		  {"name":"conformance"},
+		  {"name":"integration"}]}' 'pending	2'
+	run_case "one check failed" \
+		'{"statusCheckRollup":[
+		  {"name":"build","conclusion":"SUCCESS"},
+		  {"name":"conformance","conclusion":"FAILURE"}]}' 'failure	0'
+	run_case "a check is running" \
+		'{"statusCheckRollup":[{"name":"lint","status":"IN_PROGRESS"}]}' 'pending	0'
+	if printf 'not json' | rollup_verdict >/dev/null 2>&1; then
+		echo -e "  ${RED}❌${NC} unreadable input → exit 0 (wanted non-zero)"
+		failures=$((failures + 1))
+	else
+		echo -e "  ${GREEN}✅${NC} unreadable input → non-zero, so the caller can say 'could not determine'"
+	fi
+	if [[ "$failures" -eq 0 ]]; then
+		echo -e "  ${GREEN}✅ mr-validation self-test: 6/6${NC}"
+		return 0
+	fi
+	echo -e "  ${RED}❌ mr-validation self-test: $failures case(s) failed${NC}"
+	return 1
+}
+
+if [[ "${1:-}" == "--self-test" ]]; then
+	self_test_rollup
+	exit $?
+fi
+
 detect_platform() {
 	if [ -f "guardian-manifest.json" ]; then
 		local tool=$(jq -r '.repoTool // ""' guardian-manifest.json 2>/dev/null || echo "")
@@ -108,36 +197,44 @@ echo "--- CI Status ---"
 
 case "$PLATFORM" in
 	github)
-		# `statusCheckRollup` mixes CheckRun entries (`status` + `conclusion`) with
-		# StatusContext entries (`state`). Reading `.status` alone always yields
-		# COMPLETED for a finished check, so comparing it to SUCCESS made this gate
-		# fail every green PR. Aggregate the real verdict instead.
-		STATUS_CHECKS=$(echo "$PR_INFO" | jq -r '
-			[ .statusCheckRollup[]?
-			  | if (.conclusion? // null) != null then .conclusion
-			    else (.state // .status // "unknown")
-			    end ]
-			| map(ascii_downcase)
-			| if length == 0 then "unknown"
-			  elif any(. == "pending" or . == "queued" or . == "in_progress" or . == "expected") then "pending"
-			  elif all(. == "success" or . == "neutral" or . == "skipped") then "success"
-			  else "failure"
-			  end
-		' 2>/dev/null || echo "unknown")
+		if ROLLUP=$(printf '%s' "$PR_INFO" | rollup_verdict 2>&1); then
+			IFS=$'\t' read -r STATUS_CHECKS UNRESOLVED TOTAL FAILED_NAMES <<<"$ROLLUP"
+		else
+			# gh unreachable or jq unreadable is a fact about *this machine*, not about the PR:
+			# folding it into the PR's verdict would make a network failure look like red code.
+			STATUS_CHECKS="undetermined"; ROLLUP_DETAIL="$ROLLUP"
+		fi
 		;;
 	gitlab)
 		STATUS_CHECKS=$(echo "$MR_INFO" | jq -r '.head_pipeline.status // "unknown"' 2>/dev/null | tr '[:upper:]' '[:lower:]' || echo "unknown")
 		;;
 esac
 
-if [ "$STATUS_CHECKS" = "success" ] || [ "$STATUS_CHECKS" = "passed" ]; then
-	pass "CI checks passed"
-elif [ "$STATUS_CHECKS" = "pending" ] || [ "$STATUS_CHECKS" = "in_progress" ] || [ "$STATUS_CHECKS" = "running" ] || [ "$STATUS_CHECKS" = "queued" ]; then
-	warn "CI checks in progress"
-	echo "  Wait for completion and re-run"
-else
-	fail "CI checks failed or unknown: $STATUS_CHECKS"
-fi
+# Four verdicts plus "no subject", and the reason each one is not a boolean: the gate's message has to
+# be true about the PR, so a state that is not known yet cannot be rendered as a state that is bad.
+case "$STATUS_CHECKS" in
+	success)
+		pass "CI checks passed ($TOTAL check(s))"
+		;;
+	empty)
+		warn "no checks yet: the rollup is empty, so there is nothing to judge"
+		echo "  Neither passed nor failed — an empty subject is not a green gate"
+		;;
+	pending)
+		warn "CI checks still running: $UNRESOLVED of $TOTAL have not reported"
+		echo "  Wait for completion and re-run"
+		;;
+	failure)
+		fail "CI checks failed: ${FAILED_NAMES:-no check was named}"
+		;;
+	undetermined)
+		warn "could not determine CI status: ${ROLLUP_DETAIL:-gh or jq produced nothing}"
+		echo "  This is not a verdict about the PR; fix the read and re-run"
+		;;
+	*)
+		warn "CI status unrecognised: $STATUS_CHECKS"
+		;;
+esac
 
 # ---------------------------------------------------------------------------
 # Mergeable Check
