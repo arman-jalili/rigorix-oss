@@ -1130,7 +1130,7 @@ fn detect_pr_number() -> Option<u64> {
 /// pull request, and a `GITHUB_TOKEN` is available. Failures are logged,
 /// never fatal.
 async fn post_pr_comment_if_requested(
-    _output: &rigorix_actions::action_entrypoint::domain::ActionOutput,
+    output: &rigorix_actions::action_entrypoint::domain::ActionOutput,
     status: &DispatchStatus,
     execution_id: Option<&str>,
     duration_ms: u64,
@@ -1170,7 +1170,12 @@ async fn post_pr_comment_if_requested(
         max_iterations: 3,
         cumulative_tokens: 0,
         duration_ms,
-        quality_level: None,
+        // The level the engine classified, read from what this run published (#1587). Absent when the
+        // run produced no claim, which the comment renders as "not reported" rather than as a level.
+        quality_level: output
+            .output_variables
+            .get(rigorix_actions::action_output::application::quality::QUALITY_LEVEL_OUTPUT)
+            .cloned(),
         template_id: None,
         failure_count: u32::from(matches!(status, DispatchStatus::Failure)),
         file_changes: vec![],

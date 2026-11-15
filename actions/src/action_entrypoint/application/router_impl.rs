@@ -90,10 +90,29 @@ impl ActionRouterImpl {
                 code: None,
             })?;
 
-        Ok(ActionOutput::success(
+        // The level the engine classified travels to the Action's outputs (#1587). Nothing is
+        // invented here: `write_quality_outputs` writes the received claim and its source, and
+        // writes no key at all when the run produced none.
+        let mut action_output = ActionOutput::success(
             format!("Execution completed: {}", output.execution_id),
             Some(output.execution_id.to_string()),
-        ))
+        );
+        let published = crate::action_output::application::quality::write_quality_outputs(
+            &mut action_output,
+            output.quality.as_ref(),
+        );
+        match published.as_slice() {
+            [] => tracing::info!(
+                execution_id = %output.execution_id,
+                "no quality level was classified, so no quality_level output is set"
+            ),
+            names => tracing::info!(
+                execution_id = %output.execution_id,
+                outputs = ?names,
+                "quality level published from the engine's classification"
+            ),
+        }
+        Ok(action_output)
     }
 
     /// Dispatch to the engine's plan-only mode.
@@ -443,6 +462,8 @@ mod tests {
         run_should_fail: bool,
         plan_should_fail: bool,
         status_should_fail: bool,
+        run_quality:
+            Option<rigorix_engine::quality_gates::application::dto::ClassifyTestScopeOutput>,
     }
 
     impl MockOrchestrator {
@@ -451,6 +472,7 @@ mod tests {
                 run_should_fail: false,
                 plan_should_fail: false,
                 status_should_fail: false,
+                run_quality: None,
             }
         }
 
@@ -459,6 +481,7 @@ mod tests {
                 run_should_fail: true,
                 plan_should_fail: true,
                 status_should_fail: true,
+                run_quality: None,
             }
         }
     }
@@ -502,8 +525,7 @@ mod tests {
                     rigorix_engine::orchestrator::application::dto::EvidenceStatus::NotRequested,
                 receipt_digest: None,
                 attestation_digest: None,
-                // These are fixtures, not runs: no step executed, so no level was observed.
-                quality: None,
+                quality: self.run_quality.clone(),
             })
         }
 
@@ -759,6 +781,80 @@ mod tests {
         assert!(result.success);
         assert_eq!(result.output.status, DispatchStatus::Success);
         assert!(result.output.execution_id.is_some());
+    }
+
+    /// The wire, end to end inside the router: what the engine returned is what the Action publishes
+    /// (#1587). The two mutations this pins are the two literals that were there before —
+    /// `quality_level: None` and a hardcoded `"workspace"`.
+    #[tokio::test]
+    async fn the_dispatch_publishes_the_quality_level_the_engine_returned() {
+        use rigorix_engine::quality_gates::domain::{ClaimSource, QualityLevel};
+
+        let mut orchestrator = MockOrchestrator::new();
+        orchestrator.run_quality = Some(
+            rigorix_engine::quality_gates::application::dto::ClassifyTestScopeOutput {
+                level: QualityLevel::MergeReady,
+                explanation: "workspace tests and lint, format and audit all reported success"
+                    .to_string(),
+                source: ClaimSource::Engine,
+                evidence: vec!["n1".to_string()],
+            },
+        );
+        let router = ActionRouterImpl::new(Arc::new(orchestrator), None);
+        let ctx = test_context(ActionMode::Run {
+            intent: "ship it".to_string(),
+        });
+
+        let result = router
+            .dispatch(DispatchInput {
+                context: ctx,
+                timeout_secs: None,
+                force: false,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            result
+                .output
+                .output_variables
+                .get("quality_level")
+                .map(String::as_str),
+            Some("merge_ready"),
+            "the output must equal the value the engine returned, not a constant"
+        );
+        assert_eq!(
+            result
+                .output
+                .output_variables
+                .get("quality_source")
+                .map(String::as_str),
+            Some("engine")
+        );
+    }
+
+    /// And the other half: a run that classified nothing publishes no key at all.
+    #[tokio::test]
+    async fn a_run_with_no_classification_publishes_no_quality_key() {
+        let router = ActionRouterImpl::new(Arc::new(MockOrchestrator::new()), None);
+        let ctx = test_context(ActionMode::Run {
+            intent: "ship it".to_string(),
+        });
+
+        let result = router
+            .dispatch(DispatchInput {
+                context: ctx,
+                timeout_secs: None,
+                force: false,
+            })
+            .await
+            .unwrap();
+
+        assert!(
+            !result.output.output_variables.contains_key("quality_level"),
+            "no value must produce no key, not a default: {:?}",
+            result.output.output_variables
+        );
     }
 
     #[tokio::test]

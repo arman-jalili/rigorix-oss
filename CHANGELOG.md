@@ -19,6 +19,14 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- **The Action publishes the level the engine classified, and publishes nothing when there is none** (#1587). The
+  `quality_level` step output was a constant on both paths: `quality_level: None` in `main.rs` and `Some("workspace")` in
+  the PR comment, while the engine classified a level and logged it. `write_quality_outputs` now writes the received claim
+  as received — the level and, beside it, `quality_source` (`engine` or `caller`, so a defaulted floor cannot read as an
+  observation) — and writes **no key at all** when the run produced no claim: absence is absence, not an empty string and
+  not a default level. The PR comment prints the received level, and says `not reported by the engine` when there is none
+  instead of `unknown`.
+
 - **The quality level is derived from a recorded outcome, not from a counter or a status** (#1585). Both producers
   fabricated the classifier's six booleans: `workspace_tests_run: input.iteration > 2` in the validation loop and
   `final_status != ExecutionStatus::Failed` in the orchestrator, with `lint_passed` the literal `false` at both — so
