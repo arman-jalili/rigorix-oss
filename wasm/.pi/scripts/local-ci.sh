@@ -213,19 +213,51 @@ stage_has_failures() {  # $1 results dir, $2 stage key
 # Defined here, above the self-test, because the cases pin them and a helper the fixtures cannot call
 # is a helper whose fixtures are a copy of it.
 #
-# Measured separation, not a guess: a warm full run on this machine compiles 0-9 crates, an incremental
-# touch of a leaf crate a handful, and a stale-cache run hundreds. 100 sits inside that gap by more than
-# an order of magnitude on either side. The number is printed with every run's regime.
+# Measured separation, not a guess: a warm full run on this machine builds 0-9 crates, an incremental
+# touch of a leaf crate builds 1 per invocation, and a stale-cache run hundreds (488 in the `cargo clean`
+# run of 2026-11-15). 100 sits inside that gap by more than an order of magnitude on either side. The
+# number is printed with every run's regime.
 COLD_CRATES=100
 
-compiled_by_stage() {  # $1 results dir, $2 stage key → how many crates that stage's transcript compiled
-    local n
-    n="$(grep -c '^ *Compiling ' "$1/$2.steps.log" 2>/dev/null || true)"
-    printf '%s' "${n:-0}"
+# A count is a line cargo's own machine stream produced, printed once per cargo invocation by
+# `languages/rust/validate-ci.sh`:
+#
+#     cargo build: 3 crate(s) built
+#
+# The first version of this counter grepped `Compiling` out of the stage transcript — and cargo writes
+# that to stderr, which every cargo call in that wrapper discarded with `2>/dev/null`. A stage that
+# compiled for eleven minutes counted zero crates, the run was judged warm, and the warm ceilings were
+# applied to a cold run: the failure the two columns exist to prevent, re-entering through the
+# instrument that was meant to prevent it (#1599).
+#
+# Three states, not two. "Compiled nothing" and "no measurement" are different facts, and only one of
+# them is a fact: a run where no step reported a count is **unmeasured**, and an unmeasured run is
+# judged on the cold column. Failing a run because the instrument was blind is the same defect as the
+# one this fixes, pointing the other way.
+COUNTED_RE='^ *cargo [a-z]+: [0-9]+ crate\(s\) built$'
+
+compiled_by_stage() {  # $1 results dir, $2 stage key → crates the stage's cargo invocations built
+    local total
+    total="$({ grep -hE "$COUNTED_RE" "$1/$2.steps.log" 2>/dev/null || true; } \
+        | awk '{s += $3} END {print s + 0}')"
+    printf '%s' "${total:-0}"
 }
 
-budget_regime() {  # $1 crates compiled by the run → warm|cold
+counts_reported() {  # $1 results dir, $2.. stage keys → yes if any stage reported a count at all
+    local key
+    for key in "${@:2}"; do
+        if grep -qE "$COUNTED_RE" "$1/$key.steps.log" 2>/dev/null; then printf 'yes'; return; fi
+    done
+    printf 'no'
+}
+
+budget_regime() {  # $1 crates built, $2 counts reported (yes|no) → warm|cold|unmeasured
+    if [[ "${2:-no}" != "yes" ]]; then printf 'unmeasured'; return; fi
     if [[ "${1:-0}" -ge "$COLD_CRATES" ]]; then printf 'cold'; else printf 'warm'; fi
+}
+
+budget_column() {  # $1 regime → warm|cold; an unmeasured run is judged on the cold column
+    if [[ "${1:-warm}" == "warm" ]]; then printf 'warm'; else printf 'cold'; fi
 }
 
 budget_verdict() {  # $1 seconds, $2 ceiling → pass|over
@@ -313,20 +345,35 @@ if [[ "$SELF_TEST" == "true" ]]; then
     check "a 11m40s warm run is inside the warm ceiling" "$(budget_verdict 700 770)" "pass"
     check "a 36m28s cold run is inside the cold ceiling" "$(budget_verdict 2188 2409)" "pass"
     check "a run that compiled nothing and took 36m is over the warm ceiling" "$(budget_verdict 2188 770)" "over"
-    check "a run that compiled 400 crates is cold" "$(budget_regime 400)" "cold"
-    check "a run that compiled nothing is warm" "$(budget_regime 0)" "warm"
-    check "an incremental run that compiled 9 crates is warm" "$(budget_regime 9)" "warm"
+    check "a run that built 400 crates is cold" "$(budget_regime 400 yes)" "cold"
+    check "a run that built nothing is warm" "$(budget_regime 0 yes)" "warm"
+    check "an incremental run that built 9 crates is warm" "$(budget_regime 9 yes)" "warm"
+    # #1599's premise: "compiled nothing" and "measured nothing" are different facts, and the second
+    # one is not a fact at all. A run that reported no count is unmeasured and takes the cold column —
+    # the looser one, because failing a run for a blind instrument is the original defect mirrored.
+    check "a run where nothing reported a count is unmeasured, not warm" "$(budget_regime 0 no)" "unmeasured"
+    check "an unmeasured run is judged on the cold column" "$(budget_column unmeasured)" "cold"
+    check "a warm run is judged on the warm column" "$(budget_column warm)" "warm"
+    check "a cold run is judged on the cold column" "$(budget_column cold)" "cold"
     # The cold run that measured the sample: `guards` compiled 38 crates inside its wave and took
     # 3m21s, which the old 112s single ceiling failed and the derived cold ceiling passes. This is the
     # regression the two columns exist for, pinned with the numbers it actually produced.
     check "a cold guards run of 3m21s is inside the cold ceiling" "$(budget_verdict 201 221)" "pass"
     check "the same 3m21s against the warm ceiling is a failure" "$(budget_verdict 201 84)" "over"
     check "a 27m12s cold run is inside the cold total" "$(budget_verdict 1632 2409)" "pass"
+    # The counter reads what cargo reported, not a line format it happens to print: a transcript with
+    # no `Compiling` line in it at all still counts the crates its cargo invocations built (#1599).
     mkdir -p "$tmp/compiled"
-    printf '   Compiling serde v1.0.0\n   Compiling tokio v1.0.0\n' > "$tmp/compiled/build.steps.log"
-    printf '   Checked ryu v1.0.0\n' > "$tmp/compiled/test.steps.log"
-    check "the runner counts the crates a stage compiled" "$(compiled_by_stage "$tmp/compiled" build)" "2"
-    check "a stage that compiled nothing counts zero" "$(compiled_by_stage "$tmp/compiled" test)" "0"
+    printf '  cargo build: 3 crate(s) built\n  cargo test: 4 crate(s) built\n' > "$tmp/compiled/build.steps.log"
+    printf '  cargo build: 0 crate(s) built\n' > "$tmp/compiled/test.steps.log"
+    check "the counter sums the crates a stage's invocations reported" "$(compiled_by_stage "$tmp/compiled" build)" "7"
+    check "a stage whose transcript has no Compiling line still counts its compile" \
+        "$(grep -c 'Compiling' "$tmp/compiled/build.steps.log" || true)" "0"
+    check "a stage that built nothing counts zero" "$(compiled_by_stage "$tmp/compiled" test)" "0"
+    check "a stage that reported counts is measured" "$(counts_reported "$tmp/compiled" build test)" "yes"
+    mkdir -p "$tmp/quiet"
+    printf 'error[E0425]: cannot find value `nope` in this scope\n' > "$tmp/quiet/build.steps.log"
+    check "a stage that reported no count is not measured" "$(counts_reported "$tmp/quiet" build)" "no"
 
 
     # A scheduled stage that wrote nothing is not a pass. The fixture is the exact state the bug
@@ -945,7 +992,12 @@ for _k in "${STAGE_ORDER[@]}"; do
     [[ -f "$RESULTS_DIR/$_k.tsv" ]] || continue
     COMPILED_TOTAL=$((COMPILED_TOTAL + $(compiled_by_stage "$RESULTS_DIR" "$_k")))
 done
-REGIME="$(budget_regime "$COMPILED_TOTAL")"
+COUNTS_REPORTED="no"
+if [[ "${#STAGE_ORDER[@]}" -gt 0 ]]; then
+    COUNTS_REPORTED="$(counts_reported "$RESULTS_DIR" "${STAGE_ORDER[@]}")"
+fi
+REGIME="$(budget_regime "$COMPILED_TOTAL" "$COUNTS_REPORTED")"
+COLUMN="$(budget_column "$REGIME")"
 
 if [[ -f "$BUDGET_FILE" ]]; then
     while IFS=$'\t' read -r key warm_ceiling warm_runs warm_slowest cold_ceiling cold_runs cold_slowest _on _machine; do
@@ -966,23 +1018,29 @@ if [[ -f "$BUDGET_FILE" ]]; then
             end="$(cat "$RESULTS_DIR/$key.end" 2>/dev/null || echo 0)"
             secs=$((end - start))
         fi
-        if [[ "$REGIME" == "cold" ]]; then
+        if [[ "$COLUMN" == "cold" ]]; then
             ceiling="$cold_ceiling"; runs="$cold_runs"; slowest="$cold_slowest"
         else
             ceiling="$warm_ceiling"; runs="$warm_runs"; slowest="$warm_slowest"
         fi
         [[ -z "${ceiling:-}" ]] && continue
         if [[ "$(budget_verdict "$secs" "$ceiling")" == "over" ]]; then
-            OVER_BUDGET+=("$key: $(fmt_dur "$secs") > $REGIME ceiling $(fmt_dur "$ceiling") — the $REGIME sample is ${runs:-?} run(s), slowest $(fmt_dur "${slowest:-0}")")
+            OVER_BUDGET+=("$key: $(fmt_dur "$secs") > $COLUMN ceiling $(fmt_dur "$ceiling") — the $COLUMN sample is ${runs:-?} run(s), slowest $(fmt_dur "${slowest:-0}")")
         fi
     done < "$BUDGET_FILE"
 fi
 
-if [[ "$REGIME" == "cold" ]]; then
-    echo -e "  ${BLUE}ℹ${NC} regime: cold — this run compiled $COMPILED_TOTAL crate build(s) (cold at $COLD_CRATES+), so the cold ceilings apply"
-else
-    echo -e "  ${BLUE}ℹ${NC} regime: warm — this run compiled $COMPILED_TOTAL crate build(s) (cold at $COLD_CRATES+), so the warm ceilings apply"
-fi
+case "$REGIME" in
+    cold)
+        echo -e "  ${BLUE}ℹ${NC} regime: cold — this run built $COMPILED_TOTAL crate(s) (cold at $COLD_CRATES+), so the cold ceilings apply"
+        ;;
+    warm)
+        echo -e "  ${BLUE}ℹ${NC} regime: warm — this run built $COMPILED_TOTAL crate(s) (cold at $COLD_CRATES+), so the warm ceilings apply"
+        ;;
+    *)
+        echo -e "  ${YELLOW}⚠${NC}  regime: unmeasured — no step reported a crate count (the counter reads cargo's own stream: \`cargo <subcommand>: N crate(s) built\`), so the cold ceilings apply. A run is not warm because nothing said otherwise"
+        ;;
+esac
 
 if [[ "${#OVER_BUDGET[@]}" -gt 0 ]]; then
     echo -e "${RED}stage(s) over the measured budget ($BUDGET_FILE):${NC}"
@@ -999,10 +1057,11 @@ if [[ "${#OVER_BUDGET[@]}" -gt 0 ]]; then
                 echo -e "      ↳ ${label}"
             done < <(awk -F'\t' '$1=="PASS"||$1=="FAIL"{print $3 "\t" $2}' "$RESULTS_DIR/$stage_key.tsv" 2>/dev/null | sort -rn | head -3)
         fi
-        echo -e "      ↳ compiled $(compiled_by_stage "$RESULTS_DIR" "$stage_key") crate build(s) in this stage"
+        echo -e "      ↳ built $(compiled_by_stage "$RESULTS_DIR" "$stage_key") crate(s) in this stage"
     done
-    echo "  The regime is derived from this run ($COMPILED_TOTAL crate build(s)); a run that compiled nothing is"
-    echo "  judged warm, so a slow run cannot earn the cold ceiling by being slow."
+    echo "  The regime is derived from this run ($REGIME, $COMPILED_TOTAL crate(s) built); a measured run that"
+    echo "  built nothing is judged warm, so a slow run cannot earn the cold ceiling by being slow, and a run"
+    echo "  that reported no count at all is judged on the cold column rather than silently called warm."
     echo "  Raise a ceiling with a measurement of its own regime, the date, the machine and the sample size."
     FAILED=$((FAILED + ${#OVER_BUDGET[@]}))
 fi

@@ -27,6 +27,19 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   the field is removed and `RECEIPT_SCHEMA_VERSION` moves to 2: a version number denotes one artifact. No released artifact
   writes receipts (the module landed after `v1.14.3`), which is what makes the shape change free now.
 
+### Fixed
+
+- **A compile is counted from cargo's own stream, and a masked one is no longer called cheap** (#1599). The budget's
+  crate counter grepped `Compiling` out of a stage transcript, and cargo writes that to stderr — which every cargo
+  invocation in `languages/rust/validate-ci.sh` discarded with `2>/dev/null`. A stage that compiled for eleven minutes
+  counted zero crates, the run was judged **warm**, and the warm ceilings were applied to a cold run: the failure the two
+  regime columns exist to prevent, re-entering through the instrument. The wrapper now runs cargo with
+  `--message-format=json-render-diagnostics` — rustc's diagnostics still render, so a failed step still says why — and
+  reports `cargo <subcommand>: N crate(s) built` from the non-fresh `compiler-artifact` messages, deduplicated by package.
+  `local-ci.sh` reads that line, and a run where no step reported one is **unmeasured** and judged on the cold column,
+  because calling an unmeasured run warm is how this started. A new gating guard, `validate-cargo-diagnostics.sh`, holds
+  every mirrored copy to both rules.
+
 ### Changed
 
 - **The cost workflow is an observation with two thresholds, and it attributes what it reports** (#1523). The nightly
