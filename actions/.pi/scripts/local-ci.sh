@@ -316,6 +316,12 @@ if [[ "$SELF_TEST" == "true" ]]; then
     check "a run that compiled 400 crates is cold" "$(budget_regime 400)" "cold"
     check "a run that compiled nothing is warm" "$(budget_regime 0)" "warm"
     check "an incremental run that compiled 9 crates is warm" "$(budget_regime 9)" "warm"
+    # The cold run that measured the sample: `guards` compiled 38 crates inside its wave and took
+    # 3m21s, which the old 112s single ceiling failed and the derived cold ceiling passes. This is the
+    # regression the two columns exist for, pinned with the numbers it actually produced.
+    check "a cold guards run of 3m21s is inside the cold ceiling" "$(budget_verdict 201 221)" "pass"
+    check "the same 3m21s against the warm ceiling is a failure" "$(budget_verdict 201 84)" "over"
+    check "a 27m12s cold run is inside the cold total" "$(budget_verdict 1632 2409)" "pass"
     mkdir -p "$tmp/compiled"
     printf '   Compiling serde v1.0.0\n   Compiling tokio v1.0.0\n' > "$tmp/compiled/build.steps.log"
     printf '   Checked ryu v1.0.0\n' > "$tmp/compiled/test.steps.log"
