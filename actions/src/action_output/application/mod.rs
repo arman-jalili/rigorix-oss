@@ -21,6 +21,7 @@ pub mod factory;
 pub mod output_formatter_impl;
 pub mod output_variable_impl;
 pub mod pr_comment_impl;
+pub mod quality;
 pub mod service;
 pub mod step_summary_writer_impl;
 
@@ -30,5 +31,6 @@ pub use factory::*;
 pub use output_formatter_impl::*;
 pub use output_variable_impl::*;
 pub use pr_comment_impl::*;
+pub use quality::*;
 pub use service::*;
 pub use step_summary_writer_impl::*;

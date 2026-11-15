@@ -45,7 +45,13 @@ impl PrCommentServiceImpl {
             ExecutionStatus::PartialFailure => "⚠️",
         };
         let duration_secs = context.duration_ms as f64 / 1000.0;
-        let quality = context.quality_level.as_deref().unwrap_or("unknown");
+        // A run whose classification the engine did not report says so, in words. "unknown" reads like
+        // a value that was measured and came out unrecognisable; a missing claim is a different fact
+        // (#1587).
+        let quality = context
+            .quality_level
+            .as_deref()
+            .unwrap_or("not reported by the engine");
 
         let mut body = String::new();
         body.push_str(&format!(
