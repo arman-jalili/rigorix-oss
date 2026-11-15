@@ -12,9 +12,28 @@
 # `runs` (how many measured runs) and `slowest` (the slowest of them). A ceiling without its sample is
 # a number with no provenance, which is what this row exists to prevent.
 #
-# Derivation: ceiling = ceil(1.10 * slowest), and the cold ceiling is never below the warm one
-# (a cold run cannot be bounded tighter than a warm run of the same stage: `coverage` measured 345s
-# warm and 317s cold, because a cold `coverage` is the *second* stage to pay for the same compile).
+# Derivation, applied by `.pi/scripts/validate-budget-derivation.sh` to every cell:
+#
+#   ceiling = floor(11 * slowest / 10)     integer arithmetic: (slowest*11) / 10
+#   cold    = max(floor(11 * cold_slowest / 10), warm ceiling)
+#
+# Integer arithmetic on purpose: (700*11)/10 = 770, where `ceil(1.10 * 700)` in floating point is 771,
+# because 700*1.1 is 770.0000000000001. The earlier table was written by three different expressions —
+# `ceil` for four cells, Python's banker's `round` for the rest, and a hand edit for one — so seven of
+# its eighteen cells were not the number its header stated (#1582). A rule a reader can re-derive in a
+# shell is a rule the file can be checked against, and `.pi/scripts/validate-budget-derivation.sh` is
+# that check: it recomputes every cell and exits 1 on a one-second disagreement.
+#
+# Floor rather than ceil because the margin is a margin, not a target: 10% below a measured run is
+# already more room than the run used, and every recorded run still fits inside the result — the
+# slowest warm `lint` (99s) is under 108, the slowest cold `guards` (201s) under 221. A ceiling that
+# rounds up is a ceiling that grows a second per derivation.
+#
+# `coverage` cold deserves the note that #1582 asked for: it read 381, one second *above* both rules,
+# because the pass that added the sixth cold run wrote `max(..., warm_ceiling + 1)` — the
+# "never below the warm one" rule implemented as strictly above. It is now 380, equal to the warm
+# ceiling and derived, because in a cold run `coverage` is the *second* stage to pay for the same
+# compile: 345s slowest in both regimes is a measurement, not a mistake.
 #
 # The samples are full runs (`local-ci.sh`, stages in their own waves), never `--stage <name>`: a stage
 # measured alone is a different experiment — #1551 measured `guards` at 2m13s alone and 43s in a run.
@@ -22,6 +41,9 @@
 # Warm sample: four full runs on 2026-11-15 at build times 7-16s (8m13s, 8m28s, 9m33s, 7m47s wall
 # clock). The `total` row has a fifth: the owner's 11m40s run, 700s, one second over the old 699s
 # ceiling — the datum that made the old ceiling's provenance worth asking about.
+# The cold ceiling is never below the warm one — a cold run cannot be bounded tighter than a warm run
+# of the same stage — and equality is allowed: `coverage` is the case, for the reason above.
+#
 # Cold sample: six full runs on the same date at build times 64-688s (13m06s, 15m26s, 19m30s,
 # 36m28s, 36m30s, and 27m12s after `cargo clean`, which compiled 488 crates). Two of them are the
 # 36-minute rebuilds that the old single-column ceiling called regressions. The 27m12s run is also
@@ -35,12 +57,12 @@
 # A ceiling is raised with a measurement, the date and the machine. A ceiling nudged to fit the last
 # run is a comment that fails the person next week.
 stage	warm_ceiling	warm_runs	warm_slowest	cold_ceiling	cold_runs	cold_slowest	measured_on	machine
-lint	109	4	99	1173	6	1066	2026-11-15	8-core (aarch64, macOS)
-build	18	4	16	757	6	688	2026-11-15	8-core (aarch64, macOS)
-test	128	4	116	431	6	392	2026-11-15	8-core (aarch64, macOS)
+lint	108	4	99	1172	6	1066	2026-11-15	8-core (aarch64, macOS)
+build	17	4	16	756	6	688	2026-11-15	8-core (aarch64, macOS)
+test	127	4	116	431	6	392	2026-11-15	8-core (aarch64, macOS)
 security	33	4	30	38	6	35	2026-11-15	8-core (aarch64, macOS)
-guards	84	4	76	221	6	201	2026-11-15	8-core (aarch64, macOS)
-coverage	380	4	345	381	6	345	2026-11-15	8-core (aarch64, macOS)
-docs	32	4	29	38	6	35	2026-11-15	8-core (aarch64, macOS)
-integration	1	4	1	2	6	1	2026-11-15	8-core (aarch64, macOS)
+guards	83	4	76	221	6	201	2026-11-15	8-core (aarch64, macOS)
+coverage	379	4	345	379	6	345	2026-11-15	8-core (aarch64, macOS)
+docs	31	4	29	38	6	35	2026-11-15	8-core (aarch64, macOS)
+integration	1	4	1	1	6	1	2026-11-15	8-core (aarch64, macOS)
 total	770	5	700	2409	6	2190	2026-11-15	8-core (aarch64, macOS)

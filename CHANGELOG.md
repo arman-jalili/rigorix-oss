@@ -19,6 +19,23 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- **The budget table states the rule its numbers follow, and a guard checks it** (#1582). Seven of eighteen
+  ceilings were not the number the header stated: six were one second tighter than `ceil(1.10 × slowest)` — what a
+  truncated multiplication produces — one was a floating-point residue (`ceil(1.10 × 700)` is 771 because `700 × 1.1`
+  is `770.0000000000001`), and `coverage` cold was one second *looser*, hand-edited to `warm + 1` by the pass that
+  added the sixth cold run. The table now states one rule — `ceiling = floor(11 × slowest / 10)`, cold at or above
+  warm — in integer arithmetic a reader can re-derive in a shell, and every cell follows it. Floor rather than ceil
+  because the margin is a margin and not a target: every recorded run still fits inside the result (warmest `lint`
+  99s under 108, coldest `guards` 201s under 221), and a ceiling that rounds up grows a second per derivation.
+  `.pi/scripts/validate-budget-derivation.sh` recomputes every cell from `runs`/`slowest` and exits 1 on a
+  one-second disagreement — including for a header that stops stating the rule and a stage row that disappears.
+
+- **A second runner called `local-ci.sh` is gone** (#1583). Five identical copies under `.pi/scripts/ci/` scanned
+  every `stage_*.sh` and answered a different question than CI does — no stage list, no guards, no budget, no
+  `--self-test` — and nothing in the tree invoked them. A contributor who typed the path their memory supplied got
+  `PASSED`-shaped output from a program that enforced nothing. Deleted rather than wrapped: five copies with no
+  caller are maintenance that only gets cheaper to remove.
+
 - **`local-ci`'s budget measures the regime it enforces in, and states its sample** (#1562, #1568). One ceiling per
   stage could not bound two different experiments: a warm run and a run that recompiles the workspace. The single
   column compared a warm number against a cold run and called the rebuild a regression — 36-minute runs on a stale cache
