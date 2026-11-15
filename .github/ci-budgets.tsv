@@ -12,6 +12,10 @@
 # fires on noise and is ignored within a week. A breach then means one thing: slower than
 # anything measured.
 #
+# Two thresholds, stated in `.github/workflows/ci-cost.yml`: an overage of up to 1.5 minutes warns,
+# and beyond it fails. The variance this file records — 0.4-1.3 minutes per stage — is why the
+# warning band exists, and why raising a ceiling to silence a warning would be the wrong remedy.
+#
 # The ratchet has two halves, both enforced by `ci_budget_report.sh --base <ref>`: a budget may
 # be **lowered** after a win (that is the point), may **not be raised** unless `set_from` changes
 # too, and a row may not be deleted.
@@ -23,12 +27,6 @@
 # job-minutes; from 43.5 / 159.4 the pipeline now costs 12.4 / 49.5 in the case that runs
 # *everything*. The ceilings stay at the cold-cache worst case (23 / 115), because that is what
 # a refused restore costs, and a ceiling that only holds when the cache hits is not a ceiling.
-#
-# **Measured, run 42388558670 (`3eafc20b`, warm cache, nothing narrowed): 12.4 min wall,
-# 49.5 job-minutes over 24 jobs.** The epic's targets were ≤ 22 min wall and ≤ 70 job-minutes;
-# from 43.5 / 159.4 the pipeline now costs 12.4 / 49.5 in the case that runs *everything*.
-# The ceilings stay at the cold-cache worst case (23 / 115) because that is what a refused
-# restore costs, and a ceiling that only holds when the cache hits is not a ceiling.
 #
 # Set from run 42373245654 (`9105cf8b`) — the first run with no `build` job (#1438), one shared
 # cache (#1439) and the suite partitioned (#1440) — and that run was **cold**: the shared cache
