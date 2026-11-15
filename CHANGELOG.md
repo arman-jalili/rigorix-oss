@@ -19,6 +19,14 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- **Reading a legacy template no longer re-stamps its creation time** (#1563, read direction). The `get` fallback
+  converted an engine document (`[[nodes]]`) through `engine_template_to_plan_template`, which set both timestamps to
+  `Utc::now()` — so the same file reported a new `created_at` on every read, the create defect with the sign flipped:
+  there the caller's clock was discarded, here the document's. `document_timestamps` reads the document's own
+  `created_at`/`updated_at` — the engine's `Template` type has no such fields, so they can only come from the document —
+  and stamps only a document that has none. One test reads a fixture stamped 2000-01-01 twice, two seconds apart, and
+  asserts the recorded instant both times rather than that the two reads agree.
+
 - **One create door, one rule for a template's timestamps** (#1563). The TOML path stamped `created_at`/`updated_at`
   at the moment of reading — its own comment says a plan template's timestamps describe *the host's copy, not the
   document* — while the JSON create path demanded the caller supply them. A client sending the shape the SDK documents
