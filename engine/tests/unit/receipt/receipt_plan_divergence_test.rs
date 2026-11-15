@@ -10,8 +10,8 @@
 //! the position, because "the sets differ" is not a finding an author can act on.
 
 use rigorix_engine::receipt::domain::receipt::{
-    BudgetDeclared, DeclaredEffect, Expectation, Receipt, ReceiptStep, Role, Sandbox,
-    SandboxRegime, Workspace, WorkspaceKind,
+    BudgetDeclared, DeclaredEffect, Expectation, Receipt, ReceiptStep, Sandbox, SandboxRegime,
+    Workspace, WorkspaceKind,
 };
 use rigorix_engine::receipt::domain::refusal::ReceiptRefusal;
 use rigorix_engine::receipt::{PlanStep, verify_against_plan};
@@ -48,12 +48,6 @@ fn receipt(steps: Vec<ReceiptStep>) -> Receipt {
             image_digest: "sha256:1111".to_string(),
         },
         steps,
-        vec![Role {
-            role: "executor".to_string(),
-            model_id: "m".to_string(),
-            context_window: 8192,
-            structured_output: false,
-        }],
         BudgetDeclared {
             max_iterations: 10,
             max_tokens: 1000,

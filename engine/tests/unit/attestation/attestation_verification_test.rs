@@ -26,7 +26,6 @@ fn verified() -> rigorix_engine::receipt::VerifiedReceipt {
             image_digest: "sha256:1111".to_string(),
         },
         Vec::new(),
-        Vec::new(),
         BudgetDeclared {
             max_iterations: 3,
             max_tokens: 30,

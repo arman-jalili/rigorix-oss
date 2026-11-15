@@ -165,6 +165,22 @@ submodules) that is its own specification and its own class of silent wrong-iden
 
 ---
 
+### 5b. Schema version 2: `roles` leaves the receipt (#1586)
+
+Version **1** of the receipt carried `roles: Vec<Role { role, model_id, context_window, structured_output }>`. No host in
+this repository produced one, nothing in the engine read it, and every receipt the system could write serialised
+`"roles": []`. A signed field whose only reachable value is empty is not a contract; it is the shape of an intention, and it
+invites a reader to conclude that models are traced when they are not.
+
+It is also the field that would have lied. Had a host filled it, the engine would have signed `context_window` and
+`structured_output` — an integer and a boolean it cannot observe — as bare facts, while `quality_required` next to them is
+`{level, source}` precisely so a claim cannot be mistaken for an observation. §11 already assigns roles to the harness.
+
+**Decided: removed, and `RECEIPT_SCHEMA_VERSION` is 2.** A version number denotes exactly one artifact, so the number moved
+with the shape rather than describing two. No released artifact writes receipts — the module landed after the `v1.14.3` tag
+(`c8d162e1`) — so there is no published version-1 receipt to keep parsing. That is what makes this free now and expensive
+after 1.15.0 ships.
+
 ### 4a. The amendment of #1570: what the run wrote
 
 §4's table fixed the attestation's field set. Two fields joined it, and the reason is the one sentence the
