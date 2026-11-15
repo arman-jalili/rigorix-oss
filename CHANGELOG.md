@@ -19,6 +19,18 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- **One create door, one rule for a template's timestamps** (#1563). The TOML path stamped `created_at`/`updated_at`
+  at the moment of reading — its own comment says a plan template's timestamps describe *the host's copy, not the
+  document* — while the JSON create path demanded the caller supply them. A client sending the shape the SDK documents
+  (`{name, description, steps}`) was refused with `missing field 'created_at'`, and one that invented timestamps had its
+  invented clock stored as the host's. `PlanTemplate::stamp_host_timestamps` is now the single owner of that rule and
+  both doors call `from_create_json`, which stamps and then delegates; a supplied value is overwritten rather than
+  refused, because refusing an extra field turns a harmless call into a failure. `from_json` — the read door — still
+  requires both, so a stored document without them is refused rather than silently re-stamped, and the type gains no
+  `#[serde(default = …)]`: a corrupt record and a fresh one must not look alike. The tool's own create input is stamped
+  at the door a client actually knocks on, which is where the refusal used to happen — while parsing the arguments,
+  before any handler ran.
+
 - **A check that has not reported yet is no longer a failed check** (#1560). The rollup aggregation in
   `mr-validation.sh` sent every entry without a `conclusion`/`state`/`status` to the string `unknown`, and its final
   `else` — the arm that absorbs whatever nobody enumerated — read `unknown` as `failure`. A rollup is never fully

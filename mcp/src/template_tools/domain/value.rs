@@ -187,9 +187,45 @@ impl PlanTemplate {
         })
     }
 
+    /// The create door's stamp: the host's clock, for both timestamps, always (#1563).
+    ///
+    /// The TOML door learned this first and said it plainly — *a plan template's timestamps describe
+    /// the host's copy, not the document* — and then the JSON door asked the caller for them anyway.
+    /// Two doors, one contract, opposite answers: a caller that sent what the SDK documents was
+    /// refused for the timestamp it could not know, and a caller that invented one had its invented
+    /// clock written into the record as the host's.
+    ///
+    /// A supplied value is **overwritten, not refused**. Refusing an extra field turns a harmless call
+    /// into a failure, and accepting it would make the record disagree with the clock that wrote it.
+    ///
+    /// This is deliberately *not* `#[serde(default = "Utc::now")]` on the type: a stored document
+    /// without these fields is corrupt evidence and must still be refused (`from_json`), which is the
+    /// difference between a document being created and a document being read back.
+    #[must_use]
+    pub fn stamp_host_timestamps(mut value: serde_json::Value) -> serde_json::Value {
+        let now = serde_json::Value::String(Utc::now().to_rfc3339());
+        if let Some(object) = value.as_object_mut() {
+            object.insert("created_at".to_string(), now.clone());
+            object.insert("updated_at".to_string(), now);
+        }
+        value
+    }
+
+    /// Create a template from caller-supplied JSON — the create door.
+    ///
+    /// The host's clock stamps both timestamps; every other field is the caller's. Every create path
+    /// calls this rather than `from_json` so a third door cannot be written with a different answer.
+    ///
+    /// # Errors
+    /// As [`PlanTemplate::from_json`], plus the same validation.
+    pub fn from_create_json(value: serde_json::Value) -> Result<Self, TemplateError> {
+        Self::from_json(Self::stamp_host_timestamps(value))
+    }
+
     /// Create a PlanTemplate from a JSON value.
     ///
-    /// Deserializes and validates the template in one step.
+    /// Deserializes and validates the template in one step. This is the **read** door: both timestamps
+    /// are required, because a document read back from disk without them is corrupt evidence.
     pub fn from_json(value: serde_json::Value) -> Result<Self, TemplateError> {
         let template: Self = serde_json::from_value(value).map_err(|e| {
             TemplateError::DeserializationFailed(format!(
@@ -576,11 +612,28 @@ pub struct CreateTemplateInput {
     pub name: String,
 
     /// The template plan to store.
+    ///
+    /// Deserialised through [`PlanTemplate::from_create_json`], so the documented client shape
+    /// (`{name, description, steps}`) is accepted and the host's clock owns both timestamps (#1563).
+    #[serde(deserialize_with = "deserialize_plan_from_create_json")]
     pub plan: PlanTemplate,
 
     /// Whether to overwrite an existing template with the same name.
     #[serde(default)]
     pub overwrite: bool,
+}
+
+/// Deserialise a caller-supplied plan through the create door.
+///
+/// `CreateTemplateInput.plan` is the tool's create path, and it is the door a client actually knocks
+/// on: without this, the refusal for a missing `created_at` happened while parsing the arguments —
+/// before any handler ran — so no amount of door-stamping downstream could have helped.
+fn deserialize_plan_from_create_json<'de, D>(deserializer: D) -> Result<PlanTemplate, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    PlanTemplate::from_create_json(value).map_err(serde::de::Error::custom)
 }
 
 // ---------------------------------------------------------------------------
