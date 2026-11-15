@@ -35,8 +35,43 @@ use rigorix_engine::templates::domain::{
     Template as EngineTemplate, TemplateAction, ValidationRule,
 };
 
+/// A legacy document's own timestamps, or the host's clock when it has none (#1563).
+///
+/// This is the read side of the same rule the create door applies, and it is the direction that can
+/// silently lie: a converter that stamps unconditionally reports `created_at = now` on every read of
+/// the same file, so a template gains a new creation time each time someone looks at it. A stored
+/// document that carries its timestamps keeps them; only a document that has none is stamped, and
+/// then once, by the host that read it.
+///
+/// The engine's `Template` type has no timestamp fields at all, which is why these are read from the
+/// document and passed in rather than taken from the parsed type.
+fn document_timestamps(
+    document: &serde_json::Value,
+) -> (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>) {
+    use chrono::{DateTime, Utc};
+    let read = |key: &str| {
+        document
+            .get(key)
+            .and_then(|value| value.as_str())
+            .and_then(|text| DateTime::parse_from_rfc3339(text).ok())
+            .map(|at| at.with_timezone(&Utc))
+    };
+    let now = Utc::now();
+    (
+        read("created_at").unwrap_or(now),
+        read("updated_at").unwrap_or(now),
+    )
+}
+
 /// Convert an engine Template ([[nodes]] format) to an MCP PlanTemplate ([[steps]] format).
-fn engine_template_to_plan_template(tmpl: &EngineTemplate) -> Result<PlanTemplate, TemplateError> {
+///
+/// `created_at` / `updated_at` are the document's own values where it has them —
+/// [`document_timestamps`] decides — never a fresh clock per read.
+fn engine_template_to_plan_template(
+    tmpl: &EngineTemplate,
+    created_at: chrono::DateTime<chrono::Utc>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+) -> Result<PlanTemplate, TemplateError> {
     let steps: Vec<StepDefinition> = tmpl
         .nodes
         .iter()
@@ -79,8 +114,6 @@ fn engine_template_to_plan_template(tmpl: &EngineTemplate) -> Result<PlanTemplat
         })
         .collect();
 
-    // Panic is acceptable here: if we parsed a valid engine template, steps are non-empty.
-    let now = chrono::Utc::now();
     // GAP-L-08: PlanTemplate::new returns a typed error on empty steps —
     // propagate it instead of panicking on the conversion path.
     PlanTemplate::new(
@@ -91,8 +124,8 @@ fn engine_template_to_plan_template(tmpl: &EngineTemplate) -> Result<PlanTemplat
         steps,
         None,
         HashMap::new(),
-        now,
-        now,
+        created_at,
+        updated_at,
     )
 }
 
@@ -323,7 +356,14 @@ impl TemplateRepository for FilesystemTemplateRepository {
                         name
                     ))
                 })?;
-                return engine_template_to_plan_template(&document.template);
+                // The document's own timestamps survive the fallback: only a document without them
+                // is stamped, and that stamp is the host's clock at the moment of reading.
+                let (created_at, updated_at) = document_timestamps(&json_value);
+                return engine_template_to_plan_template(
+                    &document.template,
+                    created_at,
+                    updated_at,
+                );
             }
         }
     }
@@ -684,6 +724,77 @@ mod tests {
         );
     }
 
+    /// A legacy engine document keeps its own timestamps — and does so on every read (#1563).
+    ///
+    /// The read side is the direction that can lies silently: a converter that stamps unconditionally
+    /// reports `created_at = now` for the same file, so the template appears to have been created
+    /// again each time someone looked at it. Two reads two seconds apart make a fresh clock
+    /// impossible to mistake for the recorded one, and assert the recorded instant rather than merely
+    /// asserting the two reads agree with each other.
+    #[tokio::test]
+    async fn a_legacy_document_keeps_its_own_timestamps_across_reads() {
+        let dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let repo = FilesystemTemplateRepository::new(dir.path());
+
+        // A legacy engine document ([[nodes]]), carrying the timestamps a host wrote when it first
+        // stored it. The engine's `Template` type has no such fields, so they reach the converter
+        // only through the document.
+        let legacy = r#"schema_version = 1
+id = "legacy-plan"
+name = "legacy-plan"
+description = "Stored in 2000, read ever since"
+version = "1.0.0"
+created_at = "2000-01-01T00:00:00Z"
+updated_at = "2000-01-02T00:00:00Z"
+
+[[nodes]]
+id = "inspect"
+name = "inspect"
+tool = "file_read"
+
+[nodes.parameters]
+path = "/tmp/thing"
+"#;
+        tokio::fs::write(dir.path().join("legacy-plan.toml"), legacy)
+            .await
+            .expect("write the fixture");
+
+        let first = repo
+            .get("legacy-plan")
+            .await
+            .expect("the legacy document reads");
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        let second = repo
+            .get("legacy-plan")
+            .await
+            .expect("the legacy document reads again");
+
+        let recorded = chrono::DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z")
+            .expect("the fixture's instant parses")
+            .with_timezone(&chrono::Utc);
+        let recorded_updated = chrono::DateTime::parse_from_rfc3339("2000-01-02T00:00:00Z")
+            .expect("the fixture's instant parses")
+            .with_timezone(&chrono::Utc);
+
+        assert_eq!(
+            first.created_at(),
+            &recorded,
+            "the first read must report the document's own creation time, not the clock"
+        );
+        assert_eq!(
+            second.created_at(),
+            &recorded,
+            "a second read two seconds later must report the recorded instant, not a fresh one"
+        );
+        assert_eq!(first.updated_at(), second.updated_at());
+        assert_eq!(
+            first.updated_at(),
+            &recorded_updated,
+            "the document's updated_at survives the fallback too"
+        );
+        assert_eq!(second.created_at(), first.created_at());
+    }
+
     #[tokio::test]
     async fn test_template_repository_is_send_sync() {
         let dir = tempfile::tempdir().expect("Failed to create temp dir");
@@ -746,8 +857,9 @@ mod tests {
             author: None,
         };
 
-        let plan =
-            engine_template_to_plan_template(&engine_tmpl).expect("valid engine template converts");
+        let at = chrono::Utc::now();
+        let plan = engine_template_to_plan_template(&engine_tmpl, at, at)
+            .expect("valid engine template converts");
         let steps = plan.steps();
         assert_eq!(steps.len(), 2);
         assert!(
