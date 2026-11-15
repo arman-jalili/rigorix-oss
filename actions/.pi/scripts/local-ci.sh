@@ -209,6 +209,29 @@ stage_has_failures() {  # $1 results dir, $2 stage key
     [[ "${failed:-0}" -gt 0 ]]
 }
 
+# ── the budget's measures (#1562) ────────────────────────────────────────────
+# Defined here, above the self-test, because the cases pin them and a helper the fixtures cannot call
+# is a helper whose fixtures are a copy of it.
+#
+# Measured separation, not a guess: a warm full run on this machine compiles 0-9 crates, an incremental
+# touch of a leaf crate a handful, and a stale-cache run hundreds. 100 sits inside that gap by more than
+# an order of magnitude on either side. The number is printed with every run's regime.
+COLD_CRATES=100
+
+compiled_by_stage() {  # $1 results dir, $2 stage key → how many crates that stage's transcript compiled
+    local n
+    n="$(grep -c '^ *Compiling ' "$1/$2.steps.log" 2>/dev/null || true)"
+    printf '%s' "${n:-0}"
+}
+
+budget_regime() {  # $1 crates compiled by the run → warm|cold
+    if [[ "${1:-0}" -ge "$COLD_CRATES" ]]; then printf 'cold'; else printf 'warm'; fi
+}
+
+budget_verdict() {  # $1 seconds, $2 ceiling → pass|over
+    if [[ "${1:-0}" -gt "${2:-0}" ]]; then printf 'over'; else printf 'pass'; fi
+}
+
 if [[ "$SELF_TEST" == "true" ]]; then
     tmp="$(mktemp -d)"
     trap 'find "${tmp:-/nonexistent}" -mindepth 0 -delete 2>/dev/null || true' EXIT
@@ -284,6 +307,21 @@ if [[ "$SELF_TEST" == "true" ]]; then
     printf 'FAIL\tsomething broke\t1\t\n' >> "$tmp/stage/selftest-stage.tsv"
     stage_has_failures "$tmp/stage" "selftest-stage" && code=0 || code=$?
     check "a stage with one failed step has a failure" "$code" "0"
+    # ── the budget's regime and verdict (#1562) ──
+    # The two runs that made the old single column wrong: 11m40s warm (the owner's) and 36m28s cold
+    # (a rebuild). Both must pass; a run that compiled nothing and took 36 minutes must not.
+    check "a 11m40s warm run is inside the warm ceiling" "$(budget_verdict 700 770)" "pass"
+    check "a 36m28s cold run is inside the cold ceiling" "$(budget_verdict 2188 2409)" "pass"
+    check "a run that compiled nothing and took 36m is over the warm ceiling" "$(budget_verdict 2188 770)" "over"
+    check "a run that compiled 400 crates is cold" "$(budget_regime 400)" "cold"
+    check "a run that compiled nothing is warm" "$(budget_regime 0)" "warm"
+    check "an incremental run that compiled 9 crates is warm" "$(budget_regime 9)" "warm"
+    mkdir -p "$tmp/compiled"
+    printf '   Compiling serde v1.0.0\n   Compiling tokio v1.0.0\n' > "$tmp/compiled/build.steps.log"
+    printf '   Checked ryu v1.0.0\n' > "$tmp/compiled/test.steps.log"
+    check "the runner counts the crates a stage compiled" "$(compiled_by_stage "$tmp/compiled" build)" "2"
+    check "a stage that compiled nothing counts zero" "$(compiled_by_stage "$tmp/compiled" test)" "0"
+
 
     # A scheduled stage that wrote nothing is not a pass. The fixture is the exact state the bug
     # left behind: `lint` ran, `build` never did.
@@ -490,15 +528,6 @@ run_root_script() {
 
 should_run() { [[ -z "$STAGE" || "$STAGE" == "$1" ]]; }
 
-# A per-stage ceiling measures a stage *inside* a run, not alone (#1551). On a tree that has not been
-# built, the first stage to touch each crate pays for the whole compile and reads as a regression:
-# measured after a mutation invalidated `target/`, `--stage guards` cost 2m13s against a 112s ceiling,
-# against 43s warm. Recorded here, before any stage runs, so a budget failure can say so instead of
-# implying the stage got slower.
-COLD_START=false
-if [[ ! -d target/debug/deps ]] || [[ -z "$(ls -A target/debug/deps 2>/dev/null || true)" ]]; then
-    COLD_START=true
-fi
 
 # ── List Mode ───────────────────────────────────────────────────
 if [[ "$LIST_ONLY" == "true" ]]; then
@@ -732,8 +761,11 @@ stage_integration() {
 # then the chain that does (build → test → coverage), then integration. `--stage <name>` runs one.
 run_stage() {  # $1 key
     local key="$1" log="$RESULTS_DIR/$1.log" t0=$SECONDS rc=0
+    # The transcript is written in both modes: it is where the runner reads how many crates this stage
+    # compiled, and "how many crates did this run compile" is the fact the regime is derived from
+    # (#1562). A serial run that kept its transcript only on a tty could not answer it.
     if [[ "$JOBS" -eq 1 ]]; then
-        stage_"$key" || rc=$?
+        stage_"$key" 2>&1 | tee "$log" || rc=$?
     else
         stage_"$key" > "$log" 2>&1 || rc=$?
     fi
@@ -842,7 +874,7 @@ echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════╗"
 echo -e "║                     Final Results                        ║"
 echo -e "╚══════════════════════════════════════════════════════════╝${NC}"
-printf '  %-12s %6s %6s %6s %10s %7s\n' stage steps pass fail duration share
+printf '  %-12s %6s %6s %6s %10s %7s %9s\n' stage steps pass fail duration share compiled
 # The denominator is summed in a first pass. Computing it as the table is printed made the first
 # stage 100% of itself — the shares read 100, 8, 53, 12 … and summed to 244.
 TABLE_TOTAL=0
@@ -866,7 +898,9 @@ for key in "${STAGE_ORDER[@]}"; do
     # are different facts and the table says which is which.
     share=0
     [[ "$TABLE_TOTAL" -gt 0 ]] && share=$((secs * 100 / TABLE_TOTAL))
-    printf '  %-12s %6s %6s %6s %10s %6s%%\n' "$key" "$((p + f + s))" "$p" "$f" "$(fmt_dur "$secs")" "$share"
+    # `compiled` is the fact the budget's regime is derived from, printed per stage so a reader can
+    # see which stage paid for the compile instead of inferring it from a duration (#1562).
+    printf '  %-12s %6s %6s %6s %10s %6s%% %8s\n' "$key" "$((p + f + s))" "$p" "$f" "$(fmt_dur "$secs")" "$share" "$(compiled_by_stage "$RESULTS_DIR" "$key")"
 done
 echo "  ────────────────────────────────────────────────────────────"
 # Two totals, because a run has two costs. `stage time` is the work done and is what the shares are
@@ -884,16 +918,34 @@ if [[ -z "$STAGE" ]]; then
 fi
 echo ""
 
-# ── the budget (#1551) ───────────────────────────────────────────────────────
-# A ceiling is derived from a measured run and recorded with the date and the machine, the way
-# `.pi/coverage-layers.tsv` derives its floors. A budget that is nudged to fit the last run is a
-# comment; this one fails the run.
+# ── the budget (#1551, re-derived for #1562/#1568) ───────────────────────────
+# A ceiling is derived from measured runs and recorded with its sample size and the machine, the way
+# `.pi/coverage-layers.tsv` derives its floors. Two things make this a gate rather than a comment:
+#
+#   1. The regime is measured, not assumed. A run that compiled the workspace and a run that compiled
+#      nothing are different experiments, and one ceiling cannot bound both: the 36-minute rebuild the
+#      old single column called a regression was that row comparing a warm number to a cold run. The
+#      runner counts the crates each stage compiled and says which regime it is in, so a green run
+#      states its own regime too — a reader should never have to infer it.
+#   2. A ceiling carries its sample. `runs` and `slowest` are columns, printed in the failure message:
+#      "4m > 2m" is an argument, "4m > 2m (warm sample: 5 runs, slowest 1m15s)" is a measurement with
+#      a provenance, and a ceiling raised to fit one run cannot be written without the run count
+#      disagreeing with it.
 BUDGET_FILE=".pi/local-ci-budget.tsv"
 OVER_BUDGET=()
+
+COMPILED_TOTAL=0
+for _k in "${STAGE_ORDER[@]}"; do
+    [[ -f "$RESULTS_DIR/$_k.tsv" ]] || continue
+    COMPILED_TOTAL=$((COMPILED_TOTAL + $(compiled_by_stage "$RESULTS_DIR" "$_k")))
+done
+REGIME="$(budget_regime "$COMPILED_TOTAL")"
+
 if [[ -f "$BUDGET_FILE" ]]; then
-    while IFS=$'\t' read -r key _measured ceiling _on _machine; do
+    while IFS=$'\t' read -r key warm_ceiling warm_runs warm_slowest cold_ceiling cold_runs cold_slowest _on _machine; do
+        [[ "$key" == "stage" ]] && continue
         [[ "$key" =~ ^# ]] && continue
-        [[ -z "${key:-}" || -z "${ceiling:-}" ]] && continue
+        [[ -z "${key:-}" || -z "${warm_ceiling:-}" ]] && continue
         # `total` is the one row that bounds the run rather than a stage: eight stages each inside
         # their ceiling can still be a run nobody would accept, and that is the number a contributor
         # actually experiences. It is skipped for `--stage`, which measures one stage and reports
@@ -908,11 +960,24 @@ if [[ -f "$BUDGET_FILE" ]]; then
             end="$(cat "$RESULTS_DIR/$key.end" 2>/dev/null || echo 0)"
             secs=$((end - start))
         fi
-        if [[ "$secs" -gt "$ceiling" ]]; then
-            OVER_BUDGET+=("$key: $(fmt_dur "$secs") > ceiling $(fmt_dur "$ceiling")")
+        if [[ "$REGIME" == "cold" ]]; then
+            ceiling="$cold_ceiling"; runs="$cold_runs"; slowest="$cold_slowest"
+        else
+            ceiling="$warm_ceiling"; runs="$warm_runs"; slowest="$warm_slowest"
+        fi
+        [[ -z "${ceiling:-}" ]] && continue
+        if [[ "$(budget_verdict "$secs" "$ceiling")" == "over" ]]; then
+            OVER_BUDGET+=("$key: $(fmt_dur "$secs") > $REGIME ceiling $(fmt_dur "$ceiling") — the $REGIME sample is ${runs:-?} run(s), slowest $(fmt_dur "${slowest:-0}")")
         fi
     done < "$BUDGET_FILE"
 fi
+
+if [[ "$REGIME" == "cold" ]]; then
+    echo -e "  ${BLUE}ℹ${NC} regime: cold — this run compiled $COMPILED_TOTAL crate build(s) (cold at $COLD_CRATES+), so the cold ceilings apply"
+else
+    echo -e "  ${BLUE}ℹ${NC} regime: warm — this run compiled $COMPILED_TOTAL crate build(s) (cold at $COLD_CRATES+), so the warm ceilings apply"
+fi
+
 if [[ "${#OVER_BUDGET[@]}" -gt 0 ]]; then
     echo -e "${RED}stage(s) over the measured budget ($BUDGET_FILE):${NC}"
     for o in "${OVER_BUDGET[@]}"; do
@@ -928,12 +993,11 @@ if [[ "${#OVER_BUDGET[@]}" -gt 0 ]]; then
                 echo -e "      ↳ ${label}"
             done < <(awk -F'\t' '$1=="PASS"||$1=="FAIL"{print $3 "\t" $2}' "$RESULTS_DIR/$stage_key.tsv" 2>/dev/null | sort -rn | head -3)
         fi
+        echo -e "      ↳ compiled $(compiled_by_stage "$RESULTS_DIR" "$stage_key") crate build(s) in this stage"
     done
-    echo "  Raise a ceiling with a measurement (and the date and machine), never by nudging it."
-    if [[ "$COLD_START" == true ]]; then
-        echo "  ℹ this tree had no build cache when the run started: compilation is charged to whichever stage"
-        echo "    touches each crate first, so a stage can pass its warm ceiling on a tree that is merely unbuilt."
-    fi
+    echo "  The regime is derived from this run ($COMPILED_TOTAL crate build(s)); a run that compiled nothing is"
+    echo "  judged warm, so a slow run cannot earn the cold ceiling by being slow."
+    echo "  Raise a ceiling with a measurement of its own regime, the date, the machine and the sample size."
     FAILED=$((FAILED + ${#OVER_BUDGET[@]}))
 fi
 

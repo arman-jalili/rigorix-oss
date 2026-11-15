@@ -1,28 +1,43 @@
-# local-ci stage budget (#1551). A ceiling is derived from a measured run, never estimated: the
-# `measured_seconds` column is a warm full run on the machine named beside it, and `ceiling_seconds`
-# is 125% of the larger of that run and the cold run measured the same day — because the ceiling has
-# to clear a tree that legitimately recompiles everything, and twice the warm number is not a cold
-# cache, it is a regression.
+# local-ci stage budget (#1551, re-derived for #1562/#1568).
 #
-# Cold run, same day, same machine (seconds): lint 1336 · build 547 · test 491 · security 34 ·
-# guards 89 · coverage 250 · docs 29 · integration 1. Warm run: total 8m 26s, 126 checks.
+# A ceiling is measured, never estimated, and it is measured **in the regime it is enforced in**.
+# There are two regimes, because a run that compiles the workspace and a run that compiles nothing are
+# not the same experiment:
 #
-# The `total` row bounds the run, not a stage: eight stages each inside their ceiling can still be a
-# run nobody would accept, and the total is the number a contributor actually lives in. Its ceiling is
-# derived from six warm full runs on this machine — 9m19s, 8m26s, 8m26s, 8m27s (all at fb4841a0,
-# before the total row) and 7m17s, 7m31s (with it). One run cannot set it: coverage varies 3m29-4m56,
-# which is 41-57% of the total. Ceiling = ceil(1.25 * 559s) = 699s, from the slowest of the six,
-# because a ceiling derived from the runs you like is a ceiling that fails the next reader.
+#   warm — the run compiled fewer than COLD_CRATES crates (local-ci.sh prints the count it compiled)
+#   cold — the run compiled COLD_CRATES or more: the cache was stale, and the compile is charged to
+#          whichever stage touched each crate first
 #
-# `local-ci.sh` fails when a stage exceeds its ceiling. Raise a ceiling with a measurement, the date
-# and the machine — a ceiling nudged to fit the last run is a comment that fails the person next week.
-stage	measured_seconds	ceiling_seconds	measured_on	machine
-lint	95	1670	2026-11-13	8-core (aarch64, macOS)
-build	20	684	2026-11-13	8-core (aarch64, macOS)
-test	115	614	2026-11-13	8-core (aarch64, macOS)
-security	45	57	2026-11-13	8-core (aarch64, macOS)
-guards	56	112	2026-11-13	8-core (aarch64, macOS)
-coverage	290	363	2026-11-13	8-core (aarch64, macOS)
-docs	29	37	2026-11-13	8-core (aarch64, macOS)
-integration	1	2	2026-11-13	8-core (aarch64, macOS)
-total	506	699	2026-11-13	8-core (aarch64, macOS)
+# Columns, per stage: the ceiling in each regime, and the sample it was derived from —
+# `runs` (how many measured runs) and `slowest` (the slowest of them). A ceiling without its sample is
+# a number with no provenance, which is what this row exists to prevent.
+#
+# Derivation: ceiling = ceil(1.10 * slowest), and the cold ceiling is never below the warm one
+# (a cold run cannot be bounded tighter than a warm run of the same stage: `coverage` measured 345s
+# warm and 317s cold, because a cold `coverage` is the *second* stage to pay for the same compile).
+#
+# The samples are full runs (`local-ci.sh`, stages in their own waves), never `--stage <name>`: a stage
+# measured alone is a different experiment — #1551 measured `guards` at 2m13s alone and 43s in a run.
+#
+# Warm sample: four full runs on 2026-11-15 at build times 7-16s (8m13s, 8m28s, 9m33s, 7m47s wall
+# clock). The `total` row has a fifth: the owner's 11m40s run, 700s, one second over the old 699s
+# ceiling — the datum that made the old ceiling's provenance worth asking about.
+# Cold sample: five full runs on the same date at build times 64-688s (13m06s, 15m26s, 19m30s,
+# 36m28s, 36m30s wall clock). Two of them are the 36-minute rebuilds that the old single-column
+# ceiling called regressions.
+#
+# `total` bounds the run, not a stage: eight stages each inside their ceiling can still be a run
+# nobody would accept.
+#
+# A ceiling is raised with a measurement, the date and the machine. A ceiling nudged to fit the last
+# run is a comment that fails the person next week.
+stage	warm_ceiling	warm_runs	warm_slowest	cold_ceiling	cold_runs	cold_slowest	measured_on	machine
+lint	109	4	99	1173	5	1066	2026-11-15	8-core (aarch64, macOS)
+build	18	4	16	757	5	688	2026-11-15	8-core (aarch64, macOS)
+test	128	4	116	431	5	392	2026-11-15	8-core (aarch64, macOS)
+security	33	4	30	37	5	34	2026-11-15	8-core (aarch64, macOS)
+guards	84	4	76	143	5	130	2026-11-15	8-core (aarch64, macOS)
+coverage	380	4	345	380	5	345	2026-11-15	8-core (aarch64, macOS)
+docs	32	4	29	34	5	31	2026-11-15	8-core (aarch64, macOS)
+integration	1	4	1	1	5	1	2026-11-15	8-core (aarch64, macOS)
+total	770	5	700	2409	5	2190	2026-11-15	8-core (aarch64, macOS)
