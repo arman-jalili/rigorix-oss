@@ -656,6 +656,9 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 evidence: EvidenceStatus::NotRequested,
                 receipt_digest: None,
                 attestation_digest: None,
+                // A validation-loop run executes no plan step, so it has no observed quality: the
+                // honest value is absent, not a level.
+                quality: None,
             });
         }
 
@@ -761,6 +764,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             })?;
 
         // 5. Execute DAG — pass the graph from planning
+        let graph_for_quality = plan_out.graph.clone();
         let task_results = self
             .execution_service
             .execute_graph(exec_dto::ExecuteGraphInput {
@@ -864,14 +868,14 @@ impl OrchestratorService for OrchestratorServiceImpl {
             })?;
 
         // 7a. Quality Gate evaluation
+        let mut quality: Option<crate::quality_gates::application::dto::ClassifyTestScopeOutput> =
+            None;
         if let Some(ref quality_svc) = self.quality_gate_service {
+            // The level's subject is what the steps recorded — the tool each node ran and whether it
+            // reported success — never the loop's own bookkeeping (#1585). This path keeps a clone of
+            // the graph for exactly that join.
             let classify_input = ClassifyTestScopeInput {
-                targeted_tests_run: true,
-                package_tests_run: true,
-                workspace_tests_run: final_status != ExecutionStatus::Failed,
-                lint_passed: false,
-                format_passed: false,
-                audit_passed: false,
+                outcomes: Self::recorded_outcomes(&graph_for_quality, &task_results),
             };
             if let Ok(classify_out) = quality_svc.classify_test_scope(classify_input).await {
                 use crate::quality_gates::domain::GreenContract;
@@ -884,9 +888,14 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     tracing::info!(
                         execution_id = %execution_id,
                         quality = %eval_out.summary,
+                        source = classify_out.source.as_str(),
+                        evidence = ?classify_out.evidence,
                         "Quality gate evaluated"
                     );
                 }
+                // Carried out of the log and into the run's own output (#1585): a number that only
+                // exists in a tracing line is a number no artifact can be gated on.
+                quality = Some(classify_out);
             }
         }
 
@@ -1005,6 +1014,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             // belongs to the from-template path, where the steps are already concrete.
             receipt_digest: None,
             attestation_digest: None,
+            quality,
         })
     }
 
@@ -1435,7 +1445,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             let mut state =
                 crate::state_persistence::domain::ExecutionState::new(execution_id, String::new());
             state.status = crate::state_persistence::domain::ExecutionStatus::Pending;
-            state.graph = Some(graph_for_resume);
+            state.graph = Some(graph_for_resume.clone());
             state.approved = Vec::new();
             state.exec_node_states = Some(exec_output.result.execution_states.clone());
             self.state_manager
@@ -1455,15 +1465,13 @@ impl OrchestratorService for OrchestratorServiceImpl {
             state: format!("{final_status:?}"),
         })?;
 
-        // 6. Quality Gate evaluation
+        // 6. Quality Gate evaluation (#1585): the level is derived from what the steps recorded, and
+        // it leaves this function on the output instead of dying in a log line.
+        let mut quality: Option<crate::quality_gates::application::dto::ClassifyTestScopeOutput> =
+            None;
         if let Some(ref quality_svc) = self.quality_gate_service {
             let classify_input = ClassifyTestScopeInput {
-                targeted_tests_run: true,
-                package_tests_run: true,
-                workspace_tests_run: final_status != ExecutionStatus::Failed,
-                lint_passed: false,
-                format_passed: false,
-                audit_passed: false,
+                outcomes: Self::recorded_outcomes(&graph_for_resume, &task_results),
             };
             if let Ok(classify_out) = quality_svc.classify_test_scope(classify_input).await {
                 use crate::quality_gates::domain::GreenContract;
@@ -1473,8 +1481,15 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     task_id: Some(execution_id.to_string()),
                 };
                 if let Ok(eval_out) = quality_svc.evaluate_gate(eval_input).await {
-                    tracing::info!(%execution_id, quality=%eval_out.summary, "Quality gate evaluated");
+                    tracing::info!(
+                        %execution_id,
+                        quality=%eval_out.summary,
+                        source = classify_out.source.as_str(),
+                        evidence = ?classify_out.evidence,
+                        "Quality gate evaluated"
+                    );
                 }
+                quality = Some(classify_out);
             }
         }
 
@@ -1638,6 +1653,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
             evidence,
             receipt_digest,
             attestation_digest,
+            quality,
         })
     }
 

@@ -48,15 +48,12 @@ impl QualityGateEvaluationService for QualityGateEvaluationAdapter {
         &self,
         input: EvaluateIterationInput,
     ) -> Result<EvaluateIterationOutput, ValidationLoopError> {
-        // Classify what tests were run based on the evaluation context
-        let classify_input = ClassifyTestScopeInput {
-            targeted_tests_run: true,
-            package_tests_run: input.iteration > 1,
-            workspace_tests_run: input.iteration > 2,
-            lint_passed: false,
-            format_passed: false,
-            audit_passed: false,
-        };
+        // The loop has executed no step that reported a test, lint, format or audit result — it is a
+        // validation loop, not a runner — so it passes nothing and the classifier answers with the
+        // floor and `source: Caller` (#1585). The counters this used to read (`iteration > 1`,
+        // `iteration > 2`) made the level rise with the loop's bookkeeping, which is the fabrication
+        // the receipt work exists to keep out of a signed record.
+        let classify_input = ClassifyTestScopeInput::default();
 
         let classify_out = self
             .inner
@@ -214,6 +211,8 @@ mod tests {
             Ok(ClassifyTestScopeOutput {
                 level: QualityLevel::Package,
                 explanation: "All package tests passed".to_string(),
+                source: crate::quality_gates::domain::ClaimSource::Engine,
+                evidence: Vec::new(),
             })
         }
 
@@ -240,6 +239,90 @@ mod tests {
 
         fn create_contract(&self, level: QualityLevel) -> GreenContract {
             GreenContract::new(level)
+        }
+    }
+
+    /// Records the classification input the loop hands the gate (#1585).
+    struct RecordingQualityGate {
+        seen: std::sync::Mutex<Vec<ClassifyTestScopeInput>>,
+    }
+
+    #[async_trait]
+    impl QualityGateService for RecordingQualityGate {
+        async fn classify_test_scope(
+            &self,
+            input: ClassifyTestScopeInput,
+        ) -> Result<ClassifyTestScopeOutput, QualityGateError> {
+            self.seen.lock().expect("lock").push(input);
+            Ok(ClassifyTestScopeOutput {
+                level: QualityLevel::TargetedTests,
+                explanation: "recorded by the fixture".to_string(),
+                source: crate::quality_gates::domain::ClaimSource::Caller,
+                evidence: vec![],
+            })
+        }
+
+        async fn evaluate_gate(
+            &self,
+            input: EvaluateGateInput,
+        ) -> Result<EvaluateGateOutput, QualityGateError> {
+            MockQualityGateService.evaluate_gate(input).await
+        }
+
+        fn create_contract(&self, level: QualityLevel) -> GreenContract {
+            GreenContract::new(level)
+        }
+
+        // Not reached by `evaluate_iteration`, which is the only entry point these tests use:
+        // reaching one of them is a change of path worth a panic, not a mock worth writing.
+        async fn get_contract(
+            &self,
+            _input: GetContractInput,
+        ) -> Result<GetContractOutput, QualityGateError> {
+            unreachable!("evaluate_iteration does not ask for a contract")
+        }
+
+        async fn validate_config(
+            &self,
+            _input: ValidateConfigInput,
+        ) -> Result<ValidateConfigOutput, QualityGateError> {
+            unreachable!("evaluate_iteration does not validate config")
+        }
+    }
+
+    fn iteration_input(iteration: u32) -> EvaluateIterationInput {
+        EvaluateIterationInput {
+            execution_id: Uuid::new_v4(),
+            template: crate::templates::domain::Template::default(),
+            required_quality: "Package".to_string(),
+            iteration,
+        }
+    }
+
+    /// The mutation the issue asks for: the counter used to decide the level, and it no longer
+    /// carries any information at all — every iteration passes the same (empty) subject.
+    #[tokio::test]
+    async fn the_iteration_counter_does_not_decide_the_quality_level() {
+        let gate = std::sync::Arc::new(RecordingQualityGate {
+            seen: std::sync::Mutex::new(Vec::new()),
+        });
+        let adapter = QualityGateEvaluationAdapter::new(gate.clone());
+
+        for iteration in [1u32, 5, 9] {
+            adapter
+                .evaluate_iteration(iteration_input(iteration))
+                .await
+                .expect("the iteration evaluates");
+        }
+
+        let seen = gate.seen.lock().expect("lock");
+        assert_eq!(seen.len(), 3, "one classification per iteration");
+        for input in seen.iter() {
+            assert!(
+                input.outcomes.is_empty(),
+                "a validation loop executes no plan step, so it supplies no outcomes — \
+                 `iteration > 2` was the fabrication this replaces"
+            );
         }
     }
 

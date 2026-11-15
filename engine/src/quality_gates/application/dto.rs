@@ -52,36 +52,38 @@ pub struct EvaluateGateOutput {
 // Classify Test Scope DTOs
 // ---------------------------------------------------------------------------
 
-/// Input for classifying a test scope into a quality level.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Input for classifying a test scope into a quality level (#1585).
+///
+/// The input is the recorded outcomes themselves, not six booleans about them. The booleans used to
+/// be supplied by the caller, and both production callers invented them — `iteration > 2` and
+/// `final_status != Failed` stood in for "workspace tests passed", and `lint_passed` was the literal
+/// `false` at both sites, which made the top tier unreachable by construction.
+///
+/// An empty list is legal and meaningful: it is a run whose steps recorded nothing about quality, and
+/// the classifier answers that with the floor and [`ClaimSource::Caller`] rather than a guess.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ClassifyTestScopeInput {
-    /// Whether targeted tests were run.
-    pub targeted_tests_run: bool,
-
-    /// Whether package-level tests were run.
-    pub package_tests_run: bool,
-
-    /// Whether workspace-level tests were run.
-    pub workspace_tests_run: bool,
-
-    /// Whether lint (clippy) passed.
-    pub lint_passed: bool,
-
-    /// Whether format check (fmt --check) passed.
-    pub format_passed: bool,
-
-    /// Whether security audit passed.
-    pub audit_passed: bool,
+    /// What the steps reported, one entry per executed step that said anything.
+    #[serde(default)]
+    pub outcomes: Vec<crate::quality_gates::domain::RecordedOutcome>,
 }
 
-/// Output from classifying a test scope.
+/// Output from classifying a test scope (#1585).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClassifyTestScopeOutput {
     /// The classified quality level.
     pub level: QualityLevel,
 
-    /// Human-readable explanation of the classification.
+    /// Human-readable explanation of the classification, naming the steps it came from.
     pub explanation: String,
+
+    /// Whose claim the level is: derived from recorded outcomes, or defaulted in their absence.
+    pub source: crate::quality_gates::domain::ClaimSource,
+
+    /// The step ids the level was derived from. Empty exactly when nothing was recorded, which is
+    /// the state `source: Caller` names.
+    #[serde(default)]
+    pub evidence: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------

@@ -373,4 +373,7 @@ harness needs one small, stable import surface.
   depends on the answer.
 - Who may query the attestation and settlement after the fact, and for how long. The version in this ADR is: whoever can
   read the state directory, which E4's answer makes a filesystem permission question rather than a protocol one.
-- The harness's own contexts, roles, retrieval and wiring (`engine-gap-register.md` §3).
+- The harness's own contexts, roles, retrieval and wiring (`engine-gap-register.md` §3) — and **where code lives**:
+  the private harness depends on this crate and not the other way round, and a capability both need is written here
+  (the harness repository's host-boundary decision, D2–D5 — not a document in this tree). This ADR assumes that
+  direction; it does not re-state it.
