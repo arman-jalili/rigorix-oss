@@ -19,6 +19,18 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Fixed
 
+- **`local-ci`'s budget measures the regime it enforces in, and states its sample** (#1562, #1568). One ceiling per
+  stage could not bound two different experiments: a warm run and a run that recompiles the workspace. The single
+  column compared a warm number against a cold run and called the rebuild a regression — 36-minute runs on a stale cache
+  passed every step and failed the budget. `.pi/local-ci-budget.tsv` now carries `warm_ceiling`, `warm_runs`,
+  `warm_slowest` and the same three for cold, and the runner derives the regime from what it measured: it counts the
+  crates each stage compiled (`compiled` is a column in the results table), prints `regime: warm|cold` on every run
+  including green ones, and applies the matching ceilings. A ceiling carries its provenance into the failure message —
+  `guards: 2m31s > warm ceiling 1m24s — the warm sample is 4 run(s), slowest 1m16s` — where the old message said only
+  that some number was bigger than another. A run that compiles nothing is judged warm however long it takes, so
+  slowness cannot earn the generous ceiling. Eight self-test cases pin the decisions, including the two runs that made
+  the old column wrong (11m40s warm, 36m28s cold — both pass) and a 36-minute run that compiled nothing (fails).
+
 - **Reading a legacy template no longer re-stamps its creation time** (#1563, read direction). The `get` fallback
   converted an engine document (`[[nodes]]`) through `engine_template_to_plan_template`, which set both timestamps to
   `Utc::now()` — so the same file reported a new `created_at` on every read, the create defect with the sign flipped:
