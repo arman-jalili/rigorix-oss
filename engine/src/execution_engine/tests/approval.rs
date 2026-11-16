@@ -25,6 +25,8 @@ async fn test_hydrate_preserves_persisted_started_at() {
             node_states: Default::default(),
             approved: Default::default(),
             started_at: persisted_started_at,
+            repository: None, // a fixture hydrate records no attribution
+            author: None,
         })
         .await
         .unwrap();
@@ -240,6 +242,8 @@ async fn test_cross_process_resume_hydrates_session_and_continues() {
             // H-08: the persisted start must survive hydration (the resume
             // duration is computed from this timestamp).
             started_at: state_a.started_at.unwrap_or_else(chrono::Utc::now),
+            repository: None, // a fixture hydrate records no attribution
+            author: None,
         })
         .await
         .unwrap();

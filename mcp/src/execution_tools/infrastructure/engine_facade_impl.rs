@@ -696,6 +696,8 @@ impl EngineFacade for EngineFacadeImpl {
             total_duration_ms: state.total_duration_ms,
             started_at: state.started_at,
             completed_at: state.completed_at,
+            repository: state.repository,
+            author: state.author,
         })
     }
 }
