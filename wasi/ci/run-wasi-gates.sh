@@ -117,6 +117,12 @@ bash "$HERE/check-responsibility-matrix.sh"
 step "release wiring (the workflow attaches it)"
 bash "$HERE/check-release-wiring.sh"
 
+step "recorded digests (a prefix is not a pin, asked before any tag exists)"
+# #1614: on a tag this check can only fail after everything is published, and a tag cannot move
+# without lying about what built the artifacts. The half that needs no page runs here, on every
+# `main` and every pull request.
+bash "$HERE/check-recorded-digest.sh" --pre-tag
+
 step "release asset and recorded digest (the release carried it, and the docs say so)"
 # Claim 6 is a string in YAML and claim 12 is a file on a release page. The first was green for
 # the whole life of `package-wasi` while `v1.14.2` carried no assets (#1503), so the second is
