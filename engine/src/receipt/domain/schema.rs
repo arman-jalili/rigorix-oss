@@ -68,7 +68,8 @@ pub fn receipt_schema() -> Result<Value, String> {
 /// [`receipt_schema`]'s error, and the serializer's.
 pub fn receipt_schema_text() -> Result<String, String> {
     let value = receipt_schema()?;
-    let mut text = serde_json::to_string_pretty(&value).map_err(|e| format!("receipt schema: {e}"))?;
+    let mut text =
+        serde_json::to_string_pretty(&value).map_err(|e| format!("receipt schema: {e}"))?;
     text.push('\n');
     Ok(text)
 }
