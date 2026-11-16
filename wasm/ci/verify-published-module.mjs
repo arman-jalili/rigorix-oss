@@ -13,6 +13,12 @@
 // the module, and asserts BOTH what the decision bytes say and what the wire words
 // say. Every number it asserts is derived from the vector's own declared world.
 //
+// Exit codes: 0 the artifact is right; 1 the artifact is wrong; 75 the registry did not
+// serve the version within the window, so nothing about the artifact was judged (#1613).
+// The window is 16 x 30 s = 8 min, from the observed propagation on 1.15.0, and both
+// numbers are overridable (`RIGORIX_NPM_ATTEMPTS`, `RIGORIX_NPM_INTERVAL_SECONDS`) so the
+// next measurement does not need a code change.
+//
 // Usage:
 //   node wasm/ci/verify-published-module.mjs                       # version from wasm/Cargo.toml
 //   node wasm/ci/verify-published-module.mjs --version 1.14.1
@@ -44,12 +50,23 @@ const fail = (why) => {
 let moduleDir = localModule;
 if (!moduleDir) {
   const work = mkdtempSync(join(tmpdir(), 'rigorix-published-'));
-  // npm's read path is lazily consistent: for a short window after a successful
-  // publish, `pack` answers "no such version" for a version that already exists.
-  // That is propagation, not a defect — so this retries, and only a tarball that is
-  // still missing after two minutes is treated as missing. The digest and wire-word
-  // assertions below are what actually decide whether the artifact is right.
-  const attempts = 8;
+  // npm's read path is lazily consistent: for a window after a successful publish,
+  // `pack` answers "no such version" for a version that already exists. That is
+  // propagation, not a defect.
+  //
+  // The window is **measured**, not guessed (#1613). It was 8 x 15 s = two minutes,
+  // and `rigorix-gate@1.15.0` — published correctly — was still not served at the end
+  // of it (release run 43872574813: `npm does not serve 1.15.0 yet (attempt 8/8)`),
+  // while the registry served it minutes later. Two minutes was shorter than one
+  // observed propagation, so the window is eight minutes, in 30-second polls, and both
+  // numbers are overridable for the next measurement.
+  //
+  // A timeout here is a *different failure* from a wrong artifact, and the exit code
+  // says so: 75 means "the registry did not serve it in the window, so nothing about
+  // the artifact was judged"; 1 means the artifact was fetched and is wrong. Only the
+  // second is a defect in what was published.
+  const attempts = Number(process.env.RIGORIX_NPM_ATTEMPTS || 16);
+  const interval = Number(process.env.RIGORIX_NPM_INTERVAL_SECONDS || 30);
   let fetched = false;
   for (let i = 1; i <= attempts && !fetched; i++) {
     try {
@@ -60,12 +77,19 @@ if (!moduleDir) {
       fetched = true;
     } catch (e) {
       if (i === attempts) break;
-      console.error(`  npm does not serve ${version} yet (attempt ${i}/${attempts}) — waiting 15 s`);
-      execFileSync('sleep', ['15']);
+      console.error(`  npm does not serve ${version} yet (attempt ${i}/${attempts}) — waiting ${interval} s`);
+      execFileSync('sleep', [String(interval)]);
     }
   }
   if (!fetched) {
-    fail(`could not fetch rigorix-gate@${version} from the registry after ${attempts} attempts (~2 min) — a version that is not there is not a version that works`);
+    const window = attempts * interval >= 60 ? `${Math.round((attempts * interval) / 60)} min` : `${attempts * interval} s`;
+    console.error(
+      `⚠  rigorix-gate@${version} was not served by the registry within ${window} ` +
+        `(${attempts} attempts x ${interval} s). Nothing about the artifact was judged: this is ` +
+        `propagation, not a defect in what was published. A version that is there but not served is ` +
+        `a different fact from a version that is wrong.`,
+    );
+    process.exit(75);
   }
   const tarball = readdirSync(work).find((f) => f.endsWith('.tgz'));
   if (!tarball) fail('npm pack produced no tarball');

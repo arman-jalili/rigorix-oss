@@ -273,7 +273,60 @@ jobs:
         with:
           node-version: '20'
       - name: Drive the version the registry serves
-        run: node wasm/ci/verify-published-module.mjs
+        id: drive
+        # Two different failures, and only one of them is about the artifact (#1613):
+        #   0  the artifact is right;
+        #   1  the artifact was fetched and is wrong — do not create a page for it;
+        #   75 the registry did not serve the version within the window — propagation, not a
+        #      defect. The page is created anyway (so the artifact has an address) and the
+        #      `verify-propagation` job below asks again after it exists, with the same window.
+        #
+        # The window is 16 x 30 s = 8 min, measured: the 2-minute window failed a correct
+        # `rigorix-gate@1.15.0` publish (run 43872574813) while the registry served it minutes
+        # later. A window shorter than one observed propagation reports the registry's clock
+        # as a defect in the artifact.
+        run: |
+          set +e
+          node wasm/ci/verify-published-module.mjs
+          status=$?
+          set -e
+          if [ "$status" -eq 75 ]; then
+            echo "served=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::the registry had not served this version within the window — propagation, not a defect; the page is created and the propagation is re-asked after it"
+            exit 0
+          fi
+          exit "$status"
+
+  # ── Ask propagation again, after the page exists ──────────────
+  verify-propagation:
+    name: 📡 Verify the registry serves the artifact
+    # This job exists because of one race (#1613): a correct publish, a verification window
+    # shorter than propagation, and a tag that ended up with six published crates and no
+    # release page — the state #1503 exists to end. The page no longer waits on this
+    # question, so the question is asked *after* the page: a run that ends with an artifact
+    # nobody can find cannot happen here, and a registry that is slow reddens the run without
+    # taking the address away.
+    needs: [github-release, publish-wasm-npm]
+    if: always() && needs.github-release.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: The registry serves the version the page advertises
+        run: |
+          set +e
+          node wasm/ci/verify-published-module.mjs
+          status=$?
+          set -e
+          if [ "$status" -eq 75 ]; then
+            echo "❌ $GITHUB_REF_NAME is on the release page, and the registry still does not serve it."
+            echo "   The page exists, so the artifact has an address; the propagation is the defect."
+            echo "   Re-run this job when the registry catches up — no tag moves for it."
+            exit 1
+          fi
+          exit "$status"
 
   # ── Create GitHub Release ─────────────────────────────────────
   github-release:
