@@ -24,7 +24,9 @@ use std::path::{Path, PathBuf};
 
 use rigorix_engine::receipt::domain::receipt::Receipt;
 use rigorix_engine::receipt::domain::refusal::ReceiptRefusal;
-use rigorix_engine::receipt::{RECEIPT_SCHEMA_PATH, canonical_json, receipt_schema, receipt_schema_text, sha256_hex};
+use rigorix_engine::receipt::{
+    RECEIPT_SCHEMA_PATH, canonical_json, receipt_schema, receipt_schema_text, sha256_hex,
+};
 
 /// The identity the engine computed for the fixture's tree, taken from the *accepted* fixture.
 ///
@@ -95,7 +97,8 @@ fn the_checked_in_schema_is_the_one_the_type_derives() {
     let path = schema_file(RECEIPT_SCHEMA_PATH);
 
     if std::env::var("UPDATE_RECEIPT_SCHEMA").as_deref() == Ok("1") {
-        std::fs::write(&path, &generated).unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
+        std::fs::write(&path, &generated)
+            .unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
         panic!(
             "wrote {} — re-run without UPDATE_RECEIPT_SCHEMA to compare, and commit the file",
             path.display()
@@ -104,7 +107,8 @@ fn the_checked_in_schema_is_the_one_the_type_derives() {
 
     let checked_in = read(&path);
     assert_eq!(
-        checked_in, generated,
+        checked_in,
+        generated,
         "{} is not the schema `Receipt` derives. The type is the contract; regenerate with \
          UPDATE_RECEIPT_SCHEMA=1 and commit the difference (a field added to the type is a field a \
          producer has to know about).",
@@ -130,7 +134,9 @@ fn the_schema_identifies_the_version_the_engine_reads() {
     let fixture: serde_json::Value =
         serde_json::from_str(&read(&schema_file("schema/receipt.json"))).expect("fixture is JSON");
     assert_eq!(
-        fixture.get("schema_version").and_then(serde_json::Value::as_u64),
+        fixture
+            .get("schema_version")
+            .and_then(serde_json::Value::as_u64),
         Some(u64::from(version)),
         "the accepted fixture must carry the version the engine reads"
     );
@@ -248,7 +254,10 @@ fn the_accepted_fixture_is_a_receipt_and_not_merely_parseable() {
     // computes, its steps are named, and its declared effects pair their paths with digests.
     let document = read(&schema_file("schema/receipt.json"));
     let receipt = Receipt::from_document(&document).expect("the accepted fixture parses");
-    assert!(!receipt.steps.is_empty(), "the accepted fixture declares no step");
+    assert!(
+        !receipt.steps.is_empty(),
+        "the accepted fixture declares no step"
+    );
     assert!(
         receipt.digest().is_ok(),
         "the accepted fixture's canonical form does not serialize, so its digest cannot be taken"
@@ -289,10 +298,12 @@ fn the_canonical_bytes_of_the_fixture_are_reproducible_by_hand() {
     );
     // The recorded digest of those bytes. A producer in another language checks its own
     // canonicalisation against a constant, not against a running engine.
-    const RECORDED_DIGEST: &str = "8449cea10313baf8be0a2c647c10f129aebb0c3ffae832c610c63345d3785876";
+    const RECORDED_DIGEST: &str =
+        "8449cea10313baf8be0a2c647c10f129aebb0c3ffae832c610c63345d3785876";
 
     let engine_bytes = canonical_json(&receipt).expect("the receipt has a canonical form");
-    let engine_text = String::from_utf8(engine_bytes.clone()).expect("canonical bytes are ASCII JSON");
+    let engine_text =
+        String::from_utf8(engine_bytes.clone()).expect("canonical bytes are ASCII JSON");
 
     assert_eq!(
         engine_text, by_hand,
