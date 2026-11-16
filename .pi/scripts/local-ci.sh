@@ -243,21 +243,56 @@ compiled_by_stage() {  # $1 results dir, $2 stage key → crates the stage's car
     printf '%s' "${total:-0}"
 }
 
+stage_counts_reported() {  # $1 results dir, $2 stage key → yes if that stage reported a count at all
+    if grep -qE "$COUNTED_RE" "$1/$2.steps.log" 2>/dev/null; then printf 'yes'; else printf 'no'; fi
+}
+
 counts_reported() {  # $1 results dir, $2.. stage keys → yes if any stage reported a count at all
     local key
     for key in "${@:2}"; do
-        if grep -qE "$COUNTED_RE" "$1/$key.steps.log" 2>/dev/null; then printf 'yes'; return; fi
+        if [[ "$(stage_counts_reported "$1" "$key")" == "yes" ]]; then printf 'yes'; return; fi
     done
     printf 'no'
 }
 
-budget_regime() {  # $1 crates built, $2 counts reported (yes|no) → warm|cold|unmeasured
+budget_regime() {  # $1 crates built, $2 counts reported (yes|no) → warm|cold|unmeasured (the run's regime)
     if [[ "${2:-no}" != "yes" ]]; then printf 'unmeasured'; return; fi
     if [[ "${1:-0}" -ge "$COLD_CRATES" ]]; then printf 'cold'; else printf 'warm'; fi
 }
 
 budget_column() {  # $1 regime → warm|cold; an unmeasured run is judged on the cold column
     if [[ "${1:-warm}" == "warm" ]]; then printf 'warm'; else printf 'cold'; fi
+}
+
+# The subject of a stage's ceiling is **the stage**, so the condition it is selected by is that
+# stage's own compiled count — not the run's. One regime for the run applied one column to every
+# stage, and stages are exactly what differ: in the run at 0976e62f the run was warm (19 crates, cold
+# at 100+) while `lint` built all 19 of them and took 8m25s, judged against a 1m48s ceiling sampled
+# from runs whose `lint` built nothing. The run was warm; the experiment that ran was not (#1604).
+#
+# The threshold is 1, not COLD_CRATES: on a stage the question is "did this stage pay a compile?" and
+# one crate is a yes. `total` keeps the run-level regime above, because it is the one row whose subject
+# really is the whole run.
+stage_condition() {  # $1 crates this stage built, $2 this stage reported a count (yes|no) → nothing|built|unmeasured
+    if [[ "${2:-no}" != "yes" ]]; then printf 'unmeasured'; return; fi
+    if [[ "${1:-0}" -ge 1 ]]; then printf 'built'; else printf 'nothing'; fi
+}
+
+stage_column() {  # $1 condition → warm (built nothing) | cold (built something, or could not be measured)
+    case "${1:-nothing}" in
+        nothing) printf 'warm' ;;
+        *) printf '%s' "$(budget_column "${1:-unmeasured}")" ;;
+    esac
+}
+
+stage_budget_cell() {  # $1 results dir, $2 stage key → the column the stage is judged on, and the count that chose it
+    local built reported
+    built="$(compiled_by_stage "$1" "$2")"
+    reported="$(stage_counts_reported "$1" "$2")"
+    case "$(stage_condition "$built" "$reported")" in
+        unmeasured) printf 'cold(?)' ;;
+        *) printf '%s(%s)' "$(stage_column "$(stage_condition "$built" "$reported")")" "$built" ;;
+    esac
 }
 
 budget_verdict() {  # $1 seconds, $2 ceiling → pass|over
@@ -355,6 +390,20 @@ if [[ "$SELF_TEST" == "true" ]]; then
     check "an unmeasured run is judged on the cold column" "$(budget_column unmeasured)" "cold"
     check "a warm run is judged on the warm column" "$(budget_column warm)" "warm"
     check "a cold run is judged on the cold column" "$(budget_column cold)" "cold"
+    # ── a stage's ceiling is selected by that stage's own count (#1604) ──
+    # The number that chose the column is the stage's, not the run's: `lint` building 19 crates in a
+    # warm run is a stage that paid a compile, and the ceiling that describes it is the other one.
+    check "a stage that built nothing is judged on the nothing-built column" \
+        "$(stage_column "$(stage_condition 0 yes)")" "warm"
+    check "a stage that built 3 crates is judged on the built-something column" \
+        "$(stage_column "$(stage_condition 3 yes)")" "cold"
+    check "an unmeasured stage is judged on the looser column" \
+        "$(stage_column "$(stage_condition 0 no)")" "cold"
+    # The case that used to be impossible to express: one run, two different columns, both true. The
+    # run is warm because it built 19 crates; `lint` is not, because those seconds are lint's.
+    check "a warm run can contain a stage judged on the cold column" \
+        "$(budget_regime 19 yes)/$(stage_column "$(stage_condition 19 yes)")" "warm/cold"
+    check "a stage that builds nothing for eleven minutes still fails" "$(budget_verdict 660 108)" "over"
     # The cold run that measured the sample: `guards` compiled 38 crates inside its wave and took
     # 3m21s, which the old 112s single ceiling failed and the derived cold ceiling passes. This is the
     # regression the two columns exist for, pinned with the numbers it actually produced.
@@ -374,6 +423,11 @@ if [[ "$SELF_TEST" == "true" ]]; then
     mkdir -p "$tmp/quiet"
     printf 'error[E0425]: cannot find value `nope` in this scope\n' > "$tmp/quiet/build.steps.log"
     check "a stage that reported no count is not measured" "$(counts_reported "$tmp/quiet" build)" "no"
+    # The per-stage form of the same two facts, and the cell the summary table prints: the count is the
+    # stage's own, and a stage with no count says so instead of claiming zero (#1604).
+    check "a stage's own count selects its cell" "$(stage_budget_cell "$tmp/compiled" build)" "cold(7)"
+    check "a stage that built nothing has the nothing-built cell" "$(stage_budget_cell "$tmp/compiled" test)" "warm(0)"
+    check "a stage that reported no count says so in its cell" "$(stage_budget_cell "$tmp/quiet" build)" "cold(?)"
 
 
     # A scheduled stage that wrote nothing is not a pass. The fixture is the exact state the bug
@@ -927,7 +981,7 @@ echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════╗"
 echo -e "║                     Final Results                        ║"
 echo -e "╚══════════════════════════════════════════════════════════╝${NC}"
-printf '  %-12s %6s %6s %6s %10s %7s %9s\n' stage steps pass fail duration share compiled
+printf '  %-12s %6s %6s %6s %10s %7s %9s %12s\n' stage steps pass fail duration share compiled budget
 # The denominator is summed in a first pass. Computing it as the table is printed made the first
 # stage 100% of itself — the shares read 100, 8, 53, 12 … and summed to 244.
 TABLE_TOTAL=0
@@ -953,7 +1007,9 @@ for key in "${STAGE_ORDER[@]}"; do
     [[ "$TABLE_TOTAL" -gt 0 ]] && share=$((secs * 100 / TABLE_TOTAL))
     # `compiled` is the fact the budget's regime is derived from, printed per stage so a reader can
     # see which stage paid for the compile instead of inferring it from a duration (#1562).
-    printf '  %-12s %6s %6s %6s %10s %6s%% %8s\n' "$key" "$((p + f + s))" "$p" "$f" "$(fmt_dur "$secs")" "$share" "$(compiled_by_stage "$RESULTS_DIR" "$key")"
+    # `budget` is the column that stage's ceiling is selected from and the count that selected it:
+    # `warm(0)` built nothing, `cold(19)` built nineteen, `cold(?)` could not be measured (#1604).
+    printf '  %-12s %6s %6s %6s %10s %6s%% %8s %12s\n' "$key" "$((p + f + s))" "$p" "$f" "$(fmt_dur "$secs")" "$share" "$(compiled_by_stage "$RESULTS_DIR" "$key")" "$(stage_budget_cell "$RESULTS_DIR" "$key")"
 done
 echo "  ────────────────────────────────────────────────────────────"
 # Two totals, because a run has two costs. `stage time` is the work done and is what the shares are
@@ -971,19 +1027,22 @@ if [[ -z "$STAGE" ]]; then
 fi
 echo ""
 
-# ── the budget (#1551, re-derived for #1562/#1568) ───────────────────────────
+# ── the budget (#1551, re-derived for #1562/#1568, conditioned per stage in #1604) ─────────────
 # A ceiling is derived from measured runs and recorded with its sample size and the machine, the way
 # `.pi/coverage-layers.tsv` derives its floors. Two things make this a gate rather than a comment:
 #
-#   1. The regime is measured, not assumed. A run that compiled the workspace and a run that compiled
-#      nothing are different experiments, and one ceiling cannot bound both: the 36-minute rebuild the
-#      old single column called a regression was that row comparing a warm number to a cold run. The
-#      runner counts the crates each stage compiled and says which regime it is in, so a green run
-#      states its own regime too — a reader should never have to infer it.
-#   2. A ceiling carries its sample. `runs` and `slowest` are columns, printed in the failure message:
-#      "4m > 2m" is an argument, "4m > 2m (warm sample: 5 runs, slowest 1m15s)" is a measurement with
-#      a provenance, and a ceiling raised to fit one run cannot be written without the run count
-#      disagreeing with it.
+#   1. The condition is measured, not assumed — and measured **per stage**. A stage that compiled the
+#      workspace and a stage that compiled nothing are different experiments: the 36-minute rebuild the
+#      old single column called a regression was that row comparing a warm number to a cold run, and the
+#      8m25s `lint` of 2026-11-16 was `lint` paying for 19 crates inside a run the run-level regime called
+#      warm. One regime for the run decided both, and the subject of every stage ceiling is a stage
+#      (#1604). So each stage selects its column from its own count, `total` keeps the run's regime — it
+#      is the one row whose subject really is the whole run — and both are printed, because a reader
+#      should never have to infer which experiment a number belongs to.
+#   2. A ceiling carries its sample: `runs`, `slowest`, and `compiled`, the count the sample's stages
+#      reported. "4m > 2m" is an argument, "4m > 2m (cold sample: 6 runs, slowest 1m15s, sample compiled
+#      unmeasured)" is a measurement with a provenance, and a ceiling raised to fit one run cannot be
+#      written without the run count disagreeing with it.
 BUDGET_FILE=".pi/local-ci-budget.tsv"
 OVER_BUDGET=()
 
@@ -1000,47 +1059,54 @@ REGIME="$(budget_regime "$COMPILED_TOTAL" "$COUNTS_REPORTED")"
 COLUMN="$(budget_column "$REGIME")"
 
 if [[ -f "$BUDGET_FILE" ]]; then
-    while IFS=$'\t' read -r key warm_ceiling warm_runs warm_slowest cold_ceiling cold_runs cold_slowest _on _machine; do
+    while IFS=$'\t' read -r key warm_ceiling warm_runs warm_slowest warm_compiled cold_ceiling cold_runs cold_slowest cold_compiled _on _machine; do
         [[ "$key" == "stage" ]] && continue
         [[ "$key" =~ ^# ]] && continue
         [[ -z "${key:-}" || -z "${warm_ceiling:-}" ]] && continue
-        # `total` is the one row that bounds the run rather than a stage: eight stages each inside
-        # their ceiling can still be a run nobody would accept, and that is the number a contributor
-        # actually experiences. It is skipped for `--stage`, which measures one stage and reports
-        # that stage — comparing a 43-second guards run against a run ceiling would be a budget
-        # answering a different question than the one asked (#1551).
+        # Which column this row is judged on, and the count that chose it. The subject of a stage's
+        # ceiling is the stage, so the count is the stage's; `total` is the one row whose subject is
+        # the run, so it keeps the run-level regime computed above (#1604).
+        #
+        # `total` is skipped for `--stage`, which measures one stage and reports that stage —
+        # comparing a 43-second guards run against a run ceiling would be a budget answering a
+        # different question than the one asked (#1551).
         if [[ "$key" == "total" ]]; then
             if [[ -n "$STAGE" ]]; then continue; fi
             secs="$DURATION"
+            row_column="$COLUMN"; condition="$REGIME"; built="$COMPILED_TOTAL"
         else
             [[ -f "$RESULTS_DIR/$key.end" ]] || continue
             start="$(cat "$RESULTS_DIR/$key.start" 2>/dev/null || echo 0)"
             end="$(cat "$RESULTS_DIR/$key.end" 2>/dev/null || echo 0)"
             secs=$((end - start))
+            built="$(compiled_by_stage "$RESULTS_DIR" "$key")"
+            condition="$(stage_condition "$built" "$(stage_counts_reported "$RESULTS_DIR" "$key")")"
+            row_column="$(stage_column "$condition")"
         fi
-        if [[ "$COLUMN" == "cold" ]]; then
-            ceiling="$cold_ceiling"; runs="$cold_runs"; slowest="$cold_slowest"
+        if [[ "$row_column" == "cold" ]]; then
+            ceiling="$cold_ceiling"; runs="$cold_runs"; slowest="$cold_slowest"; sample_compiled="$cold_compiled"
         else
-            ceiling="$warm_ceiling"; runs="$warm_runs"; slowest="$warm_slowest"
+            ceiling="$warm_ceiling"; runs="$warm_runs"; slowest="$warm_slowest"; sample_compiled="$warm_compiled"
         fi
         [[ -z "${ceiling:-}" ]] && continue
         if [[ "$(budget_verdict "$secs" "$ceiling")" == "over" ]]; then
-            OVER_BUDGET+=("$key: $(fmt_dur "$secs") > $COLUMN ceiling $(fmt_dur "$ceiling") — the $COLUMN sample is ${runs:-?} run(s), slowest $(fmt_dur "${slowest:-0}")")
+            OVER_BUDGET+=("$key: $(fmt_dur "$secs") > $row_column ceiling $(fmt_dur "$ceiling") — $key built ${built} crate(s) ($condition), so the $row_column column applies; the $row_column sample is ${runs:-?} run(s), slowest $(fmt_dur "${slowest:-0}"), sample compiled ${sample_compiled:-unmeasured}")
         fi
     done < "$BUDGET_FILE"
 fi
 
 case "$REGIME" in
     cold)
-        echo -e "  ${BLUE}ℹ${NC} regime: cold — this run built $COMPILED_TOTAL crate(s) (cold at $COLD_CRATES+), so the cold ceilings apply"
+        echo -e "  ${BLUE}ℹ${NC} regime: cold — this run built $COMPILED_TOTAL crate(s) (cold at $COLD_CRATES+), so the run-level \`total\` ceiling is the cold one"
         ;;
     warm)
-        echo -e "  ${BLUE}ℹ${NC} regime: warm — this run built $COMPILED_TOTAL crate(s) (cold at $COLD_CRATES+), so the warm ceilings apply"
+        echo -e "  ${BLUE}ℹ${NC} regime: warm — this run built $COMPILED_TOTAL crate(s) (cold at $COLD_CRATES+), so the run-level \`total\` ceiling is the warm one"
         ;;
     *)
         echo -e "  ${YELLOW}⚠${NC}  regime: unmeasured — no step reported a crate count (the counter reads cargo's own stream: \`cargo <subcommand>: N crate(s) built\`), so the cold ceilings apply. A run is not warm because nothing said otherwise"
         ;;
 esac
+echo -e "  ${BLUE}ℹ${NC} a stage's ceiling is selected by that stage's own compiled count — 0 crates: the warm (nothing-built) column, 1+ or unmeasured: the cold (built-something) column — printed per stage above as \`budget\`"
 
 if [[ "${#OVER_BUDGET[@]}" -gt 0 ]]; then
     echo -e "${RED}stage(s) over the measured budget ($BUDGET_FILE):${NC}"
@@ -1059,10 +1125,11 @@ if [[ "${#OVER_BUDGET[@]}" -gt 0 ]]; then
         fi
         echo -e "      ↳ built $(compiled_by_stage "$RESULTS_DIR" "$stage_key") crate(s) in this stage"
     done
-    echo "  The regime is derived from this run ($REGIME, $COMPILED_TOTAL crate(s) built); a measured run that"
-    echo "  built nothing is judged warm, so a slow run cannot earn the cold ceiling by being slow, and a run"
-    echo "  that reported no count at all is judged on the cold column rather than silently called warm."
-    echo "  Raise a ceiling with a measurement of its own regime, the date, the machine and the sample size."
+    echo "  The run-level regime ($REGIME, $COMPILED_TOTAL crate(s) built) governs the \`total\` row only; every"
+    echo "  stage above was judged on its own compiled count. A measured run that built nothing is warm, so a"
+    echo "  slow run cannot earn the cold ceiling by being slow, and a run that reported no count at all is"
+    echo "  judged on the cold column rather than silently called warm."
+    echo "  Raise a ceiling with a measurement of its own column, the date, the machine and the sample size."
     FAILED=$((FAILED + ${#OVER_BUDGET[@]}))
 fi
 

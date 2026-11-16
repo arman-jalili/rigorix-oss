@@ -1,27 +1,51 @@
-# local-ci stage budget (#1551, re-derived for #1562/#1568).
+# local-ci stage budget (#1551, re-derived for #1562/#1568, conditioned per stage for #1604).
 #
-# A ceiling is measured, never estimated, and it is measured **in the regime it is enforced in**.
-# There are two regimes, because a run that compiles the workspace and a run that compiles nothing are
-# not the same experiment:
+# A ceiling is measured, never estimated, and it is measured **in the condition it is enforced in**.
+# There are two conditions per stage, because a stage that compiled crates and a stage that compiled
+# nothing are not the same experiment — and the subject of a stage's ceiling is the stage:
+#
+#   warm — the stage compiled **nothing**: this is the column that describes a stage doing its work on
+#          a tree that is already built
+#   cold — the stage compiled **at least one crate**: it paid a compile inside its own wave, and the
+#          other seven stages of the same run may be warm. One crate is a yes; the threshold is 1, not
+#          COLD_CRATES, because on a stage the question is "did this stage pay a compile?"
+#
+# `total` is the one row whose subject is the **whole run**, and it keeps the run-level regime:
 #
 #   warm — the run compiled fewer than COLD_CRATES crates (local-ci.sh prints the count it compiled)
 #   cold — the run compiled COLD_CRATES or more: the cache was stale, and the compile is charged to
 #          whichever stage touched each crate first
 #
+# #1604 is why the two are separate. `0976e62f` was a warm run (19 crates, cold at 100+) in which
+# `lint` built all 19 of them and took 8m25s — judged against a 1m48s ceiling sampled from four runs
+# whose `lint` built nothing. The run was warm; the experiment was not. One regime for the run applied
+# one column to every stage, and stages are exactly what differ.
+#
 # "Compiled" is counted from cargo's own machine stream — `cargo <subcommand>: N crate(s) built`, printed
 # by the language wrapper from the `compiler-artifact` messages that are not fresh, deduplicated by
-# package. A run where no step printed such a line is **unmeasured**, and it is judged on the cold
-# column: judging it warm would be calling an unmeasured run cheap (see #1599, where a masked wrapper
+# package. A stage where no step printed such a line is **unmeasured**, and it is judged on the cold
+# column: judging it warm would be calling an unmeasured stage cheap (see #1599, where a masked wrapper
 # made an eleven-minute stage count zero crates and the warm ceilings were applied to a cold run).
 #
-# Columns, per stage: the ceiling in each regime, and the sample it was derived from —
-# `runs` (how many measured runs) and `slowest` (the slowest of them). A ceiling without its sample is
-# a number with no provenance, which is what this row exists to prevent.
+# Columns, per stage: the ceiling in each condition, the sample it was derived from — `runs` (how many
+# measured runs) and `slowest` (the slowest of them) — and `compiled`, the crate count those runs'
+# stages reported. `compiled` is what the ceiling is conditioned on, so a ceiling cannot be read without
+# knowing the experiment that produced it. `unmeasured` is a value: it says the sample was taken before
+# the counter could see what it was counting (#1599), and the next re-baseline replaces it with a number.
+# A numeric `compiled` cell is checked for consistency with its column by
+# `.pi/scripts/validate-budget-derivation.sh`: a warm stage sample must have compiled 0, a cold one at
+# least 1, and `total`'s warm sample fewer than COLD_CRATES — a warm sample whose runs compiled crates
+# is refused, because it is a measurement of a different experiment under this column's name.
 #
 # Derivation, applied by `.pi/scripts/validate-budget-derivation.sh` to every cell:
 #
 #   ceiling = floor(11 * slowest / 10)     integer arithmetic: (slowest*11) / 10
 #   cold    = max(floor(11 * cold_slowest / 10), warm ceiling)
+#
+# The same rule for both columns of a stage, applied to the sample each column was measured from — one
+# shape to check rather than two. The conditioning rule the guard also checks:
+#
+#   a warm stage sample compiled nothing; a cold stage sample compiled at least one
 #
 # Integer arithmetic on purpose: (700*11)/10 = 770, where `ceil(1.10 * 700)` in floating point is 771,
 # because 700*1.1 is 770.0000000000001. The earlier table was written by three different expressions —
@@ -44,6 +68,14 @@
 # The samples are full runs (`local-ci.sh`, stages in their own waves), never `--stage <name>`: a stage
 # measured alone is a different experiment — #1551 measured `guards` at 2m13s alone and 43s in a run.
 #
+# Every sample cell below records `unmeasured` for `compiled`, and that is a fact, not a gap: the warm
+# sample was four full runs and the cold sample six, all taken while the stage counters could not see
+# what they were counting (#1599's masked stderr). The durations are honest; the compile counts of
+# those runs were never recorded, so the conditioning cannot be certified for them and the file says so
+# instead of writing a zero it did not measure. The re-baseline that follows #1604 replaces these cells
+# with numbers from runs taken under the corrected counter, and `validate-budget-derivation.sh` will then
+# refuse a warm cell that is not 0.
+#
 # Warm sample: four full runs on 2026-11-15 at build times 7-16s (8m13s, 8m28s, 9m33s, 7m47s wall
 # clock). The `total` row has a fifth: the owner's 11m40s run, 700s, one second over the old 699s
 # ceiling — the datum that made the old ceiling's provenance worth asking about.
@@ -62,13 +94,13 @@
 #
 # A ceiling is raised with a measurement, the date and the machine. A ceiling nudged to fit the last
 # run is a comment that fails the person next week.
-stage	warm_ceiling	warm_runs	warm_slowest	cold_ceiling	cold_runs	cold_slowest	measured_on	machine
-lint	108	4	99	1172	6	1066	2026-11-15	8-core (aarch64, macOS)
-build	17	4	16	756	6	688	2026-11-15	8-core (aarch64, macOS)
-test	127	4	116	431	6	392	2026-11-15	8-core (aarch64, macOS)
-security	33	4	30	38	6	35	2026-11-15	8-core (aarch64, macOS)
-guards	83	4	76	221	6	201	2026-11-15	8-core (aarch64, macOS)
-coverage	379	4	345	379	6	345	2026-11-15	8-core (aarch64, macOS)
-docs	31	4	29	38	6	35	2026-11-15	8-core (aarch64, macOS)
-integration	1	4	1	1	6	1	2026-11-15	8-core (aarch64, macOS)
-total	770	5	700	2409	6	2190	2026-11-15	8-core (aarch64, macOS)
+stage	warm_ceiling	warm_runs	warm_slowest	warm_compiled	cold_ceiling	cold_runs	cold_slowest	cold_compiled	measured_on	machine
+lint	108	4	99	unmeasured	1172	6	1066	unmeasured	2026-11-15	8-core (aarch64, macOS)
+build	17	4	16	unmeasured	756	6	688	unmeasured	2026-11-15	8-core (aarch64, macOS)
+test	127	4	116	unmeasured	431	6	392	unmeasured	2026-11-15	8-core (aarch64, macOS)
+security	33	4	30	unmeasured	38	6	35	unmeasured	2026-11-15	8-core (aarch64, macOS)
+guards	83	4	76	unmeasured	221	6	201	unmeasured	2026-11-15	8-core (aarch64, macOS)
+coverage	379	4	345	unmeasured	379	6	345	unmeasured	2026-11-15	8-core (aarch64, macOS)
+docs	31	4	29	unmeasured	38	6	35	unmeasured	2026-11-15	8-core (aarch64, macOS)
+integration	1	4	1	unmeasured	1	6	1	unmeasured	2026-11-15	8-core (aarch64, macOS)
+total	770	5	700	unmeasured	2409	6	2190	unmeasured	2026-11-15	8-core (aarch64, macOS)
