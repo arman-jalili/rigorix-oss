@@ -255,6 +255,18 @@ stage_has_cargo() {  # $1 results dir, $2 stage key → yes if the stage invoked
     # 0 cargo lines, build 4, lint 16). A step *label* naming cargo counts as evidence of an
     # invocation, so the match is `cargo ` followed by a letter; `validate-cargo-diagnostics.sh` does
     # not match.
+    #
+    # This is a heuristic about text, and it can only err **loose**: a transcript that merely mentions
+    # `cargo build` — an echoed command, a line of documentation in a log — makes the stage
+    # `unmeasured`, which selects the looser column. Loose is the safe direction; a stage judged on a
+    # ceiling that is too generous passes. The inverse — a real invocation read as "ran no cargo" —
+    # would judge a stage that compiled on the nothing-built ceiling, which is the failure this
+    # function was written to end, so the asymmetry is bounded on the side that cannot fail a run.
+    #
+    # It is still a guess about the word rather than a fact about the work, which is why `unmeasured`
+    # here means "we could not tell" and not "we saw the word": when #1606 has the runner's direct
+    # invocations report through `cargo_compiled` the way the wrappers do, "invoked cargo" becomes "a
+    # line was printed", and this sniffing is **deleted**, not improved.
     if grep -qE '(^|[^A-Za-z_-])cargo [a-z]' "$1/$2.steps.log" 2>/dev/null; then printf 'yes'; else printf 'no'; fi
 }
 
