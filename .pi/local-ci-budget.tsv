@@ -29,9 +29,16 @@
 #
 # "Ran no cargo" is not that. `docs` and `integration` invoke no cargo at all — the stage did its work
 # and built nothing, and there was nothing to measure — so they are nothing-built, on the warm column.
-# The distinction is read from the transcript (an invocation present, a count absent) rather than
-# assumed, because the two facts have different remedies: a stage that ran no cargo is done, a stage
-# that ran cargo and said nothing about crates has a blind instrument.
+# The distinction is the **runner's own record**, not a reading of prose: a step that invokes cargo
+# writes `cargo-step: <label>` into its stage transcript, so "this stage ran cargo" is a fact the tool
+# recorded rather than a word that happened to appear (#1606 — the previous version grepped the
+# transcript for `cargo <word>` and called `guards` unmeasured because a guard printed "cargo
+# wrapper(s)"). A recorded step with no count line is the blind case and takes the cold column.
+#
+# `coverage` is recorded but not counted: its `cargo llvm-cov` runs inside `coverage.sh`, which owns its
+# own invocation, and `cargo llvm-cov` has no `--message-format`. The stage therefore stays `unmeasured`
+# — the honest answer — until that script reports; the marker is the runner saying "there is cargo work
+# here I cannot see", which is different from silence and different from a count.
 #
 # Columns, per stage: the ceiling in each condition, the sample it was derived from — `runs` (how many
 # measured runs) and `slowest` (the slowest of them) — and `compiled`, the crate count those runs'

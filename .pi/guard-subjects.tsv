@@ -52,4 +52,5 @@ engine/.pi/scripts/validate-spec-vocabulary.sh	engine/src/gate/domain/**	the own
 engine/.pi/scripts/validate-adr-references.sh	wasm/.pi/architecture/decisions/**	the wasm register — a different ADR set with the same numbers, checked since #1520
 .pi/scripts/validate-repo-hygiene.sh	.gitignore	the ignore file whose patterns must match something
 .pi/scripts/validate-cargo-diagnostics.sh	**/languages/rust/validate-ci.sh	the cargo invocations whose stderr and whose build count the budget reads (#1599)
+.pi/scripts/validate-cargo-diagnostics.sh	**/local-ci.sh	the runner's own cargo invocations, which compile inside stages the wrapper never sees (#1606)
 .pi/scripts/validate-budget-derivation.sh	.pi/local-ci-budget.tsv	every ceiling in the table, the two columns each stage is judged on, the compiled count each sample recorded, and the header that states the rule the numbers follow (#1582, #1604)

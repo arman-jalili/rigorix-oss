@@ -45,6 +45,21 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   the field is removed and `RECEIPT_SCHEMA_VERSION` moves to 2: a version number denotes one artifact. No released artifact
   writes receipts (the module landed after `v1.14.3`), which is what makes the shape change free now.
 
+- **The runner's own cargo invocations report what they built, and "did this stage invoke cargo?" is a record rather
+  than a reading** (#1606). `#1599` put the counter inside the per-crate wrapper, so the four stages that call cargo
+  directly — `build` compiling the portable slice for 1m26s, `lint`'s clippy, `test`'s `cargo test` fallback — reported
+  nothing and were permanently `unmeasured`, judged on the looser column. The counter now lives in
+  `.pi/scripts/languages/rust/cargo-count.sh`, sourced by both the wrapper and the runner (one implementation, two
+  callers, no second copy of the rule to disagree), and the runner routes its builds through `run_cargo`. `cargo audit`
+  compiles nothing by definition, so it reports 0 through `run_cargo_nobuild` instead of being filed as blind; `cargo fmt`,
+  `cargo llvm-cov` and `cargo nextest` are excluded **by name** in `validate-cargo-diagnostics.sh`, whose subject now
+  includes all six runner copies. With every invocation reporting, the text sniffer that guessed "ran no cargo" is
+  deleted: each cargo step writes `cargo-step: <label>` into its own transcript, so the fact is the tool's record. The
+  `unmeasured` state survives — a cargo process that dies before printing is still blind — and is seeded by a self-test.
+  Measured after the change: `build` `warm(0)` and `security` `warm(0)` (both were `cold(?)`), `lint` unchanged at
+  `cold(19)`, `coverage` still `cold(?)` because its `cargo llvm-cov` lives inside `coverage.sh` and cannot be counted
+  from the runner — recorded rather than hidden.
+
 ### Added
 
 - **The R0 receipt has a published schema, a golden pair and a canonical vector** (#1590). ADR-024 splits a run between a

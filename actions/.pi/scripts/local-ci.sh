@@ -18,6 +18,15 @@ set -euo pipefail
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BLUE='\033[0;34m'; NC='\033[0m'
 
+# The crate counter is the wrapper's, sourced rather than reimplemented (#1606). The runner makes cargo
+# invocations of its own — `build` compiles the portable slice, `lint` runs clippy per crate — and until
+# this file used the same counter, those builds reported nothing, so the stages that made them were
+# permanently `unmeasured` and judged on the looser column. One implementation, two callers.
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/languages/rust/cargo-count.sh"
+# `run_step` runs its command in a child bash, so the counter must be in that child's environment.
+export -f cargo_compiled
+
 QUICK=false; RELEASE=false; STAGE=""; CRATE_FILTER=""; LIST_ONLY=false; SAVE_OUTPUT=false; AFFECTED=false
 SELF_TEST=false; PROBE_EXIT=""; LOCK_FILE=""; JOBS=""
 START_TIME=$(date +%s)
@@ -247,27 +256,21 @@ stage_counts_reported() {  # $1 results dir, $2 stage key → yes if that stage 
     if grep -qE "$COUNTED_RE" "$1/$2.steps.log" 2>/dev/null; then printf 'yes'; else printf 'no'; fi
 }
 
-stage_has_cargo() {  # $1 results dir, $2 stage key → yes if the stage invoked cargo at all
-    # "ran no cargo" and "ran cargo and could not count it" are different facts, and only the second
-    # one is a blind instrument. The first is a stage that built nothing because it had nothing to
-    # build — `docs` and `integration` log no cargo invocation at all — and calling it `unmeasured`
-    # would judge it on the looser column for a measurement nobody needed (#1604, measured: docs
-    # 0 cargo lines, build 4, lint 16). A step *label* naming cargo counts as evidence of an
-    # invocation, so the match is `cargo ` followed by a letter; `validate-cargo-diagnostics.sh` does
-    # not match.
-    #
-    # This is a heuristic about text, and it can only err **loose**: a transcript that merely mentions
-    # `cargo build` — an echoed command, a line of documentation in a log — makes the stage
-    # `unmeasured`, which selects the looser column. Loose is the safe direction; a stage judged on a
-    # ceiling that is too generous passes. The inverse — a real invocation read as "ran no cargo" —
-    # would judge a stage that compiled on the nothing-built ceiling, which is the failure this
-    # function was written to end, so the asymmetry is bounded on the side that cannot fail a run.
-    #
-    # It is still a guess about the word rather than a fact about the work, which is why `unmeasured`
-    # here means "we could not tell" and not "we saw the word": when #1606 has the runner's direct
-    # invocations report through `cargo_compiled` the way the wrappers do, "invoked cargo" becomes "a
-    # line was printed", and this sniffing is **deleted**, not improved.
-    if grep -qE '(^|[^A-Za-z_-])cargo [a-z]' "$1/$2.steps.log" 2>/dev/null; then printf 'yes'; else printf 'no'; fi
+# "Did this stage invoke cargo?" used to be a guess about text — `grep` for `cargo <word>` in the
+# transcript — and it could only err loose: the guards stage was called `unmeasured` because one guard
+# *printed the words* "cargo wrapper(s)", and `security` because a PASS label quoted `cargo audit`
+# (both measured in the run at 671862bc). A stage is now recorded by the tool that ran it: every step
+# that invokes cargo writes `cargo-step: <label>` into its own transcript, so the fact is the runner's
+# record rather than a reading of prose (#1606). The sniffing is deleted rather than improved, because
+# the question it guessed at is now answered where the invocation is made.
+CARGO_STEP_RE='^ *cargo-step: '
+
+stage_recorded_cargo() {  # $1 results dir, $2 stage key → yes if a cargo step recorded itself
+    if grep -qE "$CARGO_STEP_RE" "$1/$2.steps.log" 2>/dev/null; then printf 'yes'; else printf 'no'; fi
+}
+
+record_cargo_step() {  # $1 label → the transcript's own record that this step invoked cargo
+    printf '  cargo-step: %s\n' "$1" >> "$RESULTS_DIR/$CUR_STAGE.steps.log"
 }
 
 counts_reported() {  # $1 results dir, $2.. stage keys → yes if any stage reported a count at all
@@ -296,13 +299,16 @@ budget_column() {  # $1 regime → warm|cold; an unmeasured run is judged on the
 # The threshold is 1, not COLD_CRATES: on a stage the question is "did this stage pay a compile?" and
 # one crate is a yes. `total` keeps the run-level regime above, because it is the one row whose subject
 # really is the whole run.
-stage_condition() {  # $1 crates, $2 reported a count (yes|no), $3 invoked cargo at all (yes|no) → nothing|built|unmeasured
+stage_condition() {  # $1 crates, $2 reported a count (yes|no), $3 recorded a cargo step (yes|no) → nothing|built|unmeasured
     if [[ "${2:-no}" == "yes" ]]; then
         if [[ "${1:-0}" -ge 1 ]]; then printf 'built'; else printf 'nothing'; fi
         return
     fi
-    # No count line: either the stage ran no cargo (it built nothing, and nothing was there to
-    # measure) or it ran cargo whose output said nothing about crates (a blind instrument).
+    # No count line: either the stage recorded no cargo step (it built nothing, and nothing was
+    # there to measure) or it recorded one whose invocation printed no count (a blind instrument).
+    # The third state is nearly unreachable now that every invocation reports — it survives because a
+    # cargo process can die before printing, and a state deleted because it "can't happen" is how the
+    # next blind instrument gets filed as warm.
     if [[ "${3:-yes}" == "no" ]]; then printf 'nothing'; else printf 'unmeasured'; fi
 }
 
@@ -314,11 +320,11 @@ stage_column() {  # $1 condition → warm (built nothing) | cold (built somethin
 }
 
 stage_budget_cell() {  # $1 results dir, $2 stage key → the column the stage is judged on, and the count that chose it
-    local built reported cargo condition
+    local built reported recorded condition
     built="$(compiled_by_stage "$1" "$2")"
     reported="$(stage_counts_reported "$1" "$2")"
-    cargo="$(stage_has_cargo "$1" "$2")"
-    condition="$(stage_condition "$built" "$reported" "$cargo")"
+    recorded="$(stage_recorded_cargo "$1" "$2")"
+    condition="$(stage_condition "$built" "$reported" "$recorded")"
     case "$condition" in
         unmeasured) printf 'cold(?)' ;;
         nothing) printf 'warm(0)' ;;
@@ -456,8 +462,10 @@ if [[ "$SELF_TEST" == "true" ]]; then
     check "a stage that built nothing counts zero" "$(compiled_by_stage "$tmp/compiled" test)" "0"
     check "a stage that reported counts is measured" "$(counts_reported "$tmp/compiled" build test)" "yes"
     mkdir -p "$tmp/quiet"
-    printf 'PASS\tcargo build -p rigorix-engine (11s)\t11\t\nerror[E0425]: cannot find value `nope` in this scope\n' \
+    # A recorded invocation whose output never carried a count: the cargo process died before printing.
+    printf '  cargo-step: cargo build -p rigorix-engine\nPASS\tbuild rigorix-engine (11s)\t11\t\n' \
         > "$tmp/quiet/build.steps.log"
+    printf 'error[E0425]: cannot find value `nope` in this scope\n' >> "$tmp/quiet/build.steps.log"
     check "a stage that reported no count is not measured" "$(counts_reported "$tmp/quiet" build)" "no"
     # The per-stage form of the same two facts, and the cell the summary table prints: the count is the
     # stage's own, and a stage with no count says so instead of claiming zero (#1604).
@@ -468,9 +476,19 @@ if [[ "$SELF_TEST" == "true" ]]; then
     printf 'PASS\tvalidate-docs.sh (2s)\t2\t\n' > "$tmp/nocargo/docs.steps.log"
     check "a stage that ran no cargo is measured as nothing built" "$(stage_budget_cell "$tmp/nocargo" docs)" "warm(0)"
     printf 'PASS\tcargo build -p rigorix-server (16s)\t16\t\n' > "$tmp/quiet/server.steps.log"
-    check "a step label naming cargo is an invocation" "$(stage_has_cargo "$tmp/quiet" server)" "yes"
-    check "a stage whose cargo said nothing about crates is unmeasured, not nothing-built" \
+    # #1606: the record is the runner's, not a reading of the transcript's prose. A stage that merely
+    # *mentions* cargo — a guard printing "cargo wrapper(s)", a PASS label quoting `cargo audit`, both of
+    # which really happened — is not a stage that invoked it.
+    check "a transcript that mentions cargo but records no step did not invoke it" \
+        "$(stage_recorded_cargo "$tmp/quiet" server)" "no"
+    check "a mentioned cargo with no count is nothing-built, not unmeasured" \
+        "$(stage_budget_cell "$tmp/quiet" server)" "warm(0)"
+    printf '  cargo-step: coverage via coverage.sh\n' >> "$tmp/quiet/server.steps.log"
+    check "a recorded step with no count line is unmeasured" \
         "$(stage_budget_cell "$tmp/quiet" server)" "cold(?)"
+    printf '  cargo build: 5 crate(s) built\n' >> "$tmp/quiet/server.steps.log"
+    check "a recorded step that reports is measured" \
+        "$(stage_budget_cell "$tmp/quiet" server)" "cold(5)"
 
 
     # A scheduled stage that wrote nothing is not a pass. The fixture is the exact state the bug
@@ -655,6 +673,27 @@ run_cmd() {
     run_step "$label" "$@"
 }
 
+# A cargo step the budget can see (#1606). It records the invocation, then runs it through the same
+# counter the per-crate wrapper uses, so the count lands in this stage's transcript and the stage's
+# ceiling is selected by what it actually built. `run_step` backgrounds `bash -c`, which is why
+# `cargo_compiled` is exported above.
+run_cargo() { # $1 label, then the cargo subcommand and its arguments — no leading `cargo`
+    local label="$1"; shift
+    record_cargo_step "cargo $*"
+    run_step "$label" bash -c 'cargo_compiled "$@"' _ "$@"
+}
+
+# A cargo subcommand that compiles nothing by definition — `cargo audit` reads the dependency graph.
+# Its count is 0 because there is no build, not because a measurement failed, so it prints the line and
+# the stage stays measured rather than being filed as blind. Named here rather than pattern-matched
+# away, and named again in `validate-cargo-diagnostics.sh`'s exclusion list.
+run_cargo_nobuild() { # $1 label, then the cargo subcommand and its arguments — no leading `cargo`
+    local label="$1"; shift
+    record_cargo_step "cargo $*"
+    printf '  cargo %s: 0 crate(s) built\n' "$1" >> "$RESULTS_DIR/$CUR_STAGE.steps.log"
+    run_step "$label" cargo "$@"
+}
+
 run_script() {
     local label="$1" crate="$2" script_abs="$3"
     # script_abs is e.g. "engine/.pi/scripts/ci/stage_lint.sh"
@@ -743,8 +782,10 @@ stage_lint() {
     stage_begin lint "Stage 1: Lint"
     for crate in "${CRATES[@]}"; do
         subheader "Lint: $crate"
+        # `cargo fmt --check` builds nothing and has no count; it is excluded by name here and in
+        # `validate-cargo-diagnostics.sh` (#1606).
         run_cmd "cargo fmt --check -p rigorix-$crate" cargo fmt --check -p "rigorix-$crate"
-        run_cmd "cargo clippy -p rigorix-$crate -- -D warnings" cargo clippy -p "rigorix-$crate" -- -D warnings
+        run_cargo "cargo clippy -p rigorix-$crate -- -D warnings" clippy -p "rigorix-$crate" -- -D warnings
         for script in "$crate/.pi/scripts/ci/stage_lint.sh" "$crate/.pi/scripts/validate-ci.sh"; do
             [[ -f "$script" ]] && run_script "$(basename "$script") ($crate)" "$crate" "$script"
         done
@@ -770,7 +811,7 @@ stage_docs() {
 stage_security() {
     stage_begin security "Stage 4: Security"
     if command -v cargo-audit &>/dev/null || cargo audit --version &>/dev/null 2>&1; then
-        run_cmd "cargo audit" cargo audit --deny warnings
+        run_cargo_nobuild "cargo audit" audit --deny warnings
     else
         fail "cargo audit — not installed (run 'cargo install cargo-audit')"
     fi
@@ -822,11 +863,11 @@ stage_build() {
     for crate in "${CRATES[@]}"; do
         subheader "Build: $crate"
         if [[ "$QUICK" == "true" ]]; then
-            run_cmd "cargo check -p rigorix-$crate (quick)" cargo check -p "rigorix-$crate"
+            run_cargo "cargo check -p rigorix-$crate (quick)" check -p "rigorix-$crate"
         elif [[ "$RELEASE" == "true" ]]; then
-            run_cmd "cargo build -p rigorix-$crate --release" cargo build -p "rigorix-$crate" --release
+            run_cargo "cargo build -p rigorix-$crate --release" build -p "rigorix-$crate" --release
         else
-            run_cmd "cargo build -p rigorix-$crate" cargo build -p "rigorix-$crate"
+            run_cargo "cargo build -p rigorix-$crate" build -p "rigorix-$crate"
         fi
         for script in "$crate/.pi/scripts/ci/stage_static_analysis.sh" "$crate/.pi/scripts/ci/stage_package_build.sh"; do
             [[ -f "$script" ]] && run_script "$(basename "$script") ($crate)" "$crate" "$script"
@@ -841,11 +882,11 @@ stage_build() {
     # verbatim, and the target check announces itself when it cannot run.
     if [[ " ${CRATES[*]} " == *" engine "* ]]; then
         subheader "Portable slice"
-        run_step "cargo test -p rigorix-engine --features portable --tests" \
-            cargo test --locked -p rigorix-engine --features portable --tests
+        run_cargo "cargo test -p rigorix-engine --features portable --tests" \
+            test --locked -p rigorix-engine --features portable --tests
         if rustup target list --installed 2>/dev/null | grep -qx "wasm32-unknown-unknown"; then
-            run_step "cargo check -p rigorix-engine --features portable (wasm32)" \
-                cargo check --locked -p rigorix-engine --features portable --target wasm32-unknown-unknown
+            run_cargo "cargo check -p rigorix-engine --features portable (wasm32)" \
+                check --locked -p rigorix-engine --features portable --target wasm32-unknown-unknown
         else
             echo "  ⚠️  wasm32-unknown-unknown not installed — the portable *type* check cannot run here."
             echo "      install: rustup target add wasm32-unknown-unknown   (the slice's tests above still ran)"
@@ -863,11 +904,15 @@ stage_test() {
         # the tool unblocked — but the fallback is announced, because the two runners do
         # not report the same way and a silent substitution is how a result gets quoted
         # against the wrong subject.
+        # `nextest` is outside cargo's own stream — it is a subcommand with its own reporter, and
+        # handing it `--message-format` would count nextest's plan rather than this run's builds — so
+        # it is excluded by name in `validate-cargo-diagnostics.sh`. This stage is measured anyway, by
+        # the `validate-ci.sh` steps below; the `cargo test` fallback is the counted path (#1606).
         if command -v cargo-nextest >/dev/null 2>&1; then
             run_cmd "cargo nextest run -p rigorix-$crate" cargo nextest run -p "rigorix-$crate"
         else
             echo "  ⚠️  cargo-nextest not installed — falling back to cargo test (https://get.nexte.st)"
-            run_cmd "cargo test -p rigorix-$crate" cargo test -p "rigorix-$crate"
+            run_cargo "cargo test -p rigorix-$crate" test -p "rigorix-$crate"
         fi
         run_cmd "doctests -p rigorix-$crate" bash .pi/scripts/run-doctests.sh -p "rigorix-$crate"
         # All stage_*.sh scripts that aren't already in lint/build
@@ -892,6 +937,12 @@ stage_coverage() {
     # one instrumented execution. Its own line in the table is what makes that visible (#1551).
     stage_begin coverage "Stage 4b: Coverage"
     info "this stage builds the workspace into target/llvm-cov-target (a second build graph)"
+    # `cargo llvm-cov` is invoked inside `coverage.sh`, not here, and it has no `--message-format`: the
+    # compile this stage pays for is real and cannot be counted from this file. Recording the step
+    # keeps the stage honestly `unmeasured` (the looser column) instead of claiming it built nothing —
+    # a marker is the runner saying "there is cargo work here I cannot see", which is different from
+    # silence and different from a count (#1606).
+    record_cargo_step "coverage via coverage.sh (cargo llvm-cov inside that script)"
     run_cmd "coverage (workspace, gated >=${COVERAGE_THRESHOLD:-60}%)" bash .pi/scripts/coverage.sh --gate
     stage_end
 }
@@ -1123,7 +1174,7 @@ if [[ -f "$BUDGET_FILE" ]]; then
             end="$(cat "$RESULTS_DIR/$key.end" 2>/dev/null || echo 0)"
             secs=$((end - start))
             built="$(compiled_by_stage "$RESULTS_DIR" "$key")"
-            condition="$(stage_condition "$built" "$(stage_counts_reported "$RESULTS_DIR" "$key")" "$(stage_has_cargo "$RESULTS_DIR" "$key")")"
+            condition="$(stage_condition "$built" "$(stage_counts_reported "$RESULTS_DIR" "$key")" "$(stage_recorded_cargo "$RESULTS_DIR" "$key")")"
             row_column="$(stage_column "$condition")"
         fi
         if [[ "$row_column" == "cold" ]]; then
