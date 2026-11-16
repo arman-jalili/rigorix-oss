@@ -32,7 +32,9 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   `total` warm sample from a run at or above `COLD_CRATES`. Every existing sample cell records `unmeasured`, which is a
   fact and not a gap: those runs predate the counter that can see a compile (#1599), so the conditioning cannot be
   certified for them — the guard prints how many cells that is rather than letting a warm sample and a blind counter look
-  alike. **No ceiling was raised**: the numbers are unchanged, and the re-baseline that follows must be measured under the
+  alike. A stage that ran **no cargo at all** is a third fact and is not `unmeasured`: `docs` and `integration` log zero
+  cargo invocations, built nothing and had nothing to measure, so they stay on the nothing-built column — a run measured
+  them at `warm(0)` where the first version of the selector called them blind and judged them on the looser ceiling. **No ceiling was raised**: the numbers are unchanged, and the re-baseline that follows must be measured under the
   corrected conditioning.
 
 - **`Receipt.roles` is gone, and the receipt schema is version 2** (#1586). The field sat in every receipt's canonical

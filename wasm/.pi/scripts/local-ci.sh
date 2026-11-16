@@ -247,6 +247,17 @@ stage_counts_reported() {  # $1 results dir, $2 stage key → yes if that stage 
     if grep -qE "$COUNTED_RE" "$1/$2.steps.log" 2>/dev/null; then printf 'yes'; else printf 'no'; fi
 }
 
+stage_has_cargo() {  # $1 results dir, $2 stage key → yes if the stage invoked cargo at all
+    # "ran no cargo" and "ran cargo and could not count it" are different facts, and only the second
+    # one is a blind instrument. The first is a stage that built nothing because it had nothing to
+    # build — `docs` and `integration` log no cargo invocation at all — and calling it `unmeasured`
+    # would judge it on the looser column for a measurement nobody needed (#1604, measured: docs
+    # 0 cargo lines, build 4, lint 16). A step *label* naming cargo counts as evidence of an
+    # invocation, so the match is `cargo ` followed by a letter; `validate-cargo-diagnostics.sh` does
+    # not match.
+    if grep -qE '(^|[^A-Za-z_-])cargo [a-z]' "$1/$2.steps.log" 2>/dev/null; then printf 'yes'; else printf 'no'; fi
+}
+
 counts_reported() {  # $1 results dir, $2.. stage keys → yes if any stage reported a count at all
     local key
     for key in "${@:2}"; do
@@ -273,9 +284,14 @@ budget_column() {  # $1 regime → warm|cold; an unmeasured run is judged on the
 # The threshold is 1, not COLD_CRATES: on a stage the question is "did this stage pay a compile?" and
 # one crate is a yes. `total` keeps the run-level regime above, because it is the one row whose subject
 # really is the whole run.
-stage_condition() {  # $1 crates this stage built, $2 this stage reported a count (yes|no) → nothing|built|unmeasured
-    if [[ "${2:-no}" != "yes" ]]; then printf 'unmeasured'; return; fi
-    if [[ "${1:-0}" -ge 1 ]]; then printf 'built'; else printf 'nothing'; fi
+stage_condition() {  # $1 crates, $2 reported a count (yes|no), $3 invoked cargo at all (yes|no) → nothing|built|unmeasured
+    if [[ "${2:-no}" == "yes" ]]; then
+        if [[ "${1:-0}" -ge 1 ]]; then printf 'built'; else printf 'nothing'; fi
+        return
+    fi
+    # No count line: either the stage ran no cargo (it built nothing, and nothing was there to
+    # measure) or it ran cargo whose output said nothing about crates (a blind instrument).
+    if [[ "${3:-yes}" == "no" ]]; then printf 'nothing'; else printf 'unmeasured'; fi
 }
 
 stage_column() {  # $1 condition → warm (built nothing) | cold (built something, or could not be measured)
@@ -286,12 +302,15 @@ stage_column() {  # $1 condition → warm (built nothing) | cold (built somethin
 }
 
 stage_budget_cell() {  # $1 results dir, $2 stage key → the column the stage is judged on, and the count that chose it
-    local built reported
+    local built reported cargo condition
     built="$(compiled_by_stage "$1" "$2")"
     reported="$(stage_counts_reported "$1" "$2")"
-    case "$(stage_condition "$built" "$reported")" in
+    cargo="$(stage_has_cargo "$1" "$2")"
+    condition="$(stage_condition "$built" "$reported" "$cargo")"
+    case "$condition" in
         unmeasured) printf 'cold(?)' ;;
-        *) printf '%s(%s)' "$(stage_column "$(stage_condition "$built" "$reported")")" "$built" ;;
+        nothing) printf 'warm(0)' ;;
+        *) printf '%s(%s)' "$(stage_column "$condition")" "$built" ;;
     esac
 }
 
@@ -394,15 +413,19 @@ if [[ "$SELF_TEST" == "true" ]]; then
     # The number that chose the column is the stage's, not the run's: `lint` building 19 crates in a
     # warm run is a stage that paid a compile, and the ceiling that describes it is the other one.
     check "a stage that built nothing is judged on the nothing-built column" \
-        "$(stage_column "$(stage_condition 0 yes)")" "warm"
+        "$(stage_column "$(stage_condition 0 yes yes)")" "warm"
     check "a stage that built 3 crates is judged on the built-something column" \
-        "$(stage_column "$(stage_condition 3 yes)")" "cold"
+        "$(stage_column "$(stage_condition 3 yes yes)")" "cold"
     check "an unmeasured stage is judged on the looser column" \
-        "$(stage_column "$(stage_condition 0 no)")" "cold"
+        "$(stage_column "$(stage_condition 0 no yes)")" "cold"
+    # A stage that ran no cargo built nothing and had nothing to measure: `docs` and `integration` log
+    # zero cargo invocations, so `unmeasured` would be a claim about an instrument that never ran.
+    check "a stage that ran no cargo is nothing-built, not unmeasured" \
+        "$(stage_condition 0 no no)" "nothing"
     # The case that used to be impossible to express: one run, two different columns, both true. The
     # run is warm because it built 19 crates; `lint` is not, because those seconds are lint's.
     check "a warm run can contain a stage judged on the cold column" \
-        "$(budget_regime 19 yes)/$(stage_column "$(stage_condition 19 yes)")" "warm/cold"
+        "$(budget_regime 19 yes)/$(stage_column "$(stage_condition 19 yes yes)")" "warm/cold"
     check "a stage that builds nothing for eleven minutes still fails" "$(budget_verdict 660 108)" "over"
     # The cold run that measured the sample: `guards` compiled 38 crates inside its wave and took
     # 3m21s, which the old 112s single ceiling failed and the derived cold ceiling passes. This is the
@@ -421,13 +444,21 @@ if [[ "$SELF_TEST" == "true" ]]; then
     check "a stage that built nothing counts zero" "$(compiled_by_stage "$tmp/compiled" test)" "0"
     check "a stage that reported counts is measured" "$(counts_reported "$tmp/compiled" build test)" "yes"
     mkdir -p "$tmp/quiet"
-    printf 'error[E0425]: cannot find value `nope` in this scope\n' > "$tmp/quiet/build.steps.log"
+    printf 'PASS\tcargo build -p rigorix-engine (11s)\t11\t\nerror[E0425]: cannot find value `nope` in this scope\n' \
+        > "$tmp/quiet/build.steps.log"
     check "a stage that reported no count is not measured" "$(counts_reported "$tmp/quiet" build)" "no"
     # The per-stage form of the same two facts, and the cell the summary table prints: the count is the
     # stage's own, and a stage with no count says so instead of claiming zero (#1604).
     check "a stage's own count selects its cell" "$(stage_budget_cell "$tmp/compiled" build)" "cold(7)"
     check "a stage that built nothing has the nothing-built cell" "$(stage_budget_cell "$tmp/compiled" test)" "warm(0)"
     check "a stage that reported no count says so in its cell" "$(stage_budget_cell "$tmp/quiet" build)" "cold(?)"
+    mkdir -p "$tmp/nocargo"
+    printf 'PASS\tvalidate-docs.sh (2s)\t2\t\n' > "$tmp/nocargo/docs.steps.log"
+    check "a stage that ran no cargo is measured as nothing built" "$(stage_budget_cell "$tmp/nocargo" docs)" "warm(0)"
+    printf 'PASS\tcargo build -p rigorix-server (16s)\t16\t\n' > "$tmp/quiet/server.steps.log"
+    check "a step label naming cargo is an invocation" "$(stage_has_cargo "$tmp/quiet" server)" "yes"
+    check "a stage whose cargo said nothing about crates is unmeasured, not nothing-built" \
+        "$(stage_budget_cell "$tmp/quiet" server)" "cold(?)"
 
 
     # A scheduled stage that wrote nothing is not a pass. The fixture is the exact state the bug
@@ -1080,7 +1111,7 @@ if [[ -f "$BUDGET_FILE" ]]; then
             end="$(cat "$RESULTS_DIR/$key.end" 2>/dev/null || echo 0)"
             secs=$((end - start))
             built="$(compiled_by_stage "$RESULTS_DIR" "$key")"
-            condition="$(stage_condition "$built" "$(stage_counts_reported "$RESULTS_DIR" "$key")")"
+            condition="$(stage_condition "$built" "$(stage_counts_reported "$RESULTS_DIR" "$key")" "$(stage_has_cargo "$RESULTS_DIR" "$key")")"
             row_column="$(stage_column "$condition")"
         fi
         if [[ "$row_column" == "cold" ]]; then

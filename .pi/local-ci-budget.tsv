@@ -27,6 +27,12 @@
 # column: judging it warm would be calling an unmeasured stage cheap (see #1599, where a masked wrapper
 # made an eleven-minute stage count zero crates and the warm ceilings were applied to a cold run).
 #
+# "Ran no cargo" is not that. `docs` and `integration` invoke no cargo at all — the stage did its work
+# and built nothing, and there was nothing to measure — so they are nothing-built, on the warm column.
+# The distinction is read from the transcript (an invocation present, a count absent) rather than
+# assumed, because the two facts have different remedies: a stage that ran no cargo is done, a stage
+# that ran cargo and said nothing about crates has a blind instrument.
+#
 # Columns, per stage: the ceiling in each condition, the sample it was derived from — `runs` (how many
 # measured runs) and `slowest` (the slowest of them) — and `compiled`, the crate count those runs'
 # stages reported. `compiled` is what the ceiling is conditioned on, so a ceiling cannot be read without
