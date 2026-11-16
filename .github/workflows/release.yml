@@ -82,6 +82,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
 
+      # #1591: `cargo publish` verifies that the crate *compiles*; it does not verify that what it
+      # compiles is reachable, and the workspace can reach a module through a path a consumer cannot.
+      # This step packages the crate, builds a consumer against the packaged tarball with default
+      # features (must resolve `receipt::{Receipt, verify, Attestation}`), then again with
+      # `features = ["portable"]` (must fail on that module), and the publish below cannot run unless
+      # both answers are the asserted ones. A publish is irreversible, so the check is before it.
+      - name: 🔎 The packaged crate exposes the surface it claims (#1591)
+        run: bash .github/scripts/check-packaged-surface.sh
+
       - name: Publish rigorix-engine (skip if exists)
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

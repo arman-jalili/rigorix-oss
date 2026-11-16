@@ -17,6 +17,20 @@
 //! - `execution_engine` — Parallel DAG execution, retry logic, session management
 //! - `error` — CoreOrchestratorError root error type with #[from] for all sub-errors
 //!
+//! ## The receipt, and the `portable` feature (#1591)
+//!
+//! The receipt (`receipt::Receipt`, `receipt::verify`, `receipt::Attestation`) is **not available to a
+//! `portable` consumer.** The module needs `quality_gates`, which the portable slice removes, so it is
+//! compiled out rather than stubbed: a consumer that enables `portable` and imports
+//! `rigorix_engine::receipt` gets `unresolved import` at build time, naming the module — not a silent
+//! absence discovered at run time.
+//!
+//! That boundary is asserted, not just documented: `.github/scripts/check-packaged-surface.sh` packages
+//! the crate, builds a consumer against the packaged tarball twice — default features (must resolve the
+//! three paths) and `features = ["portable"]` (must fail on this module) — and gates the release on
+//! both answers. A host that needs to *verify* a receipt therefore depends on `rigorix-engine` with
+//! default features, and a host that only runs the gate slice does not.
+//!
 //! ## Architecture
 //! - `domain/` — Core domain entities and interfaces
 //! - `application/` — Service traits, DTOs, factory interfaces
@@ -76,6 +90,11 @@ pub mod policy_engine;
 pub mod precondition;
 #[cfg(not(feature = "portable"))]
 pub mod quality_gates;
+// The receipt is deliberately outside the portable slice: it needs `quality_gates`, which the slice
+// removes, and `Attestation`/`Receipt` are statements a host makes and an engine signs, not something a
+// wasm gate level consumes. A `portable` consumer therefore has no `receipt` module at all — the
+// consequence is asserted on the packaged artifact by `.github/scripts/check-packaged-surface.sh`
+// (#1591), so the boundary is a build error naming the module rather than a surprise at run time.
 #[cfg(not(feature = "portable"))]
 pub mod receipt;
 #[cfg(not(feature = "portable"))]
