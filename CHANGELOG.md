@@ -36,6 +36,16 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   per-stage conditioning working by passing on the cold column; the run-level row now answers the same way. No ceiling moved —
   the `total` row's cold sample is still the 2409s one — so a 23-minute run that built crates passes and a 23-minute run that
   built nothing still fails.
+- **The npm verification window is measured, and the release page no longer waits on propagation** (#1613).
+  `verify-published` polled 8 × 15 s — two minutes — and `rigorix-gate@1.15.0`, published correctly, was still not served at the end
+  of it (release run 43872574813) while the registry served it minutes later. Because `github-release` was `needs:
+  [verify-published]`, that two-minute race left the tag with six published crates and **no release page** — the state #1503 exists
+  to end, produced by a clock rather than by a broken publish. The window is now 16 × 30 s = 8 min, from that observed propagation,
+  and overridable (`RIGORIX_NPM_ATTEMPTS`, `RIGORIX_NPM_INTERVAL_SECONDS`) so the next measurement needs no code change. A timeout
+  is now **distinguishable from a wrong artifact**: exit 75 means the registry did not serve the version, so nothing about the
+  artifact was judged; exit 1 still means it was fetched and is wrong, and only that stops the page. The page is created on either
+  answer, and a new `verify-propagation` job asks the same question *after* it exists — a slow registry reddens the run without
+  taking the artifact's address away.
 - **The recorded-digest check knows what a digest is *for*** (#1614). `v1.15.0` published correctly — six crates, the npm
   package, the release page with the wasm and its `.sha256` — and then failed verification on two prefixes at
   `CHANGELOG.md:384-386`, both quoting the before/after of the canonical-bytes constant to narrate a mutation. Neither was a pin;
