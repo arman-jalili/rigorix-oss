@@ -1,0 +1,20 @@
+# The golden pair for the R0 receipt (#1590): what the engine accepts, and one-byte variants it refuses.
+#
+# Columns (tab-separated):
+#   fixture   the document, relative to engine/schema/
+#   door      which entry point answers for it:
+#             from_document — `Receipt::from_document`, the parser a host's document meets first
+#             verify        — `verify(receipt, workspace_identity)`, the digest and workspace rules
+#   expected  `accepted`, or the `ReceiptRefusal::kind()` the door must produce
+#   note      one line: what the variant changes, so a reader does not have to diff it
+#
+# The expected column holds a **kind** and not a message, because a message is prose and prose is
+# allowed to improve. Every row is asserted by kind in tests/unit/receipt/receipt_schema_test.rs.
+fixture	door	expected	note
+receipt.json	verify	accepted	the declaration a host writes, verified against the workspace identity it names
+refused/schema_version.json	from_document	schema_version	`schema_version: 1`, the version before `roles` was removed (#1586)
+refused/workspace_kind.json	from_document	unsupported_workspace_kind	`workspace.kind: dirty_tree`, outside the closed vocabulary of ADR-024 §5
+refused/unknown_step.json	from_document	unknown_step	a step depends on a step the receipt does not declare
+refused/malformed.json	from_document	malformed_document	the document is truncated JSON, so the parser answers in this module's words
+refused/set_digest.json	verify	digest_mismatch	a pinned `set_digest` that is not the canonical form's digest
+refused/workspace_mismatch.json	verify	workspace_mismatch	the receipt names a tree, and the engine computed another

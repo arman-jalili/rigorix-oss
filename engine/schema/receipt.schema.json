@@ -1,0 +1,316 @@
+{
+  "$defs": {
+    "BudgetDeclared": {
+      "additionalProperties": false,
+      "description": "The budget a receipt declares (ADR-024 §8). Enforcement is a separate issue, and this type says\nso: there is no `enforced` here to set to `true`.",
+      "properties": {
+        "max_iterations": {
+          "description": "Iterations the execution may use.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_tokens": {
+          "description": "Tokens it may use.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_iterations",
+        "max_tokens"
+      ],
+      "type": "object"
+    },
+    "ClaimSource": {
+      "description": "Who made a claim.",
+      "oneOf": [
+        {
+          "const": "caller",
+          "description": "The caller.",
+          "type": "string"
+        }
+      ]
+    },
+    "DeclaredEffect": {
+      "additionalProperties": false,
+      "description": "An effect a step declares it may produce.",
+      "properties": {
+        "content_digests": {
+          "description": "The digest the content at each path must have afterwards, parallel to `paths`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "paths": {
+          "description": "The paths it may write.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "paths",
+        "content_digests"
+      ],
+      "type": "object"
+    },
+    "Expectation": {
+      "additionalProperties": false,
+      "description": "What a step must meet to count as having done its job.",
+      "properties": {
+        "description": {
+          "description": "What is expected, in words the operator can read back.",
+          "type": "string"
+        },
+        "quality_level": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QualityLevel"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The quality level this step is expected to establish, when it establishes one."
+        }
+      },
+      "required": [
+        "description"
+      ],
+      "type": "object"
+    },
+    "QualityClaim": {
+      "additionalProperties": false,
+      "description": "A quality level **and whose claim it is** (ADR-024 §2 D1).\n\nOn a receipt the source is always `Caller`: nothing has run yet. The field exists on the receipt\nrather than being implied, so the attestation can echo it without inventing one.",
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/QualityLevel",
+          "description": "The level."
+        },
+        "source": {
+          "$ref": "#/$defs/ClaimSource",
+          "description": "Always `Caller` here — a receipt is a declaration."
+        }
+      },
+      "required": [
+        "level",
+        "source"
+      ],
+      "type": "object"
+    },
+    "QualityLevel": {
+      "description": "Four-tier escalation of test scope, from narrowest to broadest.\n\nEach level represents a progressively broader scope of validation:\n- `TargetedTests`: only tests directly relevant to the change\n- `Package`: all tests in the affected crate/package\n- `Workspace`: all tests across the entire workspace\n- `MergeReady`: workspace + all integration gates (lint, format, audit)\n\nThe levels implement `PartialOrd`/`Ord` so contracts can check\n`observed >= required` for satisfaction.",
+      "oneOf": [
+        {
+          "const": "targeted_tests",
+          "description": "Only tests directly relevant to the change passed.\nE.g., `cargo test -p crate -- specific::test`",
+          "type": "string"
+        },
+        {
+          "const": "package",
+          "description": "The crate/package tests passed.\nE.g., `cargo test -p crate`",
+          "type": "string"
+        },
+        {
+          "const": "workspace",
+          "description": "Full workspace tests passed.\nE.g., `cargo test --workspace`",
+          "type": "string"
+        },
+        {
+          "const": "merge_ready",
+          "description": "Workspace + all integration gates (lint, format, audit) passed.\nE.g., full CI pipeline.",
+          "type": "string"
+        }
+      ]
+    },
+    "ReceiptStep": {
+      "additionalProperties": false,
+      "description": "One step of a receipt.",
+      "properties": {
+        "declared_effects": {
+          "$ref": "#/$defs/DeclaredEffect",
+          "description": "What it may write."
+        },
+        "depends_on": {
+          "description": "The steps it depends on, by id.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "expectation": {
+          "$ref": "#/$defs/Expectation",
+          "description": "What it must meet."
+        },
+        "id": {
+          "description": "The step's id, unique within the receipt.",
+          "type": "string"
+        },
+        "parameters": {
+          "description": "The tool's arguments."
+        },
+        "requires_approval": {
+          "description": "Whether a human must approve it first.",
+          "type": "boolean"
+        },
+        "timeout_secs": {
+          "description": "Its timeout.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "tool": {
+          "description": "The tool it invokes.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "tool",
+        "parameters",
+        "depends_on",
+        "declared_effects",
+        "expectation",
+        "requires_approval"
+      ],
+      "type": "object"
+    },
+    "Sandbox": {
+      "additionalProperties": false,
+      "description": "The sandbox a step runs in. `none` is deliberately not representable (ADR-024 §4): a receipt\nthat declares no isolation cannot be written, so a host cannot ask for an unisolated run by\nomitting a field.",
+      "properties": {
+        "image_digest": {
+          "description": "The image the regime resolves to.",
+          "type": "string"
+        },
+        "regime": {
+          "$ref": "#/$defs/SandboxRegime",
+          "description": "The regime."
+        }
+      },
+      "required": [
+        "regime",
+        "image_digest"
+      ],
+      "type": "object"
+    },
+    "SandboxRegime": {
+      "description": "The sandbox regimes this engine implements.",
+      "oneOf": [
+        {
+          "const": "container",
+          "description": "A container.",
+          "type": "string"
+        },
+        {
+          "const": "vm",
+          "description": "A virtual machine.",
+          "type": "string"
+        }
+      ]
+    },
+    "Workspace": {
+      "additionalProperties": false,
+      "description": "What identifies a workspace (ADR-024 §5).\n\nThe identity carries its own `kind` so a decision that is not taken cannot be smuggled in as a\nstring: `CommitTree` ships, and a dirty-tree identity later is an additive vocabulary value that\nan old reader refuses, rather than a schema break.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/WorkspaceKind",
+          "description": "Which identity this is."
+        },
+        "value": {
+          "description": "The identity itself — for `CommitTree`, `git rev-parse HEAD^{tree}`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "type": "object"
+    },
+    "WorkspaceKind": {
+      "description": "The workspace kinds this engine implements. Closed vocabulary, unknown = refuse.",
+      "oneOf": [
+        {
+          "const": "commit_tree",
+          "description": "A commit tree OID. The only kind 1.15.0 accepts.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$id": "https://github.com/arman-jalili/rigorix-oss/engine/schema/receipt-2.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The declaration a host writes before an execution (ADR-024 §4). The engine parses it with `Receipt::from_document`, verifies it against the workspace identity it computed, and refuses it with the variants named in `ReceiptRefusal`.",
+  "properties": {
+    "budget": {
+      "$ref": "#/$defs/BudgetDeclared",
+      "description": "What it may spend."
+    },
+    "execution_id": {
+      "description": "The execution this receipt is for — one receipt, one execution (§5's resume half is #1528's).",
+      "format": "uuid",
+      "type": "string"
+    },
+    "fixture_digests": {
+      "default": [],
+      "description": "The digests of the fixtures the execution reads.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "quality_required": {
+      "$ref": "#/$defs/QualityClaim",
+      "description": "The quality level the caller claims it needs, **as a claim**."
+    },
+    "sandbox": {
+      "$ref": "#/$defs/Sandbox",
+      "description": "The sandbox its steps run in."
+    },
+    "schema_version": {
+      "description": "The schema version, first in the canonical bytes.",
+      "format": "uint16",
+      "maximum": 65535,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "set_digest": {
+      "description": "The digest over the declared effect set, for a caller that pins one separately.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "steps": {
+      "description": "Its steps.\n\nThere is no `roles` field (#1586): a signed field with no producer, no reader and no `source:`\nis a contract nobody keeps, and if a host filled it the engine would sign two of its values it\ncannot observe. Roles belong to the harness (ADR-024 §11).",
+      "items": {
+        "$ref": "#/$defs/ReceiptStep"
+      },
+      "type": "array"
+    },
+    "workspace": {
+      "$ref": "#/$defs/Workspace",
+      "description": "The workspace it applies to."
+    }
+  },
+  "required": [
+    "schema_version",
+    "execution_id",
+    "workspace",
+    "sandbox",
+    "steps",
+    "budget",
+    "quality_required"
+  ],
+  "title": "R0 execution receipt",
+  "type": "object"
+}

@@ -36,6 +36,7 @@ pub use domain::attestation::{
     Attestation, ObservedEffect, ObservedStep, QualityRecord, QualitySource, verify_attestation,
 };
 pub use domain::digest::{ReceiptDigest, canonical_json, sha256_hex};
+pub use domain::schema::{RECEIPT_SCHEMA_PATH, receipt_schema, receipt_schema_text};
 pub use domain::receipt::{
     BudgetDeclared, DeclaredEffect, Expectation, Receipt, ReceiptStep, Sandbox, SandboxRegime,
     Workspace, WorkspaceKind,

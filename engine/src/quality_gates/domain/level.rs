@@ -11,6 +11,7 @@
 //! - Serialization support for configuration and API responses
 //! - `as_str()` returns snake_case names for serialization
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
@@ -24,7 +25,7 @@ use std::cmp::Ordering;
 ///
 /// The levels implement `PartialOrd`/`Ord` so contracts can check
 /// `observed >= required` for satisfaction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QualityLevel {
     /// Only tests directly relevant to the change passed.
