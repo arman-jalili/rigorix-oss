@@ -88,6 +88,8 @@ Four things this repository learned the expensive way, each now with a check beh
   The `--expect` line is the one that decides whether a downstream vendor must re-vendor, and the
   number to write there is **the page's**, quoted in full. `v1.14.3` is `ab77bb821bcff564dd2302a43cf3a73930cfd5ec94925b78328770a8023b7928` — 1,899,431 bytes, built by
   `package-wasi` on `ubuntu-latest` at `c8d162e1`. `wasi/ci/check-recorded-digest.sh v<version>`
+    `v1.15.0` is `1917709662a69de7b84791432c8cd322200db4bf348f04cd18910c1b0283e4e5` (1,897,992 B), built by
+    `package-wasi` on `ubuntu-latest` at `d9dc1593`.
   compares every digest these docs record for that tag with the page and fails naming both.
 
   **A digest is a function of the commit, the platform and the toolchain — and a number measured

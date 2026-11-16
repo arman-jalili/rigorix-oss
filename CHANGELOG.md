@@ -381,9 +381,9 @@ _Next cycle._
   path still supplies `None`, so every envelope written today keeps byte-identical canonical bytes —
   an absent `Option` is omitted from the canonical form entirely. Two tests own the claim rather than
   illustrating it: `canonical_bytes_without_a_receipt_match_the_recorded_vector` compares the digest of
-  the canonical bytes against a **recorded constant** (reordering one field in `AuditEnvelope` moved it
-  from `266d95c7…` to `57857e69…` and failed the test, which is what it is for — a value derived from
-  the function under test passes for any field order), and
+  the canonical bytes against a **recorded constant** (reordering one field in `AuditEnvelope` changed
+  that constant and failed the test, which is what the test is for — a value derived from the
+  function under test passes for any field order), and
   `a_supplied_receipt_digest_is_inside_the_signed_bytes` asserts both references appear in the HMAC'd
   bytes and that changing one character of the receipt reference breaks verification.
 
