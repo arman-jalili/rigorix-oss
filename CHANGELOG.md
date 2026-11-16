@@ -36,6 +36,16 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   per-stage conditioning working by passing on the cold column; the run-level row now answers the same way. No ceiling moved —
   the `total` row's cold sample is still the 2409s one — so a 23-minute run that built crates passes and a 23-minute run that
   built nothing still fails.
+- **The recorded-digest check knows what a digest is *for*** (#1614). `v1.15.0` published correctly — six crates, the npm
+  package, the release page with the wasm and its `.sha256` — and then failed verification on two prefixes at
+  `CHANGELOG.md:384-386`, both quoting the before/after of the canonical-bytes constant to narrate a mutation. Neither was a pin;
+  rule 4 refuses *any* abbreviation in the tag's section, which is right for an artifact digest and wrong for a number nobody
+  offered as one. The refusal is now scoped by sentence: a prefix whose sentence names this release's artifact is refused, a
+  prefix about a constant, a fixture or another tag is skipped **and the skip is printed with its reason**, because a silent
+  skip is a hole a reader cannot see. Every full digest is still compared to the page regardless of subject — a 64-character
+  number in a release section that is not the page's is still the #1509 defect. The check also gained `--pre-tag`, which asks
+  the half of the rule that needs no page of `[Unreleased]` on `main` (wired into `wasi/ci/run-wasi-gates.sh`), so the failure
+  mode that can only happen after publication now happens before it.
 - **`docs/runbook.md` states what a red gate means for a tag** (#1612, found while cutting 1.15.0). The rule was "a release
   whose own gate is red is a release note that lies", and 1.15.0 was cut with the local gate red — because the red was an
   instrument defect already filed, while the artifact's claims were green under four independent checks. The precedence is now
