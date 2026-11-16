@@ -55,6 +55,12 @@ reqwest.workspace = true
 # POSIX euid + supplementary-group checks for the precondition trust boundary
 # (`require_immutable_check`). Unix-only use.
 libc = "0.2"
+# The R0 receipt's schema is **derived from the type that defines it** (#1590), so the published
+# contract cannot drift from the type a host's document is parsed into. Native-only: the `receipt`
+# module is not in the portable slice (`.pi/portable-inventory.tsv`), so a derive that can never run
+# there is a crate the wasm graph should not carry for nothing.
+# `uuid1`, because `Receipt::execution_id` is a `Uuid` and a derived schema needs its impl.
+schemars = { version = "1", features = ["derive", "uuid1"] }
 tree-sitter = "0.25"
 tree-sitter-rust = "0.23"
 tree-sitter-typescript = "0.23"

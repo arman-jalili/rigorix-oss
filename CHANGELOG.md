@@ -27,6 +27,21 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   the field is removed and `RECEIPT_SCHEMA_VERSION` moves to 2: a version number denotes one artifact. No released artifact
   writes receipts (the module landed after `v1.14.3`), which is what makes the shape change free now.
 
+### Added
+
+- **The R0 receipt has a published schema, a golden pair and a canonical vector** (#1590). ADR-024 splits a run between a
+  host that writes the declaration (R0) and the engine that verifies and signs the observation (R1); the engine's half was
+  complete and the *contract* a host must satisfy was readable only as Rust. `engine/schema/receipt.schema.json` is now
+  **derived from `Receipt`** (`schemars`, native-only — the `receipt` module is not in the portable slice) and compared with
+  the checked-in file by a test, so a field added to the type fails the build until the artifact moves with it.
+  `engine/schema/receipt.json` is a document the engine accepts, `engine/schema/refused/*.json` are one-byte variants it
+  refuses (an old `schema_version`, a `workspace.kind` outside the closed vocabulary, a pinned digest that disagrees, an
+  unknown step, a mismatched workspace, truncated JSON), and `engine/schema/manifest.tsv` names each fixture's door and the
+  `ReceiptRefusal::kind()` it must produce — a variant, not a message. A recorded digest over the documented canonical
+  ordering lets a producer in another language check its own canonicalisation without running the engine. The declaration
+  also refuses an unknown member now (`#[serde(deny_unknown_fields)]`): a signed receipt that silently drops a field the
+  author wrote is a declaration about something the signer believed it had said.
+
 ### Fixed
 
 - **A compile is counted from cargo's own stream, and a masked one is no longer called cheap** (#1599). The budget's

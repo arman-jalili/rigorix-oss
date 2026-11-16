@@ -8,6 +8,7 @@
 //! The field set is ADR-024 §4's table and nothing else. A field added here without a decision in
 //! the ADR is a field no verifier was designed for.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -38,7 +39,8 @@ pub const SUPPORTED_RECEIPT_SCHEMA_VERSIONS: &[u16] = &[RECEIPT_SCHEMA_VERSION];
 /// The identity carries its own `kind` so a decision that is not taken cannot be smuggled in as a
 /// string: `CommitTree` ships, and a dirty-tree identity later is an additive vocabulary value that
 /// an old reader refuses, rather than a schema break.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct Workspace {
     /// Which identity this is.
     pub kind: WorkspaceKind,
@@ -47,7 +49,7 @@ pub struct Workspace {
 }
 
 /// The workspace kinds this engine implements. Closed vocabulary, unknown = refuse.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkspaceKind {
     /// A commit tree OID. The only kind 1.15.0 accepts.
@@ -99,7 +101,8 @@ impl Workspace {
 /// The sandbox a step runs in. `none` is deliberately not representable (ADR-024 §4): a receipt
 /// that declares no isolation cannot be written, so a host cannot ask for an unisolated run by
 /// omitting a field.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct Sandbox {
     /// The regime.
     pub regime: SandboxRegime,
@@ -108,7 +111,7 @@ pub struct Sandbox {
 }
 
 /// The sandbox regimes this engine implements.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SandboxRegime {
     /// A container.
@@ -118,7 +121,8 @@ pub enum SandboxRegime {
 }
 
 /// An effect a step declares it may produce.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct DeclaredEffect {
     /// The paths it may write.
     pub paths: Vec<String>,
@@ -127,7 +131,8 @@ pub struct DeclaredEffect {
 }
 
 /// What a step must meet to count as having done its job.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct Expectation {
     /// What is expected, in words the operator can read back.
     pub description: String,
@@ -137,7 +142,8 @@ pub struct Expectation {
 }
 
 /// One step of a receipt.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReceiptStep {
     /// The step's id, unique within the receipt.
     pub id: String,
@@ -160,7 +166,8 @@ pub struct ReceiptStep {
 
 /// The budget a receipt declares (ADR-024 §8). Enforcement is a separate issue, and this type says
 /// so: there is no `enforced` here to set to `true`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct BudgetDeclared {
     /// Iterations the execution may use.
     pub max_iterations: u32,
@@ -169,7 +176,8 @@ pub struct BudgetDeclared {
 }
 
 /// The declaration of one execution.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct Receipt {
     /// The schema version, first in the canonical bytes.
     pub schema_version: u16,
@@ -201,7 +209,8 @@ pub struct Receipt {
 ///
 /// On a receipt the source is always `Caller`: nothing has run yet. The field exists on the receipt
 /// rather than being implied, so the attestation can echo it without inventing one.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct QualityClaim {
     /// The level.
     pub level: QualityLevel,
@@ -210,7 +219,7 @@ pub struct QualityClaim {
 }
 
 /// Who made a claim.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ClaimSource {
     /// The caller.

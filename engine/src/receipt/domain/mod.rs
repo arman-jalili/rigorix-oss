@@ -7,3 +7,4 @@ pub mod attestation;
 pub mod digest;
 pub mod receipt;
 pub mod refusal;
+pub mod schema;

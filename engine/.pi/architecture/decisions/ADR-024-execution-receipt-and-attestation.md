@@ -165,6 +165,38 @@ submodules) that is its own specification and its own class of silent wrong-iden
 
 ---
 
+### 5a. The schema a producer writes against (#1590)
+
+The engine's side of §5 was complete — `Receipt::from_document`, the typed refusals, `verify` — and the *contract* a host
+must satisfy was readable only as Rust. A second producer therefore had three ways to learn it, all bad: read this crate's
+source, guess from the canonical bytes it gets back, or submit a document and be refused. A producer with no schema
+re-derives the format, and the first divergence is discovered at run time as a refusal instead of at build time.
+
+**Decided: the schema is derived from the type, checked in, and compared with the derivation by a test.**
+
+| artifact | path | who reads it |
+|---|---|---|
+| the schema | `engine/schema/receipt.schema.json` | a host validating a document before it submits one (`cargo package` ships it, so it is in the crate, not only the repository) |
+| the golden pair | `engine/schema/receipt.json`, `engine/schema/refused/*.json` | a host checking its understanding: one document the engine accepts, one-byte variants it refuses |
+| the manifest | `engine/schema/manifest.tsv` | the golden pair's own index — each fixture with the door that answers for it and the `ReceiptRefusal::kind()` it must produce |
+| the canonical vector | `the_canonical_bytes_of_the_fixture_are_reproducible_by_hand` | a producer in any language: the bytes are built by hand from the documented ordering and compared with a recorded digest |
+
+The schema is generated (`schemars`, native-only — the `receipt` module is not in the portable slice) rather than
+hand-maintained, because a hand-written schema is a second copy of a fact and drifts on the first field addition. A test
+compares the checked-in file with the derivation byte for byte, so a field added to `Receipt` fails a build until the
+artifact moves with it.
+
+**Also decided here: the declaration refuses an unknown member.** `Receipt` and the six types it is made of carry
+`#[serde(deny_unknown_fields)]`, so a document with a member the engine does not know is refused as `MalformedDocument`
+rather than parsed with the member discarded. A receipt is signed: a member the author wrote and the engine silently
+ignored is a declaration about something the signer believed it had said. The schema says the same thing
+(`additionalProperties: false`), and a test reads both to keep them saying it.
+
+`expectation` is in the schema and not in §5's comparison table: the schema describes what a document may contain, and
+§5a is not a rule about what is *compared* (`verify_against_plan`, §5c of #1588, names the fields that are).
+
+---
+
 ### 5b. Schema version 2: `roles` leaves the receipt (#1586)
 
 Version **1** of the receipt carried `roles: Vec<Role { role, model_id, context_window, structured_output }>`. No host in
