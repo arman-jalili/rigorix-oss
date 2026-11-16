@@ -573,6 +573,13 @@ pub(crate) struct ExecutionSession {
     started_at: chrono::DateTime<chrono::Utc>,
     /// The TaskGraph being executed (stored for node lookup in execute_node).
     graph: Option<crate::dag_engine::domain::TaskGraph>,
+
+    /// The repository the run was triggered against (#1609). Carried through
+    /// the session so `get_execution_state` can report it for a resumed run
+    /// whose session was hydrated from the paused state.
+    repository: Option<String>,
+    /// The identity that triggered the run (#1609).
+    author: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -1004,6 +1011,10 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                     approved: HashSet::new(),
                     started_at,
                     graph: Some(graph.clone()),
+                    // A first run gets its attribution from the orchestrator's envelope input,
+                    // which it already has in hand; the session records it for no one (#1609).
+                    repository: None,
+                    author: None,
                 },
             );
         }
@@ -1183,6 +1194,8 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
             paused: session.paused,
             is_complete,
             total_duration_ms,
+            repository: session.repository.clone(),
+            author: session.author.clone(),
             completed_at,
         })
     }
@@ -1683,6 +1696,10 @@ impl ParallelExecutionService for ParallelExecutionServiceImpl {
                 approved: approved.clone(),
                 started_at,
                 graph: Some(graph),
+                // The paused state is the provenance: the trigger's attribution, not the
+                // resumer's (#1609).
+                repository: input.repository,
+                author: input.author,
             },
         );
 

@@ -279,6 +279,8 @@ async fn test_tampered_intent_halts_before_dispatch_and_reapproval_recovers() {
             node_states: state_a.node_states.clone(),
             approved: HashSet::from([node_id]),
             started_at: state_a.started_at.unwrap_or_else(chrono::Utc::now),
+            repository: None, // a fixture hydrate records no attribution
+            author: None,
         })
         .await
         .unwrap();

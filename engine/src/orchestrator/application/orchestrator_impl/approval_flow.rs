@@ -61,6 +61,10 @@ impl OrchestratorServiceImpl {
                         node_states,
                         approved,
                         started_at: loaded.state.started_at,
+                        // #1609: the paused state carries the trigger's attribution, so the
+                        // resumed envelope can report it instead of writing `None`.
+                        repository: loaded.state.repository.clone(),
+                        author: loaded.state.author.clone(),
                     })
                     .await
                     .map_err(|e| OrchestratorError::Internal {

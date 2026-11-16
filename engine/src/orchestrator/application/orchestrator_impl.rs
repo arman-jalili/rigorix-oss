@@ -1463,6 +1463,14 @@ impl OrchestratorService for OrchestratorServiceImpl {
             state.graph = Some(graph_for_resume.clone());
             state.approved = Vec::new();
             state.exec_node_states = Some(exec_output.result.execution_states.clone());
+            // #1609: attribution is a fact about the run, not about the resumer. A resume
+            // re-sends an envelope for the same execution, so the trigger's `repository` and
+            // `author` are recorded here — where the run's own input is still in scope — and
+            // read back by the host on the resume path instead of being written as `None`.
+            // Only the pausable state carries them: a terminal run's envelope is built
+            // in-process from the same input, so nothing reads it back later.
+            state.repository = input.repository.clone();
+            state.author = input.author.clone();
             self.state_manager
                 .save_state(state_dto::SaveStateInput { state })
                 .await

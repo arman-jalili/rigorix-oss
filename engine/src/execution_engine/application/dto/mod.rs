@@ -184,6 +184,14 @@ pub struct GetExecutionStateOutput {
     /// Total wall-clock duration in milliseconds (from the live session result).
     #[serde(default)]
     pub total_duration_ms: u64,
+    /// The repository the run was triggered against, as the run request supplied it
+    /// (#1609). Surfaced so the resume path can re-send an envelope for this execution
+    /// that agrees with the original one instead of writing `None`.
+    #[serde(default)]
+    pub repository: Option<String>,
+    /// The identity that triggered the run (#1609). Same provenance rule.
+    #[serde(default)]
+    pub author: Option<String>,
     /// ISO 8601 timestamp when execution completed (None if still running/paused).
     #[serde(default)]
     pub completed_at: Option<DateTime<Utc>>,
@@ -403,6 +411,18 @@ pub struct HydrateExecutionInput {
     /// The original execution start time, preserved so resumed runs report
     /// an undistorted `duration_ms` in the audit envelope.
     pub started_at: DateTime<Utc>,
+
+    /// The repository the run was triggered against, carried from the paused
+    /// state so a resumed envelope reports the same attribution as the
+    /// original run rather than re-deriving it from the resumer's environment
+    /// (#1609). `None` means the run recorded none.
+    #[serde(default)]
+    pub repository: Option<String>,
+
+    /// The identity that triggered the run — same provenance rule as
+    /// `repository` (#1609).
+    #[serde(default)]
+    pub author: Option<String>,
 }
 
 /// Output from hydrating an execution session.

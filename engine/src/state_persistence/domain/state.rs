@@ -214,6 +214,26 @@ pub struct ExecutionState {
     pub exec_node_states: Option<
         std::collections::HashMap<Uuid, crate::execution_engine::domain::NodeExecutionState>,
     >,
+
+    /// The repository the run was triggered against, as the host supplied it on
+    /// the run request (#1609).
+    ///
+    /// Recorded here because a resume re-sends an envelope for the **same**
+    /// execution: the attribution is a fact about the run, not about whoever
+    /// resumes it. Re-deriving it at resume time (`git config user.email`)
+    /// would answer "who is running this process now", which after a handoff is
+    /// a different person from the one who triggered the run — and the envelope
+    /// is evidence about the trigger. Additive and serde-defaulted: absent in
+    /// state files written before this field existed, where `None` means the run
+    /// recorded nothing, which is exactly what a resume must report rather than
+    /// invent.
+    #[serde(default)]
+    pub repository: Option<String>,
+
+    /// The identity that triggered the run, recorded from the host's run
+    /// request (#1609). Same provenance rule as `repository`.
+    #[serde(default)]
+    pub author: Option<String>,
 }
 
 impl ExecutionState {
@@ -232,6 +252,8 @@ impl ExecutionState {
             graph: None,
             approved: Vec::new(),
             exec_node_states: None,
+            repository: None,
+            author: None,
         }
     }
 

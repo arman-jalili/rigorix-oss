@@ -1087,6 +1087,14 @@ pub struct ExecutionStateInfo {
     pub started_at: Option<chrono::DateTime<chrono::Utc>>,
     /// ISO 8601 timestamp when execution completed.
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// The repository the run was triggered against, as the run request supplied it
+    /// (#1609). Present here so the approval-resume path can re-send an envelope that
+    /// agrees with the original run's instead of writing `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+    /// The identity that triggered the run (#1609). Same provenance rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
 }
 
 /// Minimal per-node state surfaced to MCP clients.

@@ -19,6 +19,15 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Changed
 
+- **The approval-resume path re-sends the run's own attribution instead of `None`** (#1609). A paused run wrote an
+  `ExecutionState`; the resume path then built a second audit envelope for the same `execution_id` with `author: None` and
+  `repository: None` written as literals, while the run door had filled both from the tool parameters — so the audit chain
+  held two envelopes that disagreed in exactly the fields answering "who did this, on what repository". The paused state now
+  carries both (`ExecutionState::{repository, author}`, additive and serde-defaulted: an old state file still loads, and its
+  `None` means the run recorded nothing), the hydrate path carries them into the session, `GetExecutionStateOutput` and the
+  MCP `ExecutionStateInfo` surface them, and the resume arm reads them through `resume_attribution(&state)`. They are **not**
+  re-derived at resume time: `git config user.email` answers "who is running this process now", which after a handoff is a
+  different person from the one who triggered the run, and the envelope is evidence about the trigger.
 - **A stage's ceiling is selected by that stage's own compiled count, not the run's** (#1604). The gate computed one
   regime for the run (`local-ci.sh:993-1000`) and applied its column to every stage, but the subject of a ceiling is a
   stage, and stages are exactly what differ: on 2026-11-16 the run at `0976e62f` was `warm` (19 crates, cold at 100+) while

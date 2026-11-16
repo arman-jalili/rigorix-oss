@@ -677,6 +677,7 @@ impl AppState {
                         // attestation, not a second approval fact — it lives in
                         // `identity` below. Do not synthesize an approval row.
                         let events = merge_execution_event_refs(real_refs, synthesized);
+                        let attribution = resume_attribution(&state);
                         let _ = audit
                             .build_and_send(BuildEnvelopeInput {
                                 execution_id,
@@ -684,8 +685,14 @@ impl AppState {
                                 planning_prompt: String::new(),
                                 events,
                                 source: Some("rigorix_mcp".to_string()),
-                                repository: None,
-                                author: None,
+                                // #1609: the attribution is the run's, not the resumer's. It comes
+                                // from the paused state the engine recorded at run time, so the
+                                // refreshed envelope agrees with the one sealed for this execution
+                                // instead of contradicting it in exactly the fields that answer
+                                // "who did this, on what repository". `None` here means the run
+                                // recorded none — never that this path declined to carry it.
+                                repository: attribution.0.clone(),
+                                author: attribution.1.clone(),
                                 identity: session_claim.clone(),
                                 effect_key: None,
                                 producer_id: None,
@@ -1249,6 +1256,20 @@ fn mock_classifier() -> Box<dyn rigorix_engine::planning::domain::classification
 ///
 /// Keychain: OS keychain by default; headless/CI can opt into the explicit
 /// plaintext fallback with `RIGORIX_AUTH_PLAINTEXT_DIR` (never automatic).
+/// The attribution a **resumed** envelope re-sends: the run's own, read from the paused
+/// state the engine recorded when the run was triggered (#1609).
+///
+/// Two producers build an envelope for one execution — the run door and the resume path —
+/// and a second construction that writes `None` for fields the first filled is a second
+/// answer to "who did this, on what repository". Reading both from the state makes the
+/// agreement structural rather than a convention: `None` here means the run recorded no
+/// attribution, which is a different fact from this path declining to carry it.
+fn resume_attribution(
+    state: &rigorix_mcp::execution_tools::domain::value::ExecutionStateInfo,
+) -> (Option<String>, Option<String>) {
+    (state.repository.clone(), state.author.clone())
+}
+
 pub async fn build_auth_handler()
 -> Option<Box<dyn rigorix_mcp::auth::interfaces::mcp::AuthToolHandler>> {
     use rigorix_mcp::auth::application::factory::{AuthServiceFactory, AuthServiceFactoryImpl};
