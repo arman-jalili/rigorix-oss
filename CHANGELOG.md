@@ -17,6 +17,21 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+_Next cycle._
+
+## [1.15.0] - 2026-11-16
+
+### Added
+
+- **Execution receipts and signed attestations** — `rigorix_engine::receipt::{Receipt, verify, Attestation}`,
+  and `refuse_foreign_execution` beside them. A host writes R0 (a declaration: workspace identity, declared effects per step,
+  a budget, and a quality claim marked with whose claim it is); the engine verifies it as a whole before the graph exists,
+  executes, and signs R1 — an attestation of what it observed (`observed_effects`, `undeclared_writes`, the quality level
+  with the step that established it). The receipt is a capability: one that authorises a different run is refused at R0.
+  `roles` is not part of the canonical bytes (schema version 2; no published version carried version 1). The surface the
+  release claims is asserted from the **packaged** crate before publish, with default features and again with `portable`,
+  which is the build in which the module is absent.
+
 ### Changed
 
 - **The approval-resume path re-sends the run's own attribution instead of `None`** (#1609). A paused run wrote an
