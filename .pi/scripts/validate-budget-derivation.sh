@@ -20,8 +20,11 @@
 # the table can get wrong — and the failure it exists to prevent is a warm ceiling sampled from runs
 # whose stage compiled crates, which is what every warm row said before #1604 could express it:
 #
-#   stage rows — a warm sample compiled nothing (0), a cold sample compiled at least one (>= 1)
-#   the `total` row — a warm sample is a run below COLD_CRATES, so 0 <= warm_compiled < 100
+#   every row, stage or run — a warm sample compiled nothing (0), a cold sample compiled at least one
+#
+# The `total` row used to be conditioned on COLD_CRATES (a warm run was one under a hundred crates),
+# which made a 31-crate run's 23 minutes "warm" against a ceiling sampled from nothing-built runs
+# (#1612). One rule for every row: did this subject pay a compile?
 #
 # `unmeasured` is a legal value in a compiled cell: it is what the sample actually recorded while the
 # counter could not see what it was counting (#1599), and writing 0 instead would be inventing a
@@ -40,7 +43,6 @@ NC='\033[0m'
 
 BUDGET=".pi/local-ci-budget.tsv"
 STAGES=("lint" "build" "test" "security" "guards" "coverage" "docs" "integration" "total")
-COLD_CRATES=100
 # The header's own words. Both halves of the rule are asserted as text, so a header that changes its
 # mind about the formula without changing this script fails here rather than in someone's arithmetic.
 RULE_TEXT="ceiling = floor(11 * slowest / 10)"
@@ -158,16 +160,12 @@ check_file() {
                 continue
             fi
             measured_compiled=$((measured_compiled + 1))
-            if [[ "$column" == "warm" && "$key" != "total" && "$compiled_value" -ne 0 ]]; then
-                echo -e "${RED}❌${NC} $key warm: the sample compiled ${compiled_value} crate(s) in this stage, so it is not a nothing-built sample — measure it on the cold column"
+            if [[ "$column" == "warm" && "$compiled_value" -ne 0 ]]; then
+                echo -e "${RED}❌${NC} $key warm: the sample compiled ${compiled_value} crate(s), so it is not a nothing-built sample — measure it on the cold column"
                 failures=$((failures + 1))
             fi
-            if [[ "$column" == "warm" && "$key" == "total" && "$compiled_value" -ge "$COLD_CRATES" ]]; then
-                echo -e "${RED}❌${NC} $key warm: the sample compiled ${compiled_value} crates, which is at or above COLD_CRATES (${COLD_CRATES}) — that run was cold"
-                failures=$((failures + 1))
-            fi
-            if [[ "$column" == "cold" && "$key" != "total" && "$compiled_value" -lt 1 ]]; then
-                echo -e "${RED}❌${NC} $key cold: the sample compiled nothing in this stage, so it is not a built-something sample"
+            if [[ "$column" == "cold" && "$compiled_value" -lt 1 ]]; then
+                echo -e "${RED}❌${NC} $key cold: the sample compiled nothing, so it is not a built-something sample"
                 failures=$((failures + 1))
             fi
         done
@@ -214,7 +212,7 @@ self_test() {
         printf 'coverage\t379\t4\t345\t0\t379\t6\t345\t12\t78\t2026-11-15\tfixture\n'
         printf 'docs\t31\t4\t29\t0\t38\t6\t35\t2\t31\t2026-11-15\tfixture\n'
         printf 'integration\t1\t4\t1\t0\t1\t6\t1\t1\t1\t2026-11-15\tfixture\n'
-        printf 'total\t770\t5\t700\t9\t2409\t6\t2190\t488\t0\t2026-11-15\tfixture\n'
+        printf 'total\t770\t5\t700\t0\t2409\t6\t2190\t488\t0\t2026-11-15\tfixture\n'
     } > "$tmp/good.tsv"
 
     if check_file "$tmp/good.tsv" >/dev/null 2>&1; then
@@ -271,12 +269,12 @@ self_test() {
         failures=$((failures + 1))
     fi
 
-    # `total` is conditioned on the run, so its threshold is COLD_CRATES rather than 1: a warm total
-    # sample compiled fewer than 100 crates, and 400 is a cold run written in the wrong column.
-    sed 's/^total\t770\t5\t700\t9\t/total\t770\t5\t700\t400\t/' "$tmp/good.tsv" > "$tmp/total-cold.tsv"
+    # The run-level row is conditioned by the same rule as every stage: a warm sample is a run that built
+    # nothing, so 31 crates in the warm cell is a built-something run written in the wrong column (#1612).
+    sed 's/^total\t770\t5\t700\t0\t/total\t770\t5\t700\t31\t/' "$tmp/good.tsv" > "$tmp/total-cold.tsv"
     rc=0
     out="$(check_file "$tmp/total-cold.tsv" 2>&1)" || rc=$?
-    if [[ "$rc" -ne 0 ]] && grep -q "total warm: the sample compiled 400 crates" <<<"$out"; then
+    if [[ "$rc" -ne 0 ]] && grep -q "total warm: the sample compiled 31 crate(s)" <<<"$out"; then
         echo -e "  ${GREEN}✅${NC} a warm total sample from a cold run is refused"
     else
         echo -e "  ${RED}❌${NC} a warm total sample of 400 crates passed"
@@ -325,7 +323,7 @@ self_test() {
     fi
 
     # The run-level row has no band: its subject is the whole run.
-    sed 's/^total\t770\t5\t700\t9\t\([0-9]*\)\t\([0-9]*\)\t\([0-9]*\)\t488\t0\t/total\t770\t5\t700\t9\t\1\t\2\t\3\t488\t78\t/' \
+    sed 's/^total\t770\t5\t700\t0\t\([0-9]*\)\t\([0-9]*\)\t\([0-9]*\)\t488\t0\t/total\t770\t5\t700\t0\t\1\t\2\t\3\t488\t78\t/' \
         "$tmp/good.tsv" > "$tmp/total-band.tsv"
     rc=0
     out="$(check_file "$tmp/total-band.tsv" 2>&1)" || rc=$?

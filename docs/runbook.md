@@ -46,6 +46,26 @@ what the child can reach.
 - Primary: @arman-jalili
 - Escalation: Create GitHub issue with `incident` label
 
+## What a red gate means for a tag
+
+A tag is cut when the artifact's claims are green, not when every instrument is quiet. The two rules are
+ordered, and the second only applies when the first holds:
+
+1. **A defensive claim is checked on the artifact, not on the tree.** Before any tag: CI green on the exact
+   tree being tagged, the packaged-surface check green before `cargo publish`, and the release-train guard
+   green. If any of those is the red one, there is no tag.
+2. **A red *instrument* — a gate whose failure is not a fact about the artifact — may be cut over**, and
+   only when it is attributable to a filed defect that names the mechanism, and only with the artifact's
+   own claims verified independently. `v1.15.0` was cut this way: the local budget was red on three rows
+   the issue-tracker already carried (#1612 — a missing noise floor and a run-level threshold), while CI
+   on the tagged tree, the packaged-surface check, a consumer compile against the published coordinate,
+   and the release-train guard were all green. The red was real, was about the ruler, and was written down
+   before the tag existed.
+
+The distinction that makes this safe: a red instrument says "I could not measure", and a red claim says
+"the artifact is not what it says". Only the first may be cut over, and the release notes must say so —
+1.15.0's did.
+
 ## Releasing, and knowing a release is real
 
 Four things this repository learned the expensive way, each now with a check behind it:

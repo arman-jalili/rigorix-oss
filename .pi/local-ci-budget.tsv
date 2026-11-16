@@ -1,8 +1,8 @@
 # local-ci stage budget (#1551, re-derived for #1562/#1568, conditioned per stage for #1604).
 #
 # A ceiling is measured, never estimated, and it is measured **in the condition it is enforced in**.
-# There are two conditions per stage, because a stage that compiled crates and a stage that compiled
-# nothing are not the same experiment — and the subject of a stage's ceiling is the stage:
+# There are two conditions, because a subject that compiled crates and one that compiled nothing are
+# not the same experiment — and the subject of every row's ceiling is that row (a stage, or the run):
 #
 #   warm — the stage compiled **nothing**: this is the column that describes a stage doing its work on
 #          a tree that is already built
@@ -10,11 +10,11 @@
 #          other seven stages of the same run may be warm. One crate is a yes; the threshold is 1, not
 #          COLD_CRATES, because on a stage the question is "did this stage pay a compile?"
 #
-# `total` is the one row whose subject is the **whole run**, and it keeps the run-level regime:
-#
-#   warm — the run compiled fewer than COLD_CRATES crates (local-ci.sh prints the count it compiled)
-#   cold — the run compiled COLD_CRATES or more: the cache was stale, and the compile is charged to
-#          whichever stage touched each crate first
+# `total` is the one row whose subject is the **whole run** — and it answers the same question by the
+# same rule: 0 crates built is the nothing-built column, one or more is the built-something column.
+# There is no run-level crate threshold. There used to be (`COLD_CRATES = 100`), and it made a 31-crate
+# run "warm": judged against a 12m50s ceiling sampled from runs that built nothing, while the run itself
+# took 23m10s because the compile is real and is charged to the run (#1612). One crate is a yes.
 #
 # #1604 is why the two are separate. `0976e62f` was a warm run (19 crates, cold at 100+) in which
 # `lint` built all 19 of them and took 8m25s — judged against a 1m48s ceiling sampled from four runs
