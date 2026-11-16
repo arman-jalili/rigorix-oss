@@ -17,7 +17,18 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
-_Next cycle._
+### Changed
+
+- **The local gate has the noise floor the CI-side gate already had** (#1612, first half). A release-prep run at `23a78b2d`
+  passed 126/126 steps and failed three budget rows; two of them — `test` +29 s and `guards` +13 s — are inside the per-stage
+  run-to-run spread this project measured and wrote down (0.4–1.3 min, `.github/ci-budgets.tsv`), which is why the CI-side gate
+  only fails beyond a 1.5-minute floor (#1523). The local gate had zero tolerance, so it reported its own measurement as a
+  regression. `.pi/local-ci-budget.tsv` gains a `band` column, derived and checked rather than typed —
+  `band = min(78, warm_ceiling)` for a stage, `0` for `total`, with the `78` read out of the recorded spread by
+  `validate-budget-derivation.sh`, which refuses a hand-widened or hand-narrowed band — and the gate now **warns** inside a
+  row's band (printing the movement, the ceiling and the band it was compared against) and fails only beyond it. No ceiling
+  moved, and no sample was re-derived: `test` and `guards` describe fully warm runs, and a ceiling re-derived from a
+  mid-regime run would encode a compile those stages never did.
 
 ## [1.15.0] - 2026-11-16
 

@@ -46,11 +46,27 @@ COLD_CRATES=100
 RULE_TEXT="ceiling = floor(11 * slowest / 10)"
 COLD_RULE_TEXT="cold    = max(floor(11 * cold_slowest / 10), warm ceiling)"
 CONDITION_RULE_TEXT="a warm stage sample compiled nothing; a cold stage sample compiled at least one"
+BAND_RULE_TEXT="band = min(78, warm_ceiling)"
+# The band's upper value is the per-stage spread `.github/ci-budgets.tsv` records — 0.4-1.3 minutes —
+# so the number is read from that file rather than typed here: a tolerance that lives in two files is a
+# tolerance that can disagree with itself. `derived_band_max` returns it in integer seconds.
+SPREAD_FILE=".github/ci-budgets.tsv"
+derived_band_max() {
+    local max_minutes
+    max_minutes="$(grep -oE '0\.[0-9]+-[0-9]+\.[0-9]+ minutes' "$SPREAD_FILE" 2>/dev/null \
+        | head -1 | sed -E 's/.*-([0-9]+\.[0-9]+) minutes/\1/' || true)"
+    if [[ -z "$max_minutes" ]]; then
+        printf '0'
+        return
+    fi
+    # 1.3 min -> 78 s, in integer arithmetic (1.3 * 60 = 13 * 6).
+    awk -v m="$max_minutes" 'BEGIN { printf "%d", (m * 60) + 0.5 }'
+}
 
 # check_file <path> — prints one line per disagreement, returns 1 if any.
 check_file() {
     local file="$1" failures=0 row=0 key warm_ceiling warm_runs warm_slowest warm_compiled
-    local cold_ceiling cold_runs cold_slowest cold_compiled _on _machine
+    local cold_ceiling cold_runs cold_slowest cold_compiled band _on _machine band_max derived_band
     local derived_warm derived_cold measured_compiled=0
     if ! grep -qF "$RULE_TEXT" "$file"; then
         echo -e "${RED}❌${NC} $file: the header does not state the rule this guard applies ($RULE_TEXT)"
@@ -64,8 +80,17 @@ check_file() {
         echo -e "${RED}❌${NC} $file: the header does not state the conditioning rule ($CONDITION_RULE_TEXT)"
         failures=$((failures + 1))
     fi
+    if ! grep -qF "$BAND_RULE_TEXT" "$file"; then
+        echo -e "${RED}❌${NC} $file: the header does not state the band rule ($BAND_RULE_TEXT)"
+        failures=$((failures + 1))
+    fi
+    band_max="$(derived_band_max)"
+    if [[ "$band_max" -eq 0 ]]; then
+        echo -e "${RED}❌${NC} $SPREAD_FILE records no per-stage spread (expected '0.4-1.3 minutes'), so the band cannot be derived — a tolerance nobody measured is a preference"
+        failures=$((failures + 1))
+    fi
     while IFS=$'\t' read -r key warm_ceiling warm_runs warm_slowest warm_compiled \
-        cold_ceiling cold_runs cold_slowest cold_compiled _on _machine; do
+        cold_ceiling cold_runs cold_slowest cold_compiled band _on _machine; do
         [[ "$key" == "stage" ]] && continue
         [[ "$key" =~ ^# ]] && continue
         [[ -z "${key:-}" ]] && continue
@@ -89,6 +114,28 @@ check_file() {
         if [[ "$cold_ceiling" != "$derived_cold" ]]; then
             echo -e "${RED}❌${NC} $key cold: recorded ${cold_ceiling}s, the rule gives ${derived_cold}s from slowest ${cold_slowest}s"
             failures=$((failures + 1))
+        fi
+        # ── the noise band (#1612) ──
+        # A row's tolerance is derived, not chosen: `min(band_max, warm ceiling)` for a stage, 0 for
+        # the run-level row, whose subject is the whole run and which cannot be "the same code measured
+        # twice" when it overshoots by minutes.
+        if [[ -z "${band:-}" ]]; then
+            echo -e "${RED}❌${NC} $key: no band column — a row without a tolerance is a row with zero tolerance"
+            failures=$((failures + 1))
+        elif ! [[ "$band" =~ ^[0-9]+$ ]]; then
+            echo -e "${RED}❌${NC} $key: band '${band}' is not a whole number of seconds"
+            failures=$((failures + 1))
+        elif [[ "$band_max" -gt 0 ]]; then
+            if [[ "$key" == "total" ]]; then
+                derived_band=0
+            else
+                derived_band="$band_max"
+                (( derived_band > warm_ceiling )) && derived_band="$warm_ceiling"
+            fi
+            if [[ "$band" != "$derived_band" ]]; then
+                echo -e "${RED}❌${NC} $key: recorded band ${band}s, the rule gives ${derived_band}s (min(${band_max}, ${warm_ceiling}) for a stage, 0 for total)"
+                failures=$((failures + 1))
+            fi
         fi
         # ── the conditioning (#1604) ──
         # A compiled cell is a number or the word `unmeasured`. Anything else — a blank, a `?`, a
@@ -157,17 +204,17 @@ self_test() {
     # A record that follows the rule, built from the rule and not from the live table: a fixture copied
     # from the subject agrees with the subject whatever the rule says.
     {
-        printf '# fixture\n# %s\n# %s\n# %s\n' "$RULE_TEXT" "$COLD_RULE_TEXT" "$CONDITION_RULE_TEXT"
-        printf 'stage\twarm_ceiling\twarm_runs\twarm_slowest\twarm_compiled\tcold_ceiling\tcold_runs\tcold_slowest\tcold_compiled\tmeasured_on\tmachine\n'
-        printf 'lint\t108\t4\t99\t0\t1172\t6\t1066\t19\t2026-11-15\tfixture\n'
-        printf 'build\t17\t4\t16\t0\t756\t6\t688\t1\t2026-11-15\tfixture\n'
-        printf 'test\t127\t4\t116\tunmeasured\t431\t6\t392\tunmeasured\t2026-11-15\tfixture\n'
-        printf 'security\t33\t4\t30\t0\t38\t6\t35\t3\t2026-11-15\tfixture\n'
-        printf 'guards\t83\t4\t76\t0\t221\t6\t201\t38\t2026-11-15\tfixture\n'
-        printf 'coverage\t379\t4\t345\t0\t379\t6\t345\t12\t2026-11-15\tfixture\n'
-        printf 'docs\t31\t4\t29\t0\t38\t6\t35\t2\t2026-11-15\tfixture\n'
-        printf 'integration\t1\t4\t1\t0\t1\t6\t1\t1\t2026-11-15\tfixture\n'
-        printf 'total\t770\t5\t700\t9\t2409\t6\t2190\t488\t2026-11-15\tfixture\n'
+        printf '# fixture\n# %s\n# %s\n# %s\n# %s\n' "$RULE_TEXT" "$COLD_RULE_TEXT" "$CONDITION_RULE_TEXT" "$BAND_RULE_TEXT"
+        printf 'stage\twarm_ceiling\twarm_runs\twarm_slowest\twarm_compiled\tcold_ceiling\tcold_runs\tcold_slowest\tcold_compiled\tband\tmeasured_on\tmachine\n'
+        printf 'lint\t108\t4\t99\t0\t1172\t6\t1066\t19\t78\t2026-11-15\tfixture\n'
+        printf 'build\t17\t4\t16\t0\t756\t6\t688\t1\t17\t2026-11-15\tfixture\n'
+        printf 'test\t127\t4\t116\tunmeasured\t431\t6\t392\tunmeasured\t78\t2026-11-15\tfixture\n'
+        printf 'security\t33\t4\t30\t0\t38\t6\t35\t3\t33\t2026-11-15\tfixture\n'
+        printf 'guards\t83\t4\t76\t0\t221\t6\t201\t38\t78\t2026-11-15\tfixture\n'
+        printf 'coverage\t379\t4\t345\t0\t379\t6\t345\t12\t78\t2026-11-15\tfixture\n'
+        printf 'docs\t31\t4\t29\t0\t38\t6\t35\t2\t31\t2026-11-15\tfixture\n'
+        printf 'integration\t1\t4\t1\t0\t1\t6\t1\t1\t1\t2026-11-15\tfixture\n'
+        printf 'total\t770\t5\t700\t9\t2409\t6\t2190\t488\t0\t2026-11-15\tfixture\n'
     } > "$tmp/good.tsv"
 
     if check_file "$tmp/good.tsv" >/dev/null 2>&1; then
@@ -249,6 +296,47 @@ self_test() {
         failures=$((failures + 1))
     fi
 
+    # The band is a tolerance, and a tolerance typed by hand is the thing this guard exists to stop: a
+    # band wider than the measured spread silently absorbs a regression, and a narrower one fails the
+    # same code measured twice.
+    sed 's/^guards\t83\t4\t76\t0\t\([0-9]*\)\t\([0-9]*\)\t\([0-9]*\)\t38\t78\t/guards\t83\t4\t76\t0\t\1\t\2\t\3\t38\t120\t/' \
+        "$tmp/good.tsv" > "$tmp/wide-band.tsv"
+    rc=0
+    out="$(check_file "$tmp/wide-band.tsv" 2>&1)" || rc=$?
+    if [[ "$rc" -ne 0 ]] && grep -q "guards: recorded band 120s, the rule gives 78s" <<<"$out"; then
+        echo -e "  ${GREEN}✅${NC} a band that is not the measured spread is refused, naming both numbers"
+    else
+        echo -e "  ${RED}❌${NC} a hand-widened band passed"
+        printf '%s\n' "$out" | sed 's/^/      /'
+        failures=$((failures + 1))
+    fi
+
+    # A short row cannot borrow the full spread: 78 s of noise on a 1-second ceiling is 78x its budget.
+    sed 's/^docs\t31\t4\t29\t0\t38\t6\t35\t2\t31\t/docs\t31\t4\t29\t0\t38\t6\t35\t2\t78\t/' \
+        "$tmp/good.tsv" > "$tmp/short-band.tsv"
+    rc=0
+    out="$(check_file "$tmp/short-band.tsv" 2>&1)" || rc=$?
+    if [[ "$rc" -ne 0 ]] && grep -q "docs: recorded band 78s, the rule gives 31s" <<<"$out"; then
+        echo -e "  ${GREEN}✅${NC} a short row's band is capped at its own ceiling"
+    else
+        echo -e "  ${RED}❌${NC} a short row borrowed the full spread"
+        printf '%s\n' "$out" | sed 's/^/      /'
+        failures=$((failures + 1))
+    fi
+
+    # The run-level row has no band: its subject is the whole run.
+    sed 's/^total\t770\t5\t700\t9\t\([0-9]*\)\t\([0-9]*\)\t\([0-9]*\)\t488\t0\t/total\t770\t5\t700\t9\t\1\t\2\t\3\t488\t78\t/' \
+        "$tmp/good.tsv" > "$tmp/total-band.tsv"
+    rc=0
+    out="$(check_file "$tmp/total-band.tsv" 2>&1)" || rc=$?
+    if [[ "$rc" -ne 0 ]] && grep -q "total: recorded band 78s, the rule gives 0s" <<<"$out"; then
+        echo -e "  ${GREEN}✅${NC} a run-level row may not carry a band"
+    else
+        echo -e "  ${RED}❌${NC} the run-level row carried a band"
+        printf '%s\n' "$out" | sed 's/^/      /'
+        failures=$((failures + 1))
+    fi
+
     # A row whose sample is missing: the columns are the provenance, and a ceiling without one is what
     # this guard exists to prevent.
     grep -v '^docs' "$tmp/good.tsv" > "$tmp/missing.tsv"
@@ -287,7 +375,7 @@ self_test() {
 
     # A plant that does not apply is not a test: each fixture above asserts it changed the file.
     local planted
-    for planted in warm-built cold-idle total-cold vague; do
+    for planted in warm-built cold-idle total-cold vague wide-band short-band total-band; do
         if cmp -s "$tmp/good.tsv" "$tmp/$planted.tsv"; then
             echo -e "  ${RED}❌${NC} the '$planted' fixture is identical to the good table — it planted nothing"
             failures=$((failures + 1))
@@ -295,7 +383,7 @@ self_test() {
     done
 
     if [[ "$failures" -eq 0 ]]; then
-        echo -e "  ${GREEN}✅ budget-derivation self-test: 9/9${NC}"
+        echo -e "  ${GREEN}✅ budget-derivation self-test: 12/12${NC}"
         return 0
     fi
     echo -e "  ${RED}❌ budget-derivation self-test: ${failures} case(s) failed${NC}"

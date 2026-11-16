@@ -336,6 +336,17 @@ budget_verdict() {  # $1 seconds, $2 ceiling → pass|over
     if [[ "${1:-0}" -gt "${2:-0}" ]]; then printf 'over'; else printf 'pass'; fi
 }
 
+# A movement inside the recorded noise band is the same code measured twice, not a regression
+# (#1612). `.github/ci-budgets.tsv` records the per-stage run-to-run spread as 0.4-1.3 minutes, the
+# CI-side gate fails only beyond 1.5 minutes of overage for exactly that reason (#1523), and this
+# gate had no floor at all: a `guards` stage that moved 13 s inside its own band failed a green run.
+# `band` is a column of `.pi/local-ci-budget.tsv`, not a constant, so a reader can see which tolerance
+# each row was judged with — and `validate-budget-derivation.sh` recomputes it.
+budget_band() {  # $1 seconds, $2 ceiling, $3 band → pass|warn|over
+    if [[ "$(budget_verdict "$1" "$2")" == "pass" ]]; then printf 'pass'; return; fi
+    if [[ $((${1:-0} - ${2:-0})) -le "${3:-0}" ]]; then printf 'warn'; else printf 'over'; fi
+}
+
 if [[ "$SELF_TEST" == "true" ]]; then
     tmp="$(mktemp -d)"
     trap 'find "${tmp:-/nonexistent}" -mindepth 0 -delete 2>/dev/null || true' EXIT
@@ -445,6 +456,18 @@ if [[ "$SELF_TEST" == "true" ]]; then
     check "a warm run can contain a stage judged on the cold column" \
         "$(budget_regime 19 yes)/$(stage_column "$(stage_condition 19 yes yes)")" "warm/cold"
     check "a stage that builds nothing for eleven minutes still fails" "$(budget_verdict 660 108)" "over"
+    # ── the noise band (#1612) ──
+    # The two movements that failed a green run at 23a78b2d, with the ceilings they were judged
+    # against: `test` +29 s, `guards` +13 s. Both are inside the 78 s the project measured, so both
+    # warn instead of failing.
+    check "a 29 s movement inside the band warns" "$(budget_band 156 127 78)" "warn"
+    check "a 13 s movement inside the band warns" "$(budget_band 96 83 78)" "warn"
+    check "a stage inside its ceiling passes" "$(budget_band 120 127 78)" "pass"
+    check "a movement beyond the band fails" "$(budget_band 900 127 78)" "over"
+    check "a movement exactly at the band warns" "$(budget_band 205 127 78)" "warn"
+    check "one second past the band fails" "$(budget_band 206 127 78)" "over"
+    # A short row cannot borrow the full band: a 1-second stage that takes two minutes is not noise.
+    check "a 1-second ceiling with a 1-second band fails at 2 minutes" "$(budget_band 120 1 1)" "over"
     # The cold run that measured the sample: `guards` compiled 38 crates inside its wave and took
     # 3m21s, which the old 112s single ceiling failed and the derived cold ceiling passes. This is the
     # regression the two columns exist for, pinned with the numbers it actually produced.
@@ -1139,6 +1162,7 @@ echo ""
 #      written without the run count disagreeing with it.
 BUDGET_FILE=".pi/local-ci-budget.tsv"
 OVER_BUDGET=()
+BUDGET_WARNED=()
 
 COMPILED_TOTAL=0
 for _k in "${STAGE_ORDER[@]}"; do
@@ -1153,7 +1177,7 @@ REGIME="$(budget_regime "$COMPILED_TOTAL" "$COUNTS_REPORTED")"
 COLUMN="$(budget_column "$REGIME")"
 
 if [[ -f "$BUDGET_FILE" ]]; then
-    while IFS=$'\t' read -r key warm_ceiling warm_runs warm_slowest warm_compiled cold_ceiling cold_runs cold_slowest cold_compiled _on _machine; do
+    while IFS=$'\t' read -r key warm_ceiling warm_runs warm_slowest warm_compiled cold_ceiling cold_runs cold_slowest cold_compiled band _on _machine; do
         [[ "$key" == "stage" ]] && continue
         [[ "$key" =~ ^# ]] && continue
         [[ -z "${key:-}" || -z "${warm_ceiling:-}" ]] && continue
@@ -1183,9 +1207,16 @@ if [[ -f "$BUDGET_FILE" ]]; then
             ceiling="$warm_ceiling"; runs="$warm_runs"; slowest="$warm_slowest"; sample_compiled="$warm_compiled"
         fi
         [[ -z "${ceiling:-}" ]] && continue
-        if [[ "$(budget_verdict "$secs" "$ceiling")" == "over" ]]; then
-            OVER_BUDGET+=("$key: $(fmt_dur "$secs") > $row_column ceiling $(fmt_dur "$ceiling") — $key built ${built} crate(s) ($condition), so the $row_column column applies; the $row_column sample is ${runs:-?} run(s), slowest $(fmt_dur "${slowest:-0}"), sample compiled ${sample_compiled:-unmeasured}")
-        fi
+        # Inside the band a movement is the same code measured twice: warn, print the band it was
+        # compared against, and do not fail the run (#1612).
+        case "$(budget_band "$secs" "$ceiling" "${band:-0}")" in
+            over)
+                OVER_BUDGET+=("$key: $(fmt_dur "$secs") > $row_column ceiling $(fmt_dur "$ceiling") (+$(fmt_dur $((secs - ceiling))), beyond the $(fmt_dur "${band:-0}") band) — $key built ${built} crate(s) ($condition), so the $row_column column applies; the $row_column sample is ${runs:-?} run(s), slowest $(fmt_dur "${slowest:-0}"), sample compiled ${sample_compiled:-unmeasured}")
+                ;;
+            warn)
+                BUDGET_WARNED+=("$key: $(fmt_dur "$secs") > $row_column ceiling $(fmt_dur "$ceiling") (+$(fmt_dur $((secs - ceiling)))) — inside the $(fmt_dur "${band:-0}") measured band for this row, so this is the same code measured twice, not a regression")
+                ;;
+        esac
     done < "$BUDGET_FILE"
 fi
 
@@ -1201,6 +1232,15 @@ case "$REGIME" in
         ;;
 esac
 echo -e "  ${BLUE}ℹ${NC} a stage's ceiling is selected by that stage's own compiled count — 0 crates: the warm (nothing-built) column, 1+ or unmeasured: the cold (built-something) column — printed per stage above as \`budget\`"
+
+if [[ "${#BUDGET_WARNED[@]}" -gt 0 ]]; then
+    echo -e "${YELLOW}row(s) outside their ceiling but inside the measured noise band ($BUDGET_FILE):${NC}"
+    for w in "${BUDGET_WARNED[@]}"; do
+        echo -e "  ${YELLOW}⚠${NC}  $w"
+    done
+    echo "  The band is the per-stage run-to-run spread this project measured (0.4-1.3 min, recorded in"
+    echo "  .github/ci-budgets.tsv): failing inside it reports the measurement, not the code (#1612)."
+fi
 
 if [[ "${#OVER_BUDGET[@]}" -gt 0 ]]; then
     echo -e "${RED}stage(s) over the measured budget ($BUDGET_FILE):${NC}"

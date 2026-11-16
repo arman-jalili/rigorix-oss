@@ -56,7 +56,26 @@
 #   cold    = max(floor(11 * cold_slowest / 10), warm ceiling)
 #
 # The same rule for both columns of a stage, applied to the sample each column was measured from — one
-# shape to check rather than two. The conditioning rule the guard also checks:
+# shape to check rather than two.
+#
+# The **band** is the movement this table treats as noise, per row, in integer seconds:
+#
+#   band = min(78, warm_ceiling)        for a stage;   band = 0 for `total`
+#   78   = 1.3 min x 60 = 13 x 6        the largest per-stage run-to-run spread recorded in
+#                                       `.github/ci-budgets.tsv` (0.4-1.3 minutes per stage)
+#
+# A row that overshoots its ceiling by no more than its band **warns** and does not fail; beyond it,
+# it fails. This is the CI-side gate's rule (`ci_budget_report.sh`, FAIL_OVERAGE 1.5 min, #1523)
+# applied to the local numbers: failing inside a band the project has already measured teaches people
+# to raise ceilings until the failures stop, which is how a budget becomes a comment. The cap at
+# `warm_ceiling` keeps a short row honest — a 1-second stage cannot be 78 seconds of noise, because
+# that is twice its whole budget.
+#
+# `total` has no band: its subject is the run, and a run that overshoots by four minutes is not the
+# same code measured twice. `validate-budget-derivation.sh` recomputes every band from these two
+# rules and from the spread recorded in `.github/ci-budgets.tsv`.
+#
+# The conditioning rule the guard also checks:
 #
 #   a warm stage sample compiled nothing; a cold stage sample compiled at least one
 #
@@ -107,13 +126,13 @@
 #
 # A ceiling is raised with a measurement, the date and the machine. A ceiling nudged to fit the last
 # run is a comment that fails the person next week.
-stage	warm_ceiling	warm_runs	warm_slowest	warm_compiled	cold_ceiling	cold_runs	cold_slowest	cold_compiled	measured_on	machine
-lint	108	4	99	unmeasured	1172	6	1066	unmeasured	2026-11-15	8-core (aarch64, macOS)
-build	17	4	16	unmeasured	756	6	688	unmeasured	2026-11-15	8-core (aarch64, macOS)
-test	127	4	116	unmeasured	431	6	392	unmeasured	2026-11-15	8-core (aarch64, macOS)
-security	33	4	30	unmeasured	38	6	35	unmeasured	2026-11-15	8-core (aarch64, macOS)
-guards	83	4	76	unmeasured	221	6	201	unmeasured	2026-11-15	8-core (aarch64, macOS)
-coverage	379	4	345	unmeasured	379	6	345	unmeasured	2026-11-15	8-core (aarch64, macOS)
-docs	31	4	29	unmeasured	38	6	35	unmeasured	2026-11-15	8-core (aarch64, macOS)
-integration	1	4	1	unmeasured	1	6	1	unmeasured	2026-11-15	8-core (aarch64, macOS)
-total	770	5	700	unmeasured	2409	6	2190	unmeasured	2026-11-15	8-core (aarch64, macOS)
+stage	warm_ceiling	warm_runs	warm_slowest	warm_compiled	cold_ceiling	cold_runs	cold_slowest	cold_compiled	band	measured_on	machine
+lint	108	4	99	unmeasured	1172	6	1066	unmeasured	78	2026-11-15	8-core (aarch64, macOS)
+build	17	4	16	unmeasured	756	6	688	unmeasured	17	2026-11-15	8-core (aarch64, macOS)
+test	127	4	116	unmeasured	431	6	392	unmeasured	78	2026-11-15	8-core (aarch64, macOS)
+security	33	4	30	unmeasured	38	6	35	unmeasured	33	2026-11-15	8-core (aarch64, macOS)
+guards	83	4	76	unmeasured	221	6	201	unmeasured	78	2026-11-15	8-core (aarch64, macOS)
+coverage	379	4	345	unmeasured	379	6	345	unmeasured	78	2026-11-15	8-core (aarch64, macOS)
+docs	31	4	29	unmeasured	38	6	35	unmeasured	31	2026-11-15	8-core (aarch64, macOS)
+integration	1	4	1	unmeasured	1	6	1	unmeasured	1	2026-11-15	8-core (aarch64, macOS)
+total	770	5	700	unmeasured	2409	6	2190	unmeasured	0	2026-11-15	8-core (aarch64, macOS)
