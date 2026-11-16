@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+# ============================================================================
+# check-packaged-surface.sh — the crate a consumer downloads exposes the
+#                             surface the release claims (#1591)
+# ============================================================================
+# The defect this closes: the workspace can reach a module through a path a consumer cannot. `pub mod
+# receipt;` is `#[cfg(not(feature = "portable"))]` (`engine/src/lib.rs`), so a consumer that pins
+# `rigorix-engine` from the registry with default features gets the module — and a consumer with
+# `--features portable` does not, silently, with "unresolved import". Nothing in this repository
+# asserted either half: `publish-crate.sh` runs `cargo publish -p rigorix-engine`, and `cargo publish`
+# verifies that the crate *compiles*, not that what it compiles is reachable.
+#
+# The subject is the **packaged tarball**, not the workspace:
+#
+#   1. `cargo package` builds `target/package/rigorix-engine-<version>.crate` from the tree;
+#   2. the tarball is unpacked into a temporary directory;
+#   3. a consumer crate is written with `rigorix-engine = "=<version>"` — a registry requirement, not a
+#      path — and `[patch.crates-io]` pointing at the unpacked tarball, which is how the packaged
+#      source is the one that resolves while the *requirement* stays the version a host would write;
+#   4. `cargo check` runs in the consumer, naming `rigorix_engine::receipt::{Receipt, verify,
+#      Attestation}` and reading `Attestation::receipt_digest()`.
+#
+# Two assertions, because the feature boundary is the interesting half:
+#
+#   * default features → the three paths resolve;
+#   * `features = ["portable"]` → the check **fails**, and the failure is the missing module. That is
+#     the documented boundary, asserted rather than hoped for. The receipt module is deliberately not
+#     in the portable slice (it needs `quality_gates`, which the slice removes); the assertion pins
+#     the consequence so a host learns it from a build, not from a run.
+#
+# Usage:
+#   .github/scripts/check-packaged-surface.sh             # the check (gating, before publish)
+#   .github/scripts/check-packaged-surface.sh --self-test # plant the two defects and require a refusal
+# ============================================================================
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT" || exit 1
+
+CRATE="${CRATE:-rigorix-engine}"
+MANIFEST="${MANIFEST:-engine/Cargo.toml}"
+SELF_TEST=0
+[[ "${1:-}" == "--self-test" ]] && SELF_TEST=1
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+
+version_of() { # $1 manifest → the version the crate claims
+    sed -n 's/^version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$1" | head -1
+}
+
+# ── the consumer, as a string so a mutation can be applied to it ─────────────
+consumer_main() {
+    cat <<'RUST'
+//! A consumer of the published surface, written the way a host writes it (#1591).
+
+use rigorix_engine::receipt::{Attestation, Receipt, verify};
+
+fn main() {
+    // The door a host's document meets.
+    let _parsed: Result<Receipt, Vec<_>> = Receipt::from_document("{}");
+    // The gate a host calls before dispatching anything.
+    let _verifier = verify;
+    // The field a host reads the receipt's pinned digest from.
+    fn pinned(attestation: &Attestation) -> &str {
+        attestation.receipt_digest()
+    }
+    let _reads_the_field = pinned as fn(&Attestation) -> &str;
+}
+RUST
+}
+
+consumer_manifest() { # $1 unpacked package dir, $2 version, $3 comma list of features (may be empty)
+    local unpacked="$1" version="$2" features="$3"
+    # A quoted heredoc, because a comment that mentions `[patch.crates-io]` in an unquoted one is a
+    # command substitution: measured, and it took a run to see.
+    cat <<'EOF'
+[package]
+name = "receipt-surface-consumer"
+version = "0.0.0"
+edition = "2021"
+
+EOF
+    if [[ -n "$features" ]]; then
+        printf '# The requirement a host writes: exactly the version this release publishes, with the\n'
+        printf '# feature set being asserted.\n[dependencies]\n%s = { version = "=%s", features = [%s] }\n\n' \
+            "$CRATE" "$version" "$features"
+    else
+        printf '# The requirement a host writes: exactly the version this release publishes.\n'
+        printf '[dependencies]\n%s = "=%s"\n\n' "$CRATE" "$version"
+    fi
+    printf '# The packaged tarball, not the workspace: `[patch.crates-io]` makes the unpacked crate the\n'
+    printf '# source of that version, so the check resolves the artifact while the requirement stays one a\n'
+    printf '# host would write.\n[patch.crates-io]\n%s = { path = "%s" }\n' "$CRATE" "$unpacked"
+}
+
+# ── the run: package, unpack, check the consumer both ways ──────────────────
+run_check() { # $1 tarball-version, $2 unpacked dir, $3 mode (quiet|verbose) → 0 both assertions held
+    local version="$1" unpacked="$2" mode="$3"
+    local work consumer status_portable=0 out_ok out_portable
+
+    work="$(mktemp -d)"
+    consumer="$work/consumer"
+    mkdir -p "$consumer/src"
+    consumer_main > "$consumer/src/main.rs"
+    consumer_manifest "$unpacked" "$version" "" > "$consumer/Cargo.toml"
+
+    # ── assertion 1: default features reach the three paths ──
+    # `|| status` rather than `if !`: a pipeline reports the last command's status, and the negation
+    # discards it, which would make this branch unreachable (measured in local-ci once already).
+    out_ok="$( cd "$consumer" && cargo check --quiet 2>&1 )" || status_ok=$?
+    if [[ "${status_ok:-0}" -ne 0 ]]; then
+        printf '%s\n' "$out_ok" | tail -20 >&2
+        echo -e "${RED}❌ the packaged $CRATE $version does not expose the receipt surface a consumer names${NC}" >&2
+        return 1
+    fi
+
+    # ── assertion 2: `portable` does NOT, and that is the documented boundary ──
+    consumer_manifest "$unpacked" "$version" '"portable"' > "$consumer/Cargo.toml"
+    out_portable="$( cd "$consumer" && cargo check --quiet 2>&1 )" || status_portable=$?
+    if [[ "${status_portable}" -eq 0 ]]; then
+        echo -e "${RED}❌ a consumer with \`features = [\"portable\"]\` compiled — the slice is supposed to exclude the receipt, so either the exclusion moved or this check is measuring the wrong crate${NC}" >&2
+        return 1
+    fi
+    if ! printf '%s' "$out_portable" | grep -qiE "unresolved import|no .receipt. in the root|cannot find module|E0432|E0433"; then
+        # A failure for another reason (a broken dependency, a bad network) would pass this check while
+        # asserting nothing: the message is the subject, so an unrecognised one is a failure to check.
+        printf '%s\n' "$out_portable" | tail -20 >&2
+        echo -e "${RED}❌ the portable consumer failed for a reason that is not the missing receipt module${NC}" >&2
+        return 1
+    fi
+    find "$work" -mindepth 0 -delete 2>/dev/null || true
+    [[ "$mode" == "verbose" ]] && echo "  both assertions held"
+    return 0
+}
+
+# ── main ────────────────────────────────────────────────────────────────────
+VERSION="$(version_of "$MANIFEST")"
+[[ -n "$VERSION" ]] || { echo "❌ check-packaged-surface: no version in $MANIFEST" >&2; exit 2; }
+
+echo "── the packaged surface of $CRATE $VERSION ──"
+# `--no-verify` because the point is not to re-run this crate's tests (the pipeline does that) but to
+# produce the artifact a consumer downloads.
+cargo package -p "$CRATE" --no-verify --allow-dirty >/dev/null 2>&1 || {
+    echo "❌ check-packaged-surface: \`cargo package -p $CRATE\` failed — there is no artifact to check" >&2
+    exit 1
+}
+TARBALL="target/package/$CRATE-$VERSION.crate"
+[[ -f "$TARBALL" ]] || { echo "❌ check-packaged-surface: $TARBALL was not produced" >&2; exit 1; }
+
+UNPACK="$(mktemp -d)"
+trap 'find "${UNPACK:-/nonexistent}" -mindepth 0 -delete 2>/dev/null || true' EXIT
+tar xzf "$TARBALL" -C "$UNPACK"
+PACKAGED="$UNPACK/$CRATE-$VERSION"
+[[ -d "$PACKAGED" ]] || { echo "❌ check-packaged-surface: the tarball did not unpack to $PACKAGED" >&2; exit 1; }
+
+if run_check "$VERSION" "$PACKAGED" verbose; then
+    echo -e "${GREEN}✅ packaged surface: $CRATE $VERSION exposes receipt::{Receipt, verify, Attestation} with default features, and withholds it under \`portable\`${NC}"
+else
+    exit 1
+fi
+
+# ── self-test: plant the two defects a consumer check exists to catch ───────
+if [[ "$SELF_TEST" -eq 1 ]]; then
+    passes=0; fails=0
+    echo "── check-packaged-surface --self-test ──"
+    # (a) the *type* is renamed in the packaged source, which is the path a consumer names: the check
+    # must fail and must say which name it could not find. The first version of this fixture edited
+    # `src/receipt/mod.rs` looking for `pub mod receipt;`, which lives in `src/lib.rs` — so it planted
+    # nothing and the self-test said the check passed. A mutation that does not apply is not a test.
+    planted="$UNPACK/planted-a"; cp -R "$PACKAGED" "$planted"
+    python3 - "$planted/src/receipt/mod.rs" <<'PY'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); s = p.read_text()
+before = s
+s = s.replace("Expectation, Receipt, ReceiptStep,", "Expectation, Receipt as ReceiptX, ReceiptStep,", 1)
+assert s != before, "the plant did not apply: `Receipt` is not in the re-export list"
+p.write_text(s)
+PY
+    if out="$(run_check "$VERSION" "$planted" quiet 2>&1)"; then
+        echo -e "  ${RED}❌${NC} a renamed type still passed the consumer check"
+        fails=$((fails + 1))
+    elif printf '%s' "$out" | grep -q "Receipt"; then
+        echo -e "  ${GREEN}✅${NC} a renamed \`Receipt\` fails the check, naming the path"
+        passes=$((passes + 1))
+    else
+        echo -e "  ${RED}❌${NC} the check failed, but nothing named \`Receipt\`: $(printf '%s' "$out" | tail -2 | tr '\n' ' ')"
+        fails=$((fails + 1))
+    fi
+
+    # (b) the module is gated out of the default build: the consumer must fail, and the workspace
+    # would not have noticed.
+    planted="$UNPACK/planted-b"; cp -R "$PACKAGED" "$planted"
+    python3 - "$planted/src/lib.rs" <<'PY'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); s = p.read_text()
+s = s.replace("#[cfg(not(feature = \"portable\"))]\npub mod receipt;",
+              "#[cfg(feature = \"never_enabled\")]\npub mod receipt;", 1)
+p.write_text(s)
+PY
+    if out="$(run_check "$VERSION" "$planted" quiet 2>&1)"; then
+        echo -e "  ${RED}❌${NC} a default build without the module still passed the consumer check"
+        fails=$((fails + 1))
+    elif printf '%s' "$out" | grep -qi "receipt"; then
+        echo -e "  ${GREEN}✅${NC} a default build without \`pub mod receipt\` fails the consumer check, naming the module"
+        passes=$((passes + 1))
+    else
+        echo -e "  ${RED}❌${NC} the check failed, but nothing named \`receipt\`: $(printf '%s' "$out" | tail -2 | tr '\n' ' ')"
+        fails=$((fails + 1))
+    fi
+
+    echo "  self-test: $passes passed, $fails failed"
+    [[ "$fails" -eq 0 ]] || exit 1
+fi
