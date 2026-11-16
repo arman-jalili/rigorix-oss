@@ -19,6 +19,22 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ### Changed
 
+- **A stage's ceiling is selected by that stage's own compiled count, not the run's** (#1604). The gate computed one
+  regime for the run (`local-ci.sh:993-1000`) and applied its column to every stage, but the subject of a ceiling is a
+  stage, and stages are exactly what differ: on 2026-11-16 the run at `0976e62f` was `warm` (19 crates, cold at 100+) while
+  `lint` built all 19 of them and took 8m25s — judged against a 1m48s ceiling sampled from four runs whose `lint` built
+  nothing. The run was warm; the experiment was not. Each stage now selects its column from `compiled_by_stage` (0 crates →
+  the nothing-built column, 1 or more → the built-something column, unmeasured → the looser one), the results table prints
+  that choice per stage (`cold(19)`, `warm(0)`, `cold(?)`), and `total` keeps the run-level regime because it is the one
+  row whose subject really is the whole run. `.pi/local-ci-budget.tsv` carries `warm_compiled` and `cold_compiled` beside
+  each sample, so a ceiling cannot be read without knowing the experiment it came from, and
+  `validate-budget-derivation.sh` refuses a warm stage sample that compiled crates, a cold one that compiled nothing, and a
+  `total` warm sample from a run at or above `COLD_CRATES`. Every existing sample cell records `unmeasured`, which is a
+  fact and not a gap: those runs predate the counter that can see a compile (#1599), so the conditioning cannot be
+  certified for them — the guard prints how many cells that is rather than letting a warm sample and a blind counter look
+  alike. **No ceiling was raised**: the numbers are unchanged, and the re-baseline that follows must be measured under the
+  corrected conditioning.
+
 - **`Receipt.roles` is gone, and the receipt schema is version 2** (#1586). The field sat in every receipt's canonical
   bytes, was produced by no host in this repository (`Role { … }` existed only in two test literals), read by no engine
   code, and every receipt the system could write serialised `"roles": []`. Had a host filled it, the engine would have
