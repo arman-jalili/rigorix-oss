@@ -17,7 +17,30 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
-_Next cycle._
+### Changed
+
+- **The local gate has the noise floor the CI-side gate already had** (#1612, first half). A release-prep run at `23a78b2d`
+  passed 126/126 steps and failed three budget rows; two of them — `test` +29 s and `guards` +13 s — are inside the per-stage
+  run-to-run spread this project measured and wrote down (0.4–1.3 min, `.github/ci-budgets.tsv`), which is why the CI-side gate
+  only fails beyond a 1.5-minute floor (#1523). The local gate had zero tolerance, so it reported its own measurement as a
+  regression. `.pi/local-ci-budget.tsv` gains a `band` column, derived and checked rather than typed —
+  `band = min(78, warm_ceiling)` for a stage, `0` for `total`, with the `78` read out of the recorded spread by
+  `validate-budget-derivation.sh`, which refuses a hand-widened or hand-narrowed band — and the gate now **warns** inside a
+  row's band (printing the movement, the ceiling and the band it was compared against) and fails only beyond it. No ceiling
+  moved, and no sample was re-derived: `test` and `guards` describe fully warm runs, and a ceiling re-derived from a
+  mid-regime run would encode a compile those stages never did.
+- **The run-level `total` row is conditioned by the same rule as every stage** (#1612, second half). It split at
+  `COLD_CRATES = 100`, so a run that built 31 crates was "warm" and judged against a 12m50s ceiling sampled from runs that
+  built nothing, while it took 23m10s — the compile is real and is charged to the run. The threshold is gone: every row, stage
+  or run, asks one question, "did this subject pay a compile?", and one crate is a yes. `lint` at 11m21s had already shown
+  per-stage conditioning working by passing on the cold column; the run-level row now answers the same way. No ceiling moved —
+  the `total` row's cold sample is still the 2409s one — so a 23-minute run that built crates passes and a 23-minute run that
+  built nothing still fails.
+- **`docs/runbook.md` states what a red gate means for a tag** (#1612, found while cutting 1.15.0). The rule was "a release
+  whose own gate is red is a release note that lies", and 1.15.0 was cut with the local gate red — because the red was an
+  instrument defect already filed, while the artifact's claims were green under four independent checks. The precedence is now
+  written down: a red *claim* stops the tag, a red *instrument* may be cut over when it is attributable to a filed defect and
+  the artifact's own checks are green, and the release notes say which.
 
 ## [1.15.0] - 2026-11-16
 
