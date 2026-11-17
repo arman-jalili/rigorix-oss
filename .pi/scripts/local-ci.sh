@@ -345,6 +345,31 @@ budget_verdict() {  # $1 seconds, $2 ceiling → pass|over
 # gate had no floor at all: a `guards` stage that moved 13 s inside its own band failed a green run.
 # `band` is a column of `.pi/local-ci-budget.tsv`, not a constant, so a reader can see which tolerance
 # each row was judged with — and `validate-budget-derivation.sh` recomputes it.
+# Which rows contributed to the run-level verdict (#1618). The total's band is the sum of the stage
+# bands, so the honest answer to "why did the run fail?" is the list of rows that moved — a run-level
+# row that prints only its own total is a number with no decomposition, and the decomposition is the
+# thing that failed.
+budget_row_names() {  # $@ entries of the form "name: ..." → comma-separated names
+    local out="" entry
+    for entry in "$@"; do out="${out:+$out, }${entry%%:*}"; done
+    printf '%s' "$out"
+}
+
+# The sentence that follows a run-level verdict, naming the rows that produced it. A stage that went
+# over its own ceiling is a contributor whatever the run did; if no stage did, the overrun is the sum
+# of movements each of which its own row called noise — which is exactly what a run-level band is for.
+budget_contributors() {  # reads OVER_BUDGET and BUDGET_WARNED, which hold the rows already judged
+    local over="${#OVER_BUDGET[@]}" warned="${#BUDGET_WARNED[@]}"
+    if [[ "$over" -gt 0 ]]; then
+        printf 'stage(s) over their own ceiling: %s' "$(budget_row_names "${OVER_BUDGET[@]}")"
+    elif [[ "$warned" -gt 0 ]]; then
+        printf 'every stage was inside its own ceiling; %s stage(s) inside their bands accumulated it: %s' \
+            "$warned" "$(budget_row_names "${BUDGET_WARNED[@]}")"
+    else
+        printf 'no stage moved past its own ceiling'
+    fi
+}
+
 budget_band() {  # $1 seconds, $2 ceiling, $3 band → pass|warn|over
     if [[ "$(budget_verdict "$1" "$2")" == "pass" ]]; then printf 'pass'; return; fi
     if [[ $((${1:-0} - ${2:-0})) -le "${3:-0}" ]]; then printf 'warn'; else printf 'over'; fi
@@ -437,8 +462,17 @@ if [[ "$SELF_TEST" == "true" ]]; then
         "$(stage_column "$(stage_condition 31 yes yes)")" "cold"
     check "a run that built nothing is judged on the nothing-built column" \
         "$(stage_column "$(stage_condition 0 yes yes)")" "warm"
-    check "a 23-minute run that built 31 crates passes its cold ceiling" "$(budget_band 1390 2409 0)" "pass"
-    check "the same 23 minutes with nothing built fails the warm ceiling" "$(budget_band 1390 770 0)" "over"
+    check "a 23-minute run that built 31 crates passes its cold ceiling" "$(budget_band 1390 2409 394)" "pass"
+    # 1390 is past 770 + 394, so #1612's acceptance still holds: a 23-minute run that built nothing is
+    # over the warm ceiling by 226 s more than the decomposition's own noise, which is a regression.
+    check "the same 23 minutes with nothing built fails the warm ceiling" "$(budget_band 1390 770 394)" "over"
+    # ── the run-level row is consistent with its decomposition (#1618) ──
+    # `total` carried band 0 while the eight stage rows it bounds carried 394 s between them, so two
+    # reachable states failed the run while every stage passed. Both are now one state: inside the band.
+    check "every stage exactly at its ceiling (779s) does not fail the run" "$(budget_band 779 770 394)" "warn"
+    check "a run inside the accumulated stage noise (1164s) warns" "$(budget_band 1164 770 394)" "warn"
+    check "one second past the accumulated noise (1165s) fails" "$(budget_band 1165 770 394)" "over"
+    check "a run at its own ceiling passes" "$(budget_band 770 770 394)" "pass"
     # #1599's premise: "compiled nothing" and "measured nothing" are different facts, and the second
     # one is not a fact at all. A run that reported no count is unmeasured and takes the cold column —
     # the looser one, because failing a run for a blind instrument is the original defect mirrored.
@@ -1227,10 +1261,18 @@ if [[ -f "$BUDGET_FILE" ]]; then
         # compared against, and do not fail the run (#1612).
         case "$(budget_band "$secs" "$ceiling" "${band:-0}")" in
             over)
-                OVER_BUDGET+=("$key: $(fmt_dur "$secs") > $row_column ceiling $(fmt_dur "$ceiling") (+$(fmt_dur $((secs - ceiling))), beyond the $(fmt_dur "${band:-0}") band) — $key built ${built} crate(s) ($condition), so the $row_column column applies; the $row_column sample is ${runs:-?} run(s), slowest $(fmt_dur "${slowest:-0}"), sample compiled ${sample_compiled:-unmeasured}")
+                if [[ "$key" == "total" ]]; then
+                    OVER_BUDGET+=("$key: $(fmt_dur "$secs") > $row_column ceiling $(fmt_dur "$ceiling") (+$(fmt_dur $((secs - ceiling))), beyond the $(fmt_dur "${band:-0}") band — the sum of the stage bands) — $(budget_contributors) — $key built ${built} crate(s) ($condition), so the $row_column column applies; the $row_column sample is ${runs:-?} run(s), slowest $(fmt_dur "${slowest:-0}"), sample compiled ${sample_compiled:-unmeasured}")
+                else
+                    OVER_BUDGET+=("$key: $(fmt_dur "$secs") > $row_column ceiling $(fmt_dur "$ceiling") (+$(fmt_dur $((secs - ceiling))), beyond the $(fmt_dur "${band:-0}") band) — $key built ${built} crate(s) ($condition), so the $row_column column applies; the $row_column sample is ${runs:-?} run(s), slowest $(fmt_dur "${slowest:-0}"), sample compiled ${sample_compiled:-unmeasured}")
+                fi
                 ;;
             warn)
-                BUDGET_WARNED+=("$key: $(fmt_dur "$secs") > $row_column ceiling $(fmt_dur "$ceiling") (+$(fmt_dur $((secs - ceiling)))) — inside the $(fmt_dur "${band:-0}") measured band for this row, so this is the same code measured twice, not a regression")
+                if [[ "$key" == "total" ]]; then
+                    BUDGET_WARNED+=("$key: $(fmt_dur "$secs") > $row_column ceiling $(fmt_dur "$ceiling") (+$(fmt_dur $((secs - ceiling)))) — inside the $(fmt_dur "${band:-0}") band, which is the sum of the stage bands: the run is inside the noise its own rows accumulated, so this is the same code measured twice (#1618)")
+                else
+                    BUDGET_WARNED+=("$key: $(fmt_dur "$secs") > $row_column ceiling $(fmt_dur "$ceiling") (+$(fmt_dur $((secs - ceiling)))) — inside the $(fmt_dur "${band:-0}") measured band for this row, so this is the same code measured twice, not a regression")
+                fi
                 ;;
         esac
     done < "$BUDGET_FILE"

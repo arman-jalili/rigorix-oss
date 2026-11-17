@@ -36,6 +36,16 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   per-stage conditioning working by passing on the cold column; the run-level row now answers the same way. No ceiling moved —
   the `total` row's cold sample is still the 2409s one — so a 23-minute run that built crates passes and a 23-minute run that
   built nothing still fails.
+- **The run-level budget row is consistent with its own decomposition** (#1618). `total` carried band 0 while the eight stage
+  rows it bounds carried 394 s between them, against a total ceiling of 770 s that was itself 9 s below the 779 s of stage
+  ceilings it bounds. Two reachable states therefore failed the run while no stage failed: every stage exactly at its ceiling
+  (779 s against 770 s), and every stage moving inside its own band (up to 394 s of movements each individually classified as
+  noise). `total`'s band is now **the sum of the stage bands**, so the run can only fail when the stages agree something is
+  wrong, and a run-level failure names the rows that contributed — a stage over its own ceiling, or the count of rows whose
+  movements accumulated. `validate-budget-derivation.sh` now recomputes the sum and refuses a total band that does not follow
+  its stages (a stage row that moves the sum is caught at the total instead of silently absorbed) and a total ceiling plus band
+  below the sum of the stage ceilings, which is a bound on a decomposition of itself. The guard's summary stopped printing a
+  hand-maintained `12/12` that was already wrong at fifteen cases.
 - **The npm verification window is measured, and the release page no longer waits on propagation** (#1613).
   `verify-published` polled 8 × 15 s — two minutes — and `rigorix-gate@1.15.0`, published correctly, was still not served at the end
   of it (release run 43872574813) while the registry served it minutes later. Because `github-release` was `needs:

@@ -48,7 +48,18 @@ STAGES=("lint" "build" "test" "security" "guards" "coverage" "docs" "integration
 RULE_TEXT="ceiling = floor(11 * slowest / 10)"
 COLD_RULE_TEXT="cold    = max(floor(11 * cold_slowest / 10), warm ceiling)"
 CONDITION_RULE_TEXT="a warm stage sample compiled nothing; a cold stage sample compiled at least one"
-BAND_RULE_TEXT="band = min(78, warm_ceiling)"
+BAND_RULE_TEXT="band        = min(78, warm_ceiling)"
+# The run-level row's tolerance is the sum of the rows it bounds (#1618), and it is stated as its own
+# rule because it is derived from *other rows* rather than from a sample of its own: a total band that
+# does not follow its stages is a second answer to the question the stages already answered.
+TOTAL_BAND_RULE_TEXT="band_total  = sum of the stage bands"
+# Sums over the stage rows, read before the row loop so the answer does not depend on row order.
+stage_band_sum() {  # $1 file → integer sum of the stage rows' bands
+    awk -F'\t' '$1 != "stage" && $1 != "total" && $1 !~ /^#/ && NF > 9 { b += $10 } END { print b + 0 }' "$1"
+}
+stage_ceiling_sum() {  # $1 file → integer sum of the stage rows' warm ceilings
+    awk -F'\t' '$1 != "stage" && $1 != "total" && $1 !~ /^#/ && NF > 1 { c += $2 } END { print c + 0 }' "$1"
+}
 # The band's upper value is the per-stage spread `.github/ci-budgets.tsv` records — 0.4-1.3 minutes —
 # so the number is read from that file rather than typed here: a tolerance that lives in two files is a
 # tolerance that can disagree with itself. `derived_band_max` returns it in integer seconds.
@@ -80,6 +91,17 @@ check_file() {
     fi
     if ! grep -qF "$CONDITION_RULE_TEXT" "$file"; then
         echo -e "${RED}❌${NC} $file: the header does not state the conditioning rule ($CONDITION_RULE_TEXT)"
+        failures=$((failures + 1))
+    fi
+    local band_sum ceiling_sum
+    band_sum="$(stage_band_sum "$file")"
+    ceiling_sum="$(stage_ceiling_sum "$file")"
+    if ! grep -qF "$TOTAL_BAND_RULE_TEXT" "$file"; then
+        echo -e "${RED}❌${NC} $file: the header does not state the run-level band rule ($TOTAL_BAND_RULE_TEXT)"
+        failures=$((failures + 1))
+    fi
+    if [[ "$band_sum" -le 0 ]]; then
+        echo -e "${RED}❌${NC} $file: the stage bands sum to ${band_sum}s, so the run-level band cannot be derived — a total band of 0 is the row #1618 filed"
         failures=$((failures + 1))
     fi
     if ! grep -qF "$BAND_RULE_TEXT" "$file"; then
@@ -129,13 +151,28 @@ check_file() {
             failures=$((failures + 1))
         elif [[ "$band_max" -gt 0 ]]; then
             if [[ "$key" == "total" ]]; then
-                derived_band=0
+                # The sum of the rows above it, not a number of its own (#1618).
+                derived_band="$band_sum"
             else
                 derived_band="$band_max"
                 (( derived_band > warm_ceiling )) && derived_band="$warm_ceiling"
             fi
             if [[ "$band" != "$derived_band" ]]; then
-                echo -e "${RED}❌${NC} $key: recorded band ${band}s, the rule gives ${derived_band}s (min(${band_max}, ${warm_ceiling}) for a stage, 0 for total)"
+                if [[ "$key" == "total" ]]; then
+                    echo -e "${RED}❌${NC} $key: recorded band ${band}s, the rule gives ${derived_band}s (the sum of the stage bands: ${band_sum}s) — a stage row changed and the run-level row did not follow it"
+                else
+                    echo -e "${RED}❌${NC} $key: recorded band ${band}s, the rule gives ${derived_band}s (min(${band_max}, ${warm_ceiling}) for a stage)"
+                fi
+                failures=$((failures + 1))
+            fi
+        fi
+        # ── the run-level row bounds a decomposition, not itself (#1618) ──
+        # 770 + 0 < 779 was the arithmetic: a run in which every stage sat exactly at its ceiling
+        # failed the run while no stage failed. The band absorbs the decomposition's own spread, so the
+        # invariant is `ceiling + band >= sum of the stage ceilings`.
+        if [[ "$key" == "total" ]]; then
+            if (( warm_ceiling + band < ceiling_sum )); then
+                echo -e "${RED}❌${NC} $key: ceiling ${warm_ceiling}s + band ${band}s = $(( warm_ceiling + band ))s is below the sum of the stage ceilings (${ceiling_sum}s) — a run in which every stage sits at its own ceiling would fail here while no stage failed"
                 failures=$((failures + 1))
             fi
         fi
@@ -202,7 +239,7 @@ self_test() {
     # A record that follows the rule, built from the rule and not from the live table: a fixture copied
     # from the subject agrees with the subject whatever the rule says.
     {
-        printf '# fixture\n# %s\n# %s\n# %s\n# %s\n' "$RULE_TEXT" "$COLD_RULE_TEXT" "$CONDITION_RULE_TEXT" "$BAND_RULE_TEXT"
+        printf '# fixture\n# %s\n# %s\n# %s\n# %s\n# %s\n' "$RULE_TEXT" "$COLD_RULE_TEXT" "$CONDITION_RULE_TEXT" "$BAND_RULE_TEXT" "$TOTAL_BAND_RULE_TEXT"
         printf 'stage\twarm_ceiling\twarm_runs\twarm_slowest\twarm_compiled\tcold_ceiling\tcold_runs\tcold_slowest\tcold_compiled\tband\tmeasured_on\tmachine\n'
         printf 'lint\t108\t4\t99\t0\t1172\t6\t1066\t19\t78\t2026-11-15\tfixture\n'
         printf 'build\t17\t4\t16\t0\t756\t6\t688\t1\t17\t2026-11-15\tfixture\n'
@@ -212,7 +249,7 @@ self_test() {
         printf 'coverage\t379\t4\t345\t0\t379\t6\t345\t12\t78\t2026-11-15\tfixture\n'
         printf 'docs\t31\t4\t29\t0\t38\t6\t35\t2\t31\t2026-11-15\tfixture\n'
         printf 'integration\t1\t4\t1\t0\t1\t6\t1\t1\t1\t2026-11-15\tfixture\n'
-        printf 'total\t770\t5\t700\t0\t2409\t6\t2190\t488\t0\t2026-11-15\tfixture\n'
+        printf 'total\t770\t5\t700\t0\t2409\t6\t2190\t488\t394\t2026-11-15\tfixture\n'
     } > "$tmp/good.tsv"
 
     if check_file "$tmp/good.tsv" >/dev/null 2>&1; then
@@ -322,15 +359,43 @@ self_test() {
         failures=$((failures + 1))
     fi
 
-    # The run-level row has no band: its subject is the whole run.
-    sed 's/^total\t770\t5\t700\t0\t\([0-9]*\)\t\([0-9]*\)\t\([0-9]*\)\t488\t0\t/total\t770\t5\t700\t0\t\1\t\2\t\3\t488\t78\t/' \
+    # The run-level band is the sum of the rows it bounds, so a total that carries the per-stage spread
+    # itself — or nothing — is refused, naming the sum it should have followed (#1618).
+    sed 's/^total\t770\t5\t700\t0\t\([0-9]*\)\t\([0-9]*\)\t\([0-9]*\)\t488\t394\t/total\t770\t5\t700\t0\t\1\t\2\t\3\t488\t78\t/' \
         "$tmp/good.tsv" > "$tmp/total-band.tsv"
     rc=0
     out="$(check_file "$tmp/total-band.tsv" 2>&1)" || rc=$?
-    if [[ "$rc" -ne 0 ]] && grep -q "total: recorded band 78s, the rule gives 0s" <<<"$out"; then
-        echo -e "  ${GREEN}✅${NC} a run-level row may not carry a band"
+    if [[ "$rc" -ne 0 ]] && grep -q "total: recorded band 78s, the rule gives 394s" <<<"$out"; then
+        echo -e "  ${GREEN}✅${NC} a run-level band that is not the sum of the stage bands is refused"
     else
-        echo -e "  ${RED}❌${NC} the run-level row carried a band"
+        echo -e "  ${RED}❌${NC} the run-level row carried a band of its own"
+        printf '%s\n' "$out" | sed 's/^/      /'
+        failures=$((failures + 1))
+    fi
+
+    # And the plant #1618 actually asks for: a *stage* row changes and the total does not follow. This is
+    # the silent invalidation the issue names — the sum moves from 394 to 395 and nobody notices.
+    sed 's/^integration\t1\t4\t1\t0\t1\t6\t1\t1\t1\t/integration\t2\t4\t2\t0\t2\t6\t2\t1\t2\t/' \
+        "$tmp/good.tsv" > "$tmp/stale-total.tsv"
+    rc=0
+    out="$(check_file "$tmp/stale-total.tsv" 2>&1)" || rc=$?
+    if [[ "$rc" -ne 0 ]] && grep -q "total: recorded band 394s, the rule gives 395s" <<<"$out"; then
+        echo -e "  ${GREEN}✅${NC} a stage row that moves the sum is caught at the total, not silently absorbed"
+    else
+        echo -e "  ${RED}❌${NC} a stage row changed and the total was not re-derived"
+        printf '%s\n' "$out" | sed 's/^/      /'
+        failures=$((failures + 1))
+    fi
+
+    # The invariant itself: a total ceiling plus band below the sum of the stage ceilings is a bound on a
+    # decomposition of itself. 100 + 394 = 494 < 779.
+    sed 's/^total\t770\t5\t700\t/total\t100\t5\t91\t/' "$tmp/good.tsv" > "$tmp/total-too-low.tsv"
+    rc=0
+    out="$(check_file "$tmp/total-too-low.tsv" 2>&1)" || rc=$?
+    if [[ "$rc" -ne 0 ]] && grep -q "total: ceiling 100s + band 394s = 494s is below the sum of the stage ceilings (779s)" <<<"$out"; then
+        echo -e "  ${GREEN}✅${NC} a run-level ceiling below the decomposition it bounds is refused"
+    else
+        echo -e "  ${RED}❌${NC} a run-level ceiling below its own decomposition passed"
         printf '%s\n' "$out" | sed 's/^/      /'
         failures=$((failures + 1))
     fi
@@ -373,7 +438,7 @@ self_test() {
 
     # A plant that does not apply is not a test: each fixture above asserts it changed the file.
     local planted
-    for planted in warm-built cold-idle total-cold vague wide-band short-band total-band; do
+    for planted in warm-built cold-idle total-cold vague wide-band short-band total-band stale-total total-too-low; do
         if cmp -s "$tmp/good.tsv" "$tmp/$planted.tsv"; then
             echo -e "  ${RED}❌${NC} the '$planted' fixture is identical to the good table — it planted nothing"
             failures=$((failures + 1))
@@ -381,7 +446,9 @@ self_test() {
     done
 
     if [[ "$failures" -eq 0 ]]; then
-        echo -e "  ${GREEN}✅ budget-derivation self-test: 12/12${NC}"
+        # No hand-maintained total: it read 12/12 while running fifteen cases, and a count typed
+        # beside a list is a count that drifts the moment the list grows (#1618).
+        echo -e "  ${GREEN}✅ budget-derivation self-test: every case passed${NC}"
         return 0
     fi
     echo -e "  ${RED}❌ budget-derivation self-test: ${failures} case(s) failed${NC}"
