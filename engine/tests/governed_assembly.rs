@@ -172,20 +172,6 @@ release_dependents_on_failure = false
         .expect("the fixture receipt carries no credentials")
     }
 
-    fn steps(&self) -> Vec<rigorix_engine::orchestrator::dto::TemplateStepDef> {
-        vec![rigorix_engine::orchestrator::dto::TemplateStepDef {
-            name: DENIED_STEP.to_string(),
-            tool: "file-read".to_string(),
-            description: "the fixture file is read".to_string(),
-            parameters: serde_json::json!({ "path": "README.md" }),
-            requires_approval: false,
-            timeout_secs: Some(10),
-            require_identity: false,
-            evaluate_score: false,
-            depends_on: Vec::new(),
-        }]
-    }
-
     fn config(&self) -> RunReceiptConfig {
         RunReceiptConfig {
             state_dir: self.state.clone(),
@@ -211,7 +197,6 @@ async fn a_denying_precondition_refuses_the_run_through_the_receipt_surface() {
     let error = run_receipt(
         fixture.workspace(),
         &fixture.receipt(execution_id),
-        fixture.steps(),
         fixture.config(),
     )
     .await
@@ -239,7 +224,6 @@ async fn a_passing_precondition_lets_the_run_through() {
     let output = run_receipt(
         fixture.workspace(),
         &fixture.receipt(execution_id),
-        fixture.steps(),
         fixture.config(),
     )
     .await
@@ -260,7 +244,6 @@ async fn a_malformed_precondition_file_refuses_the_run_rather_than_disappearing(
     let error = run_receipt(
         fixture.workspace(),
         &fixture.receipt(execution_id),
-        fixture.steps(),
         fixture.config(),
     )
     .await
@@ -280,14 +263,9 @@ async fn the_run_refusal_is_not_a_refusal_of_the_declaration() {
     let mut receipt = fixture.receipt(Uuid::now_v7());
     receipt.workspace.value = "not-this-tree".to_string();
 
-    let error = run_receipt(
-        fixture.workspace(),
-        &receipt,
-        fixture.steps(),
-        fixture.config(),
-    )
-    .await
-    .expect_err("the declaration names another tree");
+    let error = run_receipt(fixture.workspace(), &receipt, fixture.config())
+        .await
+        .expect_err("the declaration names another tree");
 
     match error {
         RunReceiptError::Refused(refusals) => assert!(

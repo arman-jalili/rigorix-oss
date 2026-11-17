@@ -35,16 +35,14 @@
 //! ```no_run
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! use std::path::Path;
-//! use rigorix_engine::orchestrator::dto::TemplateStepDef;
 //! use rigorix_engine::permission::domain::PermissionMode;
 //! use rigorix_engine::receipt::{RunReceiptConfig, Receipt, run_receipt};
 //!
 //! # let receipt: Receipt = unimplemented!();
-//! # let steps: Vec<TemplateStepDef> = Vec::new();
+//! // The runbook is the receipt's steps: there is no step list to pass, and none to disagree with.
 //! let output = run_receipt(
 //!     Path::new("/path/to/workspace"),
 //!     &receipt,
-//!     steps,
 //!     RunReceiptConfig {
 //!         state_dir: Path::new("/path/outside/the/workspace/.rigorix/state").to_path_buf(),
 //!         audit_key: std::env::var("RIGORIX_HMAC_KEY").ok(),
@@ -228,7 +226,6 @@ fn build_local_audit_service(
 pub async fn run_receipt(
     workspace: &Path,
     receipt: &Receipt,
-    steps: Vec<crate::orchestrator::dto::TemplateStepDef>,
     config: RunReceiptConfig,
 ) -> Result<RunReceiptOutput, RunReceiptError> {
     let repo_root = workspace.to_string_lossy().to_string();
@@ -251,6 +248,15 @@ pub async fn run_receipt(
         }
         Err(refusal) => refusals.push(refusal),
     }
+    // The runbook is the receipt's (ADR-025 D3). The mapping is the only place a `ReceiptStep` becomes
+    // a plan step, and it refuses what it cannot map before anything is built.
+    let steps = match crate::receipt::application::service::plan_from_receipt(receipt) {
+        Ok(steps) => steps,
+        Err(more) => {
+            refusals.extend(more);
+            Vec::new()
+        }
+    };
     let plan: Vec<PlanStep> = steps
         .iter()
         .map(|step| PlanStep {
