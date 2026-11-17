@@ -45,6 +45,27 @@
 //! `mcp::host::build_real_engine` — a host — so a consumer could author a receipt, verify it, and have no
 //! call to make. The packaged-surface check compiles that call from the tarball a host downloads.
 //!
+//! ## One governed assembly (#1625)
+//!
+//! `gate::infrastructure::assemble` is the crate's door for a host's *engine*: it reads the operator's
+//! `.rigorix/` files and attaches the precondition gate, the sequence policy, the capacity ledger, the
+//! effect commitment, the approval binding, the permission enforcer, the sandbox declaration and the
+//! recovery recipes — in that order, because a gate attached after the dispatcher is built is not
+//! consulted — then constructs the orchestrator and the seal (attestation store, receipt store, sealed
+//! state directory) from them.
+//!
+//! The four things a host may not delegate have no `Default`: the workspace root (which operator files
+//! are read), the state directory (a seal inside the workspace is one the run can rewrite, ADR-024 §6),
+//! the signing key (`None` is an unsigned run), and the permission mode (an enforcer that was never
+//! built is a skipped gate, #1487). What a host brings is data with no `with_*` chain: the planning
+//! pipeline, and the extras that are the host's own business.
+//!
+//! Before this, the tree had four assemblies of one machine — the MCP host wired nine seams by hand,
+//! the Action eight, the CLI used `GateSetup` and wired the rest, and `receipt::run_receipt` attached
+//! no gate at all. A host that reached the last one could not tell "no findings" from "no gate",
+//! because the two are the same output. `assemble` is native-only, like `receipt`, and the
+//! packaged-surface check names it.
+//!
 //! ## Architecture
 //! - `domain/` — Core domain entities and interfaces
 //! - `application/` — Service traits, DTOs, factory interfaces

@@ -793,6 +793,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                         duration_ms: nr.duration_ms,
                         output: nr.output,
                         error: nr.error,
+                        failure_type: nr.failure_type,
                         retry_attempts: nr.retry_attempts as u32,
                         tool_used: None,
                     })
@@ -1360,6 +1361,7 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 duration_ms: nr.duration_ms,
                 output: nr.output,
                 error: nr.error,
+                failure_type: nr.failure_type,
                 retry_attempts: nr.retry_attempts as u32,
                 tool_used: None,
             })
