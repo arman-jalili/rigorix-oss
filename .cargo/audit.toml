@@ -10,7 +10,21 @@
 # `validate-decision-expiry.sh` fails when that date has passed or the comment
 # is missing, and registers the check as gating (#1203).
 #
-# 2026-10-24 status: no ignores remain.
+# 2026-11-17: one entry, reviewed rather than silenced (#1620).
+#
+# RUSTSEC-2026-0543 names chrono "unmaintained; all versions are affected" and offers `jiff` and
+# `time` as alternatives. There is no fixed version to move to — 0.4.45 is the newest on crates.io —
+# and chrono is a direct dependency of five crates here, so the advisory cannot be answered by a bump
+# the way the five entries below were. Until the replacement lands, the finding is suppressed with a
+# date and an issue: the gate goes red again on the expiry, which is the point of writing one down.
+ignore = [
+    # expires: 2027-02-28 — chrono is unmaintained and no version fixes it; replacing it (jiff/time)
+    # is tracked in #1620. A suppression is a decision, not a silence: the expiry re-opens the review.
+    "RUSTSEC-2026-0543",
+]
+
+# 2026-10-24 status: the five advisories below were resolved — no ignore was needed for any of
+# them. A sixth arrived on 2026-11-17 and is above.
 #   ctutils 0.4.2 -> 0.4.4          fixed (RUSTSEC-2026-0385)
 #   paste 1.0.15                    removed with ratatui 0.30
 #   lru 0.12.5                      removed with ratatui 0.30
