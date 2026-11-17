@@ -103,12 +103,7 @@ pub async fn run(
     )
     .await
     {
-        Ok((o, _svc)) => {
-            let orch: std::sync::Arc<
-                dyn rigorix_engine::orchestrator::application::service::OrchestratorService,
-            > = o.into();
-            orch
-        }
+        Ok((o, _svc)) => o,
         Err(e) => {
             restore_terminal();
             eprintln!("Failed to build orchestrator: {e}");

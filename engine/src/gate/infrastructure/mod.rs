@@ -7,6 +7,11 @@
 //! slice takes its ports from the host, which is what lets a browser decide without a
 //! filesystem.
 
+pub mod assembly;
 pub mod setup;
 
+pub use assembly::{
+    AssemblyError, ExecutorPolicy, GovernedAssembly, GovernedAssemblyConfig, LlmBudgetLimits,
+    assemble,
+};
 pub use setup::GateSetup;

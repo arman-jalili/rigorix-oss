@@ -1205,32 +1205,8 @@ fn resolve_mcp_permission_mode(configured: Option<&String>) -> Result<Permission
     }
 }
 
-/// Load a `HookRunnerService` from `.rigorix/hooks.toml` (optional).
-///
-/// When the file exists and parses as a `HookConfig`, every tool execution
-/// runs the configured PreToolUse/PostToolUse shell hooks. Returns `None`
-/// when the file is absent — never fatal.
-fn load_mcp_hook_runner(
-    repo_root: &str,
-) -> Option<Arc<dyn rigorix_engine::hooks::application::service::HookRunnerService>> {
-    use rigorix_engine::hooks::application::factory::HookRunnerFactory;
-    use rigorix_engine::hooks::application::runner_factory_impl::HookRunnerFactoryImpl;
-    use rigorix_engine::hooks::domain::config::HookConfig;
-
-    let path = std::path::PathBuf::from(repo_root).join(".rigorix/hooks.toml");
-    let content = std::fs::read_to_string(&path).ok()?;
-    let config: HookConfig = toml::from_str(&content).ok()?;
-    match HookRunnerFactoryImpl.create(config) {
-        Ok(runner) => {
-            tracing::info!("Hooks enabled from {}", path.display());
-            Some(Arc::from(runner))
-        }
-        Err(e) => {
-            tracing::warn!("hooks config invalid: {e}");
-            None
-        }
-    }
-}
+// `.rigorix/hooks.toml` is read by the governed assembly (ADR-025 D1): this host asked for hooks with
+// `ExecutorPolicy::hooks`, and the rule for a malformed file lives beside the other seams.
 
 /// GAP-A-07: mock classifier fallback (also used by e2e tests).
 fn mock_classifier() -> Box<dyn rigorix_engine::planning::domain::classification::Classifier> {
@@ -1384,30 +1360,11 @@ pub async fn build_real_engine(
 > {
     use std::sync::Arc;
 
-    use rigorix_engine::budget_tracking::application::llm_budget_impl::LlmBudgetImpl;
-    use rigorix_engine::budget_tracking::application::service::LlmBudgetService;
-    use rigorix_engine::cancellation::application::cancellation_service_impl::CancellationManagerImpl;
-    use rigorix_engine::cancellation::application::service::CancellationService;
     use rigorix_engine::enforcement::application::enforcer_factory_impl::ExecutionEnforcerFactoryImpl;
     use rigorix_engine::enforcement::application::factory::ExecutionEnforcerFactory;
-    use rigorix_engine::event_system::application::dto::EventBusConfig;
-    use rigorix_engine::event_system::application::event_bus_service_impl::EventBusServiceImpl;
-    use rigorix_engine::event_system::application::service::EventBusService;
-    use rigorix_engine::execution_engine::application::factory::{
-        ParallelExecutionFactory, ParallelExecutionFactoryConfig,
-    };
-    use rigorix_engine::execution_engine::application::factory_impl::ParallelExecutionFactoryImpl;
-    use rigorix_engine::execution_engine::application::service::ParallelExecutionService;
-    use rigorix_engine::orchestrator::application::builder::OrchestratorBuilder;
-    use rigorix_engine::orchestrator::application::builder_impl::OrchestratorBuilderImpl;
     use rigorix_engine::orchestrator::domain::OrchestratorConfig;
-    use rigorix_engine::permission::application::enforcer_factory_impl::PermissionEnforcerFactoryImpl;
-    use rigorix_engine::permission::application::factory::PermissionEnforcerFactory;
     use rigorix_engine::planning::application::factory::PlanningPipelineFactory;
     use rigorix_engine::planning::application::pipeline_factory_impl::PlanningPipelineFactoryImpl;
-    use rigorix_engine::state_persistence::application::service::StateManagerService;
-    use rigorix_engine::state_persistence::application::state_manager_service_impl::FileSystemStateManager;
-    use rigorix_engine::state_persistence::infrastructure::filesystem_state_repository::FileSystemStateRepository;
     use rigorix_engine::templates::application::dto::RegisterInput;
     use rigorix_engine::templates::application::service::TemplateEngineService;
     use rigorix_engine::templates::application::template_engine_impl::TemplateEngineImpl;
@@ -1588,124 +1545,12 @@ pub async fn build_real_engine(
     // ── Execution service ──
     // Permission mode: rigorix.toml → RIGORIX_PERMISSION_MODE env → workspace_write.
     let permission_mode = resolve_mcp_permission_mode(engine_config.permission_mode.as_ref())?;
-    // #1487: an enforcer that cannot be built is a startup error. The previous
-    // shape warned and continued with `None`, which the dispatcher read as "skip
-    // the gate".
-    let permission_enforcer: Option<
-        Arc<dyn rigorix_engine::permission::application::enforcer::PermissionEnforcer>,
-    > = Some(Arc::from(
-        PermissionEnforcerFactoryImpl
-            .create_with_mode(permission_mode)
-            .await?,
-    ));
-    // #1487: the isolation every spawned step runs under. Absent ⇒ the host still
-    // starts, and each `run_command` step is refused with `sandbox_undeclared`.
-    let sandbox = rigorix_engine::tools::application::shell_policy::declaration_for_host("mcp");
-    // Hooks: optional `.rigorix/hooks.toml` → PreToolUse/PostToolUse interception.
-    let hook_runner = load_mcp_hook_runner(repo_root);
-    // ADR-013 R3/R2: operator-authored `.rigorix/sequence-policy.toml` gates
-    // the dispatch prefix (executor R3) and the plan (orchestrator R2 below).
-    let sequence_policy =
-        rigorix_engine::execution_engine::application::factory::SequencePolicySetup::from_env(
-            std::path::Path::new(repo_root),
-        );
-    // ADR-017 R1/R2: operator-authored `.rigorix/preconditions.toml` arms the
-    // dispatch-time precondition gate. A malformed file is fail-closed: arm an
-    // unarmed (refuse-everything) gate instead of silently dispatching.
-    let precondition = match rigorix_engine::precondition::PreconditionSetup::from_env(
-        std::path::Path::new(repo_root),
-    ) {
-        Ok(setup) => setup,
-        Err(error) => {
-            tracing::error!(
-                %error,
-                "precondition config invalid — arming fail-closed refusal gate (ADR-017)"
-            );
-            Some(rigorix_engine::precondition::PreconditionSetup::unarmed(
-                std::path::Path::new(repo_root),
-                error.to_string(),
-            ))
-        }
-    };
-    // ADR-018: operator-declared capacity ledger (`.rigorix/capacity.toml`).
-    // Absent file = no seam (status quo). A malformed declaration fails closed:
-    // governance that cannot be established must not silently disappear.
-    let capacity =
-        rigorix_engine::capacity_ledger::CapacitySetup::from_env(std::path::Path::new(repo_root))
-            .await?;
-    // ADR-019: operator-declared effect commitment. Absent file = no seam;
-    // a malformed declaration fails closed.
-    let effect_commitment =
-        match rigorix_engine::effect_commitment::EffectCommitmentSetup::from_env(
-            std::path::Path::new(repo_root),
-        )
-        .await?
-        {
-            Some(setup) => {
-                // #1164: a record left Dispatched by a crash has no live owner.
-                // Mark it Ambiguous before any node can retry it.
-                setup.reconcile().await?;
-                Some(setup.dispatch_seam())
-            }
-            None => None,
-        };
-    // ── Event bus (shared: the executor publishes into it AND the
-    //    orchestrator drains it for the audit envelope — a split bus makes
-    //    engine envelopes evidence-empty) ──
-    let event_bus: Arc<dyn EventBusService> =
-        Arc::new(EventBusServiceImpl::new(EventBusConfig::default()));
-
-    let execution_service: Arc<dyn ParallelExecutionService> = Arc::from(
-        ParallelExecutionFactoryImpl::new()
-            .create(ParallelExecutionFactoryConfig {
-                permission_enforcer,
-                sandbox: sandbox.clone(),
-                hook_runner,
-                event_bus: Some(Arc::clone(&event_bus)),
-                approval_binding: rigorix_engine::execution_engine::application::factory::ApprovalBindingSetup::from_env_with_signing_key(
-                    std::path::Path::new(repo_root),
-                    engine_config.audit_hmac_key.as_deref(),
-                )?,
-                sequence_policy: sequence_policy.clone(),
-                precondition,
-                capacity,
-                effect_commitment,
-                // #1108: recovery recipes are opt-in (RIGORIX_RECOVERY=1).
-                recovery: rigorix_engine::execution_engine::application::factory::RecoverySetup::from_env(),
-                // ADR-011 R5: the MCP host is an entry point too — leaving this
-                // at the default `None` meant the oracle was off here as well (#1099).
-                executor_config: rigorix_engine::execution_engine::domain::ParallelExecutorConfig {
-                    approval_repo_path: Some(repo_root.to_string()),
-                    // ADR-008 (#1108): budgets and per-tool call limits are
-                    // evaluated before each tool call.
-                    enforcement: Some(
-                        rigorix_engine::enforcement::domain::config::EnforcementConfig::standard(),
-                    ),
-                    ..rigorix_engine::execution_engine::domain::ParallelExecutorConfig::default()
-                },
-                ..ParallelExecutionFactoryConfig::default()
-            })
-            .await?,
-    );
-
-    // ── State manager ──
-    // ADR-024 §6 (via #1527): outside the workspace, or the agent can rewrite the seal.
-    let state_dir = rigorix_engine::receipt::application::service::default_state_dir(repo_root);
-    let state_repo = Box::new(FileSystemStateRepository::new(state_dir).await?);
-    let state_manager: Arc<dyn StateManagerService> =
-        Arc::new(FileSystemStateManager::new(state_repo));
-
-    // ── Cancellation service ──
-    let cancellation_service: Arc<dyn CancellationService> =
-        Arc::new(CancellationManagerImpl::default());
-
-    // ── Budget service (configurable via rigorix.toml; each runbook step
-    //    consumes one call — a tight budget makes rigorix_run refuse) ──
-    let budget_service: Arc<dyn LlmBudgetService> = Arc::new(LlmBudgetImpl::new(
-        engine_config.budget_max_calls.unwrap_or(1000),
-        engine_config.budget_max_tokens.unwrap_or(100_000),
-        "mcp-server".into(),
-    ));
+    // ── The governed assembly (ADR-025 D1) ──
+    // An operator file that arms a seam is read here and nowhere else, and the seams are attached in
+    // the order that makes them consulted. Before #1625 this function wired nine of them by hand and
+    // the next one — `receipt::api::run_receipt` — wired four, so the tree had four answers to "what
+    // does a governed engine contain". It is assembled below, once the services only this host can
+    // build (the planning pipeline, the audit trail, scored evaluation) exist.
 
     // ── Audit service (reads audit_backend_url / audit_backend_key from rigorix.toml) ──
     use rigorix_engine::audit::application::AuditService;
@@ -1727,7 +1572,7 @@ pub async fn build_real_engine(
     let audit_service: Arc<dyn AuditService> = {
         let mut service = AuditServiceImpl::new(
             Box::new(
-                AuditEnvelopeFactoryImpl::new(hmac_key)
+                AuditEnvelopeFactoryImpl::new(hmac_key.clone())
                     .with_anchor(rigorix_engine::audit::infrastructure::anchor::runtime()),
             ),
             audit_sender,
@@ -1781,15 +1626,10 @@ pub async fn build_real_engine(
 
     let rigorix_dir = std::path::PathBuf::from(repo_root).join(".rigorix");
     let se_config_path = rigorix_dir.join("scored_evaluation.toml");
-    let mut builder = OrchestratorBuilderImpl::new(OrchestratorConfig::default())
-        .with_repo_root(repo_root.to_string())
-        .with_planning_pipeline(Arc::from(planning_pipeline))
-        .with_execution_service(Arc::clone(&execution_service))
-        .with_state_manager(state_manager)
-        .with_cancellation_service(cancellation_service)
-        .with_event_bus(Arc::clone(&event_bus))
-        .with_audit_service(audit_service.clone())
-        .with_budget_service(budget_service);
+    // What this host brings: the scored-evaluation service, read from its own config file.
+    let mut scored_evaluation: Option<
+        Arc<dyn rigorix_engine::scored_evaluation::application::ScoredEvaluationService>,
+    > = None;
 
     if se_config_path.exists() {
         match std::fs::read_to_string(&se_config_path) {
@@ -1860,7 +1700,7 @@ pub async fn build_real_engine(
                             let se_svc =
                                 Arc::new(ScoredEvaluationServiceImpl::new(backends, eval_repo))
                                     as Arc<dyn ScoredEvaluationService>;
-                            builder = builder.with_scored_evaluation_service(se_svc);
+                            scored_evaluation = Some(se_svc);
                             tracing::info!(
                                 "Scored evaluation service wired from {}",
                                 se_config_path.display()
@@ -1875,15 +1715,38 @@ pub async fn build_real_engine(
         }
     }
 
-    if let Some(policy) = sequence_policy {
-        builder = builder.with_sequence_policy(policy);
-    }
-    // #1487 / ADR-016: the envelope records the regime the run's steps ran under.
-    if let Some(declaration) = sandbox {
-        builder = builder.with_sandbox_declaration(declaration);
-    }
-
-    let orchestrator = builder.build().await?;
+    // ── The one assembly (ADR-025 D1/D5) ──
+    let assembly = rigorix_engine::gate::infrastructure::assembly::assemble(
+        rigorix_engine::gate::infrastructure::assembly::GovernedAssemblyConfig {
+            workspace: std::path::PathBuf::from(repo_root),
+            // Empty means "the default for this workspace" — the rule the assembly owns, so this
+            // host does not have a second opinion about where the seal lives (ADR-024 §6).
+            state_dir: std::path::PathBuf::new(),
+            audit_key: hmac_key.clone(),
+            permission_mode,
+            host: "mcp",
+            orchestrator: OrchestratorConfig::default(),
+            executor: rigorix_engine::gate::infrastructure::assembly::ExecutorPolicy {
+                max_failures_before_abort: 0,
+                ..Default::default()
+            },
+            budget: rigorix_engine::gate::infrastructure::assembly::LlmBudgetLimits::Exact {
+                max_calls: engine_config.budget_max_calls.unwrap_or(1000),
+                max_tokens: engine_config.budget_max_tokens.unwrap_or(100_000),
+            },
+            planning: Arc::from(planning_pipeline),
+            audit_service: Some(audit_service.clone()),
+            validation_loop: None,
+            quality_gate_service: None,
+            scored_evaluation_service: scored_evaluation,
+            policy_engine: None,
+            code_graph_service: None,
+            seal: true,
+        },
+    )
+    .await?;
+    let orchestrator = Arc::clone(&assembly.orchestrator);
+    let event_bus = Arc::clone(&assembly.event_bus);
 
     // ── Execution enforcer ──
     // Enforcement config: local defaults, optionally merged from a remote
@@ -1929,7 +1792,7 @@ pub async fn build_real_engine(
     let execution_repo: Arc<dyn ExecutionRepository> = Arc::new(InMemoryExecutionRepository::new());
 
     let engine = EngineFacadeImpl::new(
-        Arc::from(orchestrator),
+        orchestrator,
         enforcer,
         execution_repo,
         EngineFacadeConfig {

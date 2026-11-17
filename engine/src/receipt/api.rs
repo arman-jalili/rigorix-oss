@@ -66,13 +66,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::orchestrator::application::orchestrator_impl::OrchestratorServiceImpl;
-use crate::orchestrator::application::service::OrchestratorService as _;
 use crate::orchestrator::dto::RunFromTemplateInput;
-use crate::permission::application::factory::PermissionEnforcerFactory as _;
 use crate::receipt::PlanStep;
 use crate::receipt::application::service::{
-    default_state_dir, refuse_foreign_execution, verify, verify_against_plan, workspace_identity,
+    refuse_foreign_execution, verify, verify_against_plan, workspace_identity,
 };
 use crate::receipt::domain::attestation::Attestation;
 use crate::receipt::domain::receipt::Receipt;
@@ -135,6 +132,21 @@ pub enum RunReceiptError {
     /// orchestrator runs before it builds a graph, run here first so the typed values reach the caller.
     Refused(Vec<ReceiptRefusal>),
 
+    /// A step the declaration names was refused **before dispatch** — the consequence gate said no,
+    /// so the run did not do what the receipt described. Distinct from `Refused`: the declaration was
+    /// sound and was admitted; this is the engine declining to perform it.
+    ///
+    /// `code` is the dispatcher's own (`precondition_denied`, `sandbox_undeclared`), carried rather
+    /// than re-spelled, because a caller branches on the code and a sentence is not a code.
+    RefusedAtGate {
+        /// The step that was refused.
+        step: String,
+        /// The dispatcher's failure code for this refusal.
+        code: String,
+        /// The gate's own sentence, for a human.
+        detail: String,
+    },
+
     /// The run happened, and the engine could not write or read back the observation.
     Infrastructure {
         /// The stage that failed, and the engine's own words.
@@ -154,12 +166,51 @@ impl std::fmt::Display for RunReceiptError {
                     .collect::<Vec<_>>()
                     .join("; ")
             ),
+            Self::RefusedAtGate { step, code, detail } => write!(
+                f,
+                "the step {step} was refused before dispatch ({code}): {detail}"
+            ),
             Self::Infrastructure { detail } => write!(f, "the run could not be recorded: {detail}"),
         }
     }
 }
 
 impl std::error::Error for RunReceiptError {}
+
+/// The local, signed audit trail this surface can keep without a backend.
+///
+/// A host that has an audit backend wires its own service and passes it to the assembly; this door has
+/// none, so it records the trail under the state directory and claims no delivery
+/// (`audit_enabled: false` at the sink) rather than saying `true` about a sender nobody runs.
+fn build_local_audit_service(
+    state_dir: &Path,
+    audit_key: Option<&String>,
+) -> Option<Arc<dyn crate::audit::application::service::AuditService>> {
+    let key = audit_key?;
+    let mut service = crate::audit::application::audit_service_impl::AuditServiceImpl::new(
+        Box::new(
+            crate::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl::new(Some(
+                key.clone(),
+            )),
+        ),
+        Arc::new(crate::audit::application::audit_sender_impl::AuditSenderImpl::new(None, None)),
+        Box::new(crate::audit::application::audit_queue_impl::AuditQueueImpl::default()),
+        // No backend URL: the trail is local until a host wires a sender. `true` here would claim
+        // delivery nobody performs.
+        false,
+    );
+    // The trail goes under the state directory, not the workspace: the same rule the attestation
+    // follows, for the same reason (ADR-024 §6 rule 1).
+    // sink: receipt:audit-trail-dir
+    if std::fs::create_dir_all(state_dir.join("audit")).is_ok() {
+        service = service.with_local_repository(Arc::new(
+            crate::audit::infrastructure::LocalAuditEnvelopeRepository::new(
+                state_dir.join("audit"),
+            ),
+        ));
+    }
+    Some(Arc::new(service))
+}
 
 /// Submit a receipt against `workspace` and return the sealed observation.
 ///
@@ -213,133 +264,41 @@ pub async fn run_receipt(
     if !refusals.is_empty() {
         return Err(RunReceiptError::Refused(refusals));
     }
-    // The same computation the MCP host uses, so a consumer that does not pass a state directory can
-    // find the seal where this crate's tooling looks for it. Declared here, one line, rather than as a
-    // `Default` on the config: the default layout is a *suggestion*, and the field still has to be
-    // written down by the caller.
-    let state_dir = if config.state_dir.as_os_str().is_empty() {
-        default_state_dir(&repo_root)
-    } else {
-        config.state_dir.clone()
-    };
-
+    // ── The governed assembly (ADR-025 D1) ──
+    // Every seam, attached in one function in the engine, from the operator's own files. Before
+    // #1625 this function built its own engine and attached no consequence gate at all, so a run
+    // under a denying `.rigorix/preconditions.toml` dispatched anyway and the output looked exactly
+    // like a run whose gate found nothing.
     let infrastructure = |detail: String| RunReceiptError::Infrastructure { detail };
-
-    // ── The collaborators, each constructed from its own public factory ──
-    let event_bus: Arc<dyn crate::event_system::application::service::EventBusService> = Arc::new(
-        crate::event_system::application::event_bus_service_impl::EventBusServiceImpl::new(
-            crate::event_system::application::dto::EventBusConfig::default(),
-        ),
-    );
-    let cancellation: Arc<dyn crate::cancellation::application::service::CancellationService> =
-        Arc::new(
-            crate::cancellation::application::cancellation_service_impl::CancellationManagerImpl::default(),
-        );
-    let state_manager: Arc<
-        dyn crate::state_persistence::application::service::StateManagerService,
-    > = {
-        let repository = crate::state_persistence::infrastructure::FileSystemStateRepository::new(
-            state_dir.clone(),
-        )
-        .await
-        .map_err(|e| infrastructure(format!("the state directory is unusable: {e}")))?;
-        Arc::new(
-                crate::state_persistence::application::state_manager_service_impl::FileSystemStateManager::new(
-                    Box::new(repository),
-                ),
-            )
-    };
-    let budget: Arc<dyn crate::budget_tracking::application::service::LlmBudgetService> = Arc::new(
-        crate::budget_tracking::application::llm_budget_impl::LlmBudgetImpl::new(
-            u32::MAX,
-            u32::MAX,
-            "run-receipt".to_string(),
-        ),
-    );
-    let permission_enforcer: Option<
-        Arc<dyn crate::permission::application::enforcer::PermissionEnforcer>,
-    > = Some(Arc::from(
-        crate::permission::application::enforcer_factory_impl::PermissionEnforcerFactoryImpl
-            .create_with_mode(config.permission_mode)
-            .await
-            .map_err(|e| {
-                infrastructure(format!("the permission enforcer could not be built: {e}"))
-            })?,
-    ));
-    use crate::execution_engine::application::factory::ParallelExecutionFactory as _;
-    let execution_service: Arc<
-        dyn crate::execution_engine::application::service::ParallelExecutionService,
-    > = Arc::from(
-        crate::execution_engine::application::factory_impl::ParallelExecutionFactoryImpl
-            .create(
-                crate::execution_engine::application::factory::ParallelExecutionFactoryConfig {
-                    permission_enforcer,
-                    event_bus: Some(Arc::clone(&event_bus)),
-                    ..Default::default()
-                },
-            )
-            .await
-            .map_err(|e| {
-                infrastructure(format!("the execution service could not be built: {e}"))
-            })?,
-    );
-    let audit_service: Option<Arc<dyn crate::audit::application::service::AuditService>> =
-        config.audit_key.as_ref().map(|key| {
-            let mut service = crate::audit::application::audit_service_impl::AuditServiceImpl::new(
-                Box::new(
-                    crate::audit::application::envelope_factory_impl::AuditEnvelopeFactoryImpl::new(
-                        Some(key.clone()),
-                    ),
-                ),
-                Arc::new(
-                    crate::audit::application::audit_sender_impl::AuditSenderImpl::new(None, None),
-                ),
-                Box::new(crate::audit::application::audit_queue_impl::AuditQueueImpl::default()),
-                // No backend URL is configured by this surface: the trail is local until a host wires
-                // a sender. Saying `true` here would claim delivery nobody performs.
-                false,
-            );
-            // The local signed trail, under the state directory rather than the workspace: the same
-            // rule the attestation follows, for the same reason.
-            // sink: receipt:audit-trail-dir
-            if std::fs::create_dir_all(state_dir.join("audit")).is_ok() {
-                service = service.with_local_repository(Arc::new(
-                    crate::audit::infrastructure::LocalAuditEnvelopeRepository::new(
-                        state_dir.join("audit"),
-                    ),
-                ));
-            }
-            Arc::new(service) as Arc<dyn crate::audit::application::service::AuditService>
-        });
-
+    let state_dir =
+        crate::gate::infrastructure::assembly::resolve_state_dir(&repo_root, &config.state_dir);
+    let audit_service = build_local_audit_service(&state_dir, config.audit_key.as_ref());
     let planning: Arc<dyn crate::planning::application::service::PlanningPipelineService> =
         Arc::new(
             crate::planning::application::supplied_steps::SuppliedStepsPlanning::new(execution_id),
         );
-
-    let orchestrator = OrchestratorServiceImpl::new(
-        crate::orchestrator::domain::OrchestratorConfig::default(),
-        planning,
-        execution_service,
-        state_manager,
-        cancellation,
-        event_bus,
-        audit_service,
-        budget,
-        None,
+    let assembly = crate::gate::infrastructure::assembly::assemble(
+        crate::gate::infrastructure::assembly::GovernedAssemblyConfig {
+            workspace: PathBuf::from(&repo_root),
+            state_dir: state_dir.clone(),
+            audit_key: config.audit_key.clone(),
+            permission_mode: config.permission_mode,
+            host: "run-receipt",
+            orchestrator: crate::orchestrator::domain::OrchestratorConfig::default(),
+            executor: crate::gate::infrastructure::assembly::ExecutorPolicy::default(),
+            budget: crate::gate::infrastructure::assembly::LlmBudgetLimits::Unlimited,
+            planning,
+            audit_service,
+            validation_loop: None,
+            quality_gate_service: None,
+            scored_evaluation_service: None,
+            policy_engine: None,
+            code_graph_service: None,
+            seal: true,
+        },
     )
-    .with_attestation_key(config.audit_key.clone())
-    .with_sealed_state_dir(state_dir.clone());
-    // The isolation every spawned step runs under (#1487). Read from the deployment, exactly as every
-    // other composition root reads it: absent ⇒ `run_command` steps are refused with
-    // `sandbox_undeclared` at the step, which is evidence, rather than a run that silently ran shell
-    // commands outside a boundary. A host that supplies its own declaration composes the orchestrator.
-    let mut orchestrator = orchestrator;
-    if let Some(declaration) =
-        crate::tools::application::shell_policy::declaration_for_host("run-receipt")
-    {
-        orchestrator = orchestrator.with_sandbox_declaration(declaration);
-    }
+    .await
+    .map_err(|error| infrastructure(error.to_string()))?;
 
     let input = RunFromTemplateInput {
         steps,
@@ -354,7 +313,8 @@ pub async fn run_receipt(
         receipt: Some(receipt.clone()),
     };
 
-    let run = orchestrator
+    let run = assembly
+        .orchestrator
         .run_from_template(input)
         .await
         .map_err(|error| match error {
@@ -371,6 +331,26 @@ pub async fn run_receipt(
             other => infrastructure(other.to_string()),
         })?;
 
+    // A step refused before dispatch is not a step that ran: the declared work did not happen. The
+    // code is read from the dispatcher's own record (#1625 added `failure_type` to the task result),
+    // never from the error sentence, because a caller branches on the code.
+    if let Some(refused) = run.record.task_results.iter().find_map(|task| {
+        let code = task.failure_type.clone()?;
+        // Only the codes that mean "this was refused, not attempted". A failure *inside* a tool is a
+        // different fact: the effect may exist, and the caller decides what to do about it.
+        (code == "precondition_denied" || code == "sandbox_undeclared").then_some((task, code))
+    }) {
+        let (task, code) = refused;
+        return Err(RunReceiptError::RefusedAtGate {
+            step: task.node_name.clone(),
+            code,
+            detail: task
+                .error
+                .clone()
+                .unwrap_or_else(|| "the dispatcher recorded no detail".to_string()),
+        });
+    }
+
     let receipt_digest = run
         .receipt_digest
         .clone()
@@ -384,11 +364,9 @@ pub async fn run_receipt(
     // module's own two doors — the store's `get` for the location, `verify_attestation` for the
     // meaning. Returning the value the builder produced would be a second, unverified copy, and
     // composing the path here would be a second copy of the layout (#1628).
-    let store = crate::receipt::infrastructure::attestation_store::FileAttestationStore::new(
-        state_dir.clone(),
-        repo_root.clone(),
-        config.audit_key.clone(),
-    );
+    let store = assembly.attestation_store.clone().ok_or_else(|| {
+        infrastructure("the assembly was asked for a seal and returned none".into())
+    })?;
     let stored = store
         .get(&execution_id.to_string())
         .map_err(|e| infrastructure(format!("the sealed attestation could not be read: {e}")))?;

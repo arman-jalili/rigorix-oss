@@ -20,7 +20,9 @@
 #   4. `cargo check` runs in the consumer, naming `rigorix_engine::receipt::{Receipt, verify,
 #      Attestation}` and reading `Attestation::receipt_digest()`, plus — since #1619 — calling
 #      `receipt::run_receipt` with a `RunReceiptConfig`, reading `RunReceiptOutput` and matching
-#      `RunReceiptError`. A packaged surface that lost the run door fails here, before publish.
+#      `RunReceiptError`; and — since #1625 — calling `gate::infrastructure::assemble` with a
+#      `GovernedAssemblyConfig`, reading `GovernedAssembly` and `AssemblyError`. A packaged surface
+#      that lost either door fails here, before publish.
 #
 # Two assertions, because the feature boundary is the interesting half:
 #
@@ -86,6 +88,20 @@ fn main() {
         output.attestation.receipt_digest() == output.receipt_digest
     }
     let _reads_the_answer = answers as fn(&RunReceiptOutput) -> bool;
+
+    // #1625: the governed assembly is the crate's door for a host's engine — one function that
+    // attaches the operator's gates. Named and called, so a release that lost it fails here.
+    fn assembled(
+        config: rigorix_engine::gate::infrastructure::assembly::GovernedAssemblyConfig,
+    ) -> impl std::future::Future<
+        Output = Result<
+            rigorix_engine::gate::infrastructure::assembly::GovernedAssembly,
+            rigorix_engine::gate::infrastructure::assembly::AssemblyError,
+        >,
+    > {
+        rigorix_engine::gate::infrastructure::assembly::assemble(config)
+    }
+    let _governed_door = assembled;
 
     // And the refusal a host matches on, so the type is not merely present.
     fn refused(error: &RunReceiptError) -> bool {
@@ -181,7 +197,7 @@ PACKAGED="$UNPACK/$CRATE-$VERSION"
 [[ -d "$PACKAGED" ]] || { echo "❌ check-packaged-surface: the tarball did not unpack to $PACKAGED" >&2; exit 1; }
 
 if run_check "$VERSION" "$PACKAGED" verbose; then
-    echo -e "${GREEN}✅ packaged surface: $CRATE $VERSION exposes receipt::{Receipt, verify, Attestation, run_receipt} with default features, and withholds it under \`portable\`${NC}"
+    echo -e "${GREEN}✅ packaged surface: $CRATE $VERSION exposes receipt::{Receipt, verify, Attestation, run_receipt} and gate::infrastructure::assemble with default features, and withholds it under \`portable\`${NC}"
 else
     exit 1
 fi
