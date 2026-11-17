@@ -31,6 +31,20 @@
 //! both answers. A host that needs to *verify* a receipt therefore depends on `rigorix-engine` with
 //! default features, and a host that only runs the gate slice does not.
 //!
+//! ## Running a receipt (#1619)
+//!
+//! Verifying a declaration is half the boundary; a host also has to **submit** one. `receipt::run_receipt`
+//! is that door: workspace root, `Receipt`, the steps it declares, and a `RunReceiptConfig` for the three
+//! things only a host can decide — where the seal lives, whether it is signed, and which permission mode
+//! the enforcer runs in. It returns the sealed `Attestation` read back through `verify_attestation`, so a
+//! caller holds what any verifier would compute from the file rather than a second copy of it.
+//!
+//! It does not plan and it does not need a classifier: the steps are supplied by the receipt, and the
+//! planning pipeline it wires (`planning::application::SuppliedStepsPlanning`) refuses every planning
+//! method with the reason. Before this existed, the only worked composition in the workspace was
+//! `mcp::host::build_real_engine` — a host — so a consumer could author a receipt, verify it, and have no
+//! call to make. The packaged-surface check compiles that call from the tarball a host downloads.
+//!
 //! ## Architecture
 //! - `domain/` — Core domain entities and interfaces
 //! - `application/` — Service traits, DTOs, factory interfaces
