@@ -125,6 +125,15 @@ pub struct ExecuteInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
 
+    /// The receipt the caller sent, when it sent one (#1630, ADR-025 D6).
+    ///
+    /// The document, not a parsed `Receipt`: the crate's `Receipt::from_document` is the door, and it
+    /// is called once, in the façade, so a malformed declaration is refused with the crate's own
+    /// vocabulary before anything is dispatched. `#[serde(default)]` is what makes the parameter
+    /// additive — a call without it behaves exactly as every call did before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receipt: Option<serde_json::Value>,
+
     /// ATTESTED caller identity — injected server-side from the active auth
     /// session (never honored from caller params; F-20260907-05 L1/L2).
     /// Gates `require_identity` steps and binds the policy principal.

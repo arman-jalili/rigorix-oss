@@ -326,6 +326,22 @@ pub struct ExecutionResult {
     /// guess.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     attestation_digest: Option<String>,
+
+    /// Which of the three "no digest" states this response is in (#1630).
+    ///
+    /// `not_declared` (no receipt was sent), `sealed` (a receipt was accepted and its observation read
+    /// back), or `not_sealed` (a receipt was accepted and no attestation digest came back — no signing
+    /// key, or a store that refused). The three call for different actions, so they are three values
+    /// rather than one absent field.
+    #[serde(default = "default_receipt_state")]
+    receipt_state: String,
+}
+
+/// The state of a response built before this field existed: no receipt was declared.
+fn default_receipt_state() -> String {
+    crate::execution_tools::domain::receipt_input::ReceiptState::NotDeclared
+        .as_str()
+        .to_string()
 }
 
 impl ExecutionResult {
@@ -349,6 +365,7 @@ impl ExecutionResult {
             evidence: EvidenceStatus::NotRequested,
             receipt_digest: None,
             attestation_digest: None,
+            receipt_state: default_receipt_state(),
         }
     }
 
@@ -393,6 +410,22 @@ impl ExecutionResult {
     #[must_use]
     pub fn receipt_digest(&self) -> Option<&str> {
         self.receipt_digest.as_deref()
+    }
+
+    /// Record which "no digest" state the run is in (#1630).
+    #[must_use]
+    pub fn with_receipt_state(
+        mut self,
+        state: crate::execution_tools::domain::receipt_input::ReceiptState,
+    ) -> Self {
+        self.receipt_state = state.as_str().to_string();
+        self
+    }
+
+    /// Which "no digest" state the run is in, as the wire spelling.
+    #[must_use]
+    pub fn receipt_state(&self) -> &str {
+        &self.receipt_state
     }
 
     /// Record the attestation sealed for this run (#1570).

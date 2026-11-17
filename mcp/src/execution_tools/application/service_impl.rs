@@ -45,12 +45,16 @@ impl ExecuteHandler for ExecuteHandlerImpl {
         // Execute the plan through EngineFacade
         let result = self
             .engine
-            .execute(
+            .execute_with_receipt(
                 plan,
                 input.repository.clone(),
                 input.author.clone(),
                 input.identity.clone(),
                 input.identity_verification_failure.clone(),
+                input
+                    .receipt
+                    .clone()
+                    .map(crate::execution_tools::domain::receipt_input::ReceiptInput::new),
             )
             .await
             .map_err(HandlerError::EngineError)?;
@@ -64,6 +68,11 @@ impl ExecuteHandler for ExecuteHandlerImpl {
             "audit_uri": result.audit_uri(),
             // #1491: `evidence` is a fact about the run, not a debug field.
             "evidence": result.evidence(),
+            // #1630: the declaration's digest, the observation's, and which of the three "no digest"
+            // states this response is in.
+            "receipt_digest": result.receipt_digest(),
+            "attestation_digest": result.attestation_digest(),
+            "receipt_state": result.receipt_state(),
             "steps": result.steps().iter().map(|s| {
                 serde_json::json!({
                     "step_name": s.step_name(),

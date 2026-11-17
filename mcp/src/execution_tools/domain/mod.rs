@@ -24,6 +24,7 @@
 pub mod entity;
 pub mod error;
 pub mod event;
+pub mod receipt_input;
 pub mod value;
 
 pub use entity::{EngineFacade, SharedEngineFacade};

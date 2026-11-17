@@ -156,6 +156,7 @@ fn test_executehandler_handles_execution() {
         author: None,
         identity: None,
         identity_verification_failure: None,
+        receipt: None,
     }));
     assert!(result.is_ok());
     assert!(!result.unwrap().is_error);

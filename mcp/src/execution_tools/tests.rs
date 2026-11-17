@@ -345,6 +345,7 @@ mod tests {
             author: None,
             identity: None,
             identity_verification_failure: None,
+            receipt: None,
         };
 
         let result = handler.handle(input).await;

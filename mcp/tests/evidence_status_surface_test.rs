@@ -131,6 +131,7 @@ fn execute_response(evidence: EvidenceStatus) -> serde_json::Value {
             author: None,
             identity: None,
             identity_verification_failure: None,
+            receipt: None,
         }))
         .expect("the handler must not fail for a completed run");
 

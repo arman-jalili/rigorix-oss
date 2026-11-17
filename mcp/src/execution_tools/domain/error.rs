@@ -52,6 +52,21 @@ pub enum EngineFacadeError {
     #[error("Enforcement blocked: {0}")]
     EnforcementBlocked(String),
 
+    /// A receipt the caller supplied was refused before dispatch (#1630).
+    ///
+    /// `code` is the engine's own refusal kind (`malformed_document`, `workspace_mismatch`,
+    /// `receipt_unsupported`, …) — the vocabulary a caller already branches on. The gate's codes
+    /// (`precondition_checked`, `precondition_findings`, `precondition_denied`) are a different
+    /// family and are not reused here: a declaration the engine could not accept is not a step it
+    /// declined to run.
+    #[error("Receipt refused ({code}): {detail}")]
+    ReceiptRefused {
+        /// The refusal kind, from the crate's own vocabulary.
+        code: String,
+        /// The refusal's operands, as the crate produced them.
+        detail: String,
+    },
+
     /// The operation timed out.
     #[error("Operation timed out after {duration_secs}s: {operation}")]
     Timeout {

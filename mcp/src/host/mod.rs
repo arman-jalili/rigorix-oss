@@ -459,6 +459,9 @@ impl AppState {
                     author: params["author"].as_str().map(|s| s.to_string()),
                     identity: self.session_identity().await,
                     identity_verification_failure: self.session_verification_failure().await,
+                    // #1630: the declaration travels with the request. Absent is a fact about this
+                    // call — the response names which of the three "no digest" states it is in.
+                    receipt: params.get("receipt").cloned(),
                 };
 
                 let result = self
