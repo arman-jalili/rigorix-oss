@@ -36,6 +36,18 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   per-stage conditioning working by passing on the cold column; the run-level row now answers the same way. No ceiling moved —
   the `total` row's cold sample is still the 2409s one — so a 23-minute run that built crates passes and a 23-minute run that
   built nothing still fails.
+- **The attestation store has a read side, and the location rule has one owner** (#1628, ADR-025 D4). `FileAttestationStore`
+  exposed `put` and no `get`, so the only way to obtain a sealed attestation was to know where the store had put it — and
+  `receipt::api::run_receipt` did exactly that, spelling `<state dir>/attestations/<id>.json` in a second file. Two files held
+  one rule and the copy outside the store was the one that would be edited. `get(execution_id)` now returns the same
+  `StoredAttestation` the writer returns, carrying the sealed **bytes**, so "what the store wrote" and "what a verifier
+  receives" cannot diverge; the location rule is one private function called from both sides, so the state-directory refusal
+  applies to a reader as well as a writer. A miss is `UnknownExecution` — typed, so "never sealed" is distinguishable from
+  "cannot read", which is the question a host displaying a finished run and a verifier handed a digest from last week each
+  ask. An execution id that is not a file stem (`../escape`, `a/b`) is refused by name rather than sanitised: `get` takes a
+  string where `put` took a `Uuid`, so the read side is the one place a caller could hand in a path. A test asserts that no
+  production file outside the store spells the directory — skipping comment lines, because three of its first four findings
+  were prose naming the path, not code producing it.
 - **The crate has a documented run surface: `receipt::run_receipt`** (#1619). `rigorix-engine 1.15.0` publishes the receipt
   type, `verify`, `Attestation` and `refuse_foreign_execution`, so a consumer could **author** a declaration and **check** one —
   and could not **run** one. The only worked composition in this workspace is `mcp::host::build_real_engine`, four hundred lines

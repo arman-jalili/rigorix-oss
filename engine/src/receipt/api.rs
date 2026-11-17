@@ -381,35 +381,38 @@ pub async fn run_receipt(
         .ok_or_else(|| infrastructure("the run produced no attestation digest".to_string()))?;
 
     // Read the observation back the way any verifier would: from the sealed bytes, through the
-    // module's own door. Returning the value the builder produced would be a second, unverified copy.
-    let sealed_path = state_dir
-        .join("attestations")
-        .join(format!("{execution_id}.json"));
-    let sealed_bytes = std::fs::read(&sealed_path).map_err(|e| {
-        infrastructure(format!(
-            "the sealed attestation at {} could not be read: {e}",
-            sealed_path.display()
-        ))
-    })?;
+    // module's own two doors — the store's `get` for the location, `verify_attestation` for the
+    // meaning. Returning the value the builder produced would be a second, unverified copy, and
+    // composing the path here would be a second copy of the layout (#1628).
+    let store = crate::receipt::infrastructure::attestation_store::FileAttestationStore::new(
+        state_dir.clone(),
+        repo_root.clone(),
+        config.audit_key.clone(),
+    );
+    let stored = store
+        .get(&execution_id.to_string())
+        .map_err(|e| infrastructure(format!("the sealed attestation could not be read: {e}")))?;
+    // The declaration the record is *about*, read from the record: what it names is what the run was
+    // admitted under, or it is not the record of this run.
     let key = config.audit_key.as_deref().unwrap_or_default();
-    let verified = crate::receipt::verify_attestation(&sealed_bytes, key.as_bytes())
-        .map_err(|detail| infrastructure(format!("the sealed attestation does not verify: {detail}")))
-        .and_then(|sealed| {
-            let attestation = sealed.attestation().clone();
-            // The two producers must agree about the declaration, and the agreement is checked rather
-            // than assumed: a digest mismatch here means the receipt the run was admitted under is not
-            // the receipt it answered.
-            if attestation.receipt_digest() != receipt_digest.as_str() {
-                return Err(infrastructure(format!(
-                    "the attestation answers receipt {}, but the run was admitted under {receipt_digest}",
-                    attestation.receipt_digest()
-                )));
-            }
-            Ok(attestation)
-        })?;
+    let attestation = crate::receipt::verify_attestation(&stored.bytes, key.as_bytes())
+        .map_err(|detail| {
+            infrastructure(format!("the sealed attestation does not verify: {detail}"))
+        })?
+        .attestation()
+        .clone();
+    // The two producers must agree about the declaration, and the agreement is checked rather than
+    // assumed: a digest mismatch here means the receipt the run was admitted under is not the receipt
+    // it answered.
+    if attestation.receipt_digest() != receipt_digest.as_str() {
+        return Err(infrastructure(format!(
+            "the attestation answers receipt {}, but the run was admitted under {receipt_digest}",
+            attestation.receipt_digest()
+        )));
+    }
 
     Ok(RunReceiptOutput {
-        attestation: verified,
+        attestation,
         attestation_digest,
         receipt_digest,
         execution_id: execution_id.to_string(),
