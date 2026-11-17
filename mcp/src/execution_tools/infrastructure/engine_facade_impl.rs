@@ -330,6 +330,17 @@ impl EngineFacade for EngineFacadeImpl {
             identity,
             identity_verification_failure: verification_failure,
             enforcement_preset: None,
+            // `None` on purpose, not unfinished wiring (#1619). This façade is the surface the MCP
+            // tool, the CLI, the server and the action share, and none of them accepts a receipt in
+            // its request shape: an R0 is a whole document with a workspace identity, declared
+            // effects and a digest, and putting one behind a tool parameter is a contract change
+            // across five published channels (and would let a caller declare its own effects).
+            //
+            // The crate's door for a host that *has* a receipt is
+            // `rigorix_engine::receipt::run_receipt`, which runs it, seals the attestation and reads
+            // it back. What the façade can honestly report is that it declared nothing — and it does:
+            // `receipt_digest` below is `None` for every run started here, so "this run was admitted
+            // under a receipt" is never claimed by a path that had none.
             receipt: None,
         };
 

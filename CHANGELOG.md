@@ -36,6 +36,21 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   per-stage conditioning working by passing on the cold column; the run-level row now answers the same way. No ceiling moved —
   the `total` row's cold sample is still the 2409s one — so a 23-minute run that built crates passes and a 23-minute run that
   built nothing still fails.
+- **The crate has a documented run surface: `receipt::run_receipt`** (#1619). `rigorix-engine 1.15.0` publishes the receipt
+  type, `verify`, `Attestation` and `refuse_foreign_execution`, so a consumer could **author** a declaration and **check** one —
+  and could not **run** one. The only worked composition in this workspace is `mcp::host::build_real_engine`, four hundred lines
+  of audit queue, hook runner, LLM classifier and policy wiring, and the orchestrator's own constructor takes eight
+  collaborators. A host that links the crate wrote R0 by hand, verified it, and had no call to make; the harness is the first
+  such host. `receipt::run_receipt(workspace, &receipt, steps, RunReceiptConfig)` now runs it, seals the attestation and returns
+  it **read back through `verify_attestation`**, so a caller holds what any verifier would compute rather than a second copy.
+  The three decisions a host may not delegate have no defaults: `state_dir` (a directory inside the workspace lets the agent
+  rewrite the seal), `audit_key` (`None` is an unsigned run, and the store refuses rather than writing an unsealed record), and
+  `permission_mode` (an enforcer that was never built is a skipped gate). It does not plan: the steps are supplied by the
+  receipt, and `planning::application::SuppliedStepsPlanning` refuses every planning method with the reason, so a run that
+  reaches planning fails with a sentence instead of a plan built from an empty classifier. The MCP/CLI façade still sends
+  `receipt: None`, now with the paragraph that says why (an R0 behind a tool parameter is a contract change across five published
+  channels, and the façade reports `receipt_digest: None` for every run it starts). The packaged-artifact check compiles the call
+  from the tarball, so a release that lost the run door fails before publish.
 - **The run-level budget row is consistent with its own decomposition** (#1618). `total` carried band 0 while the eight stage
   rows it bounds carried 394 s between them, against a total ceiling of 770 s that was itself 9 s below the 779 s of stage
   ceilings it bounds. Two reachable states therefore failed the run while no stage failed: every stage exactly at its ceiling

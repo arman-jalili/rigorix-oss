@@ -18,7 +18,9 @@
 #      path — and `[patch.crates-io]` pointing at the unpacked tarball, which is how the packaged
 #      source is the one that resolves while the *requirement* stays the version a host would write;
 #   4. `cargo check` runs in the consumer, naming `rigorix_engine::receipt::{Receipt, verify,
-#      Attestation}` and reading `Attestation::receipt_digest()`.
+#      Attestation}` and reading `Attestation::receipt_digest()`, plus — since #1619 — calling
+#      `receipt::run_receipt` with a `RunReceiptConfig`, reading `RunReceiptOutput` and matching
+#      `RunReceiptError`. A packaged surface that lost the run door fails here, before publish.
 #
 # Two assertions, because the feature boundary is the interesting half:
 #
@@ -53,7 +55,9 @@ consumer_main() {
     cat <<'RUST'
 //! A consumer of the published surface, written the way a host writes it (#1591).
 
-use rigorix_engine::receipt::{Attestation, Receipt, verify};
+use rigorix_engine::receipt::{
+    Attestation, Receipt, RunReceiptConfig, RunReceiptError, RunReceiptOutput, verify,
+};
 
 fn main() {
     // The door a host's document meets.
@@ -65,6 +69,29 @@ fn main() {
         attestation.receipt_digest()
     }
     let _reads_the_field = pinned as fn(&Attestation) -> &str;
+
+    // #1619: the surface a host that *has* a receipt calls. Named, called and read from, because a
+    // type that only exists is not a door — this is the shape the harness compiles against.
+    async fn run(workspace: &std::path::Path, receipt: &Receipt) -> Result<RunReceiptOutput, RunReceiptError> {
+        let config = RunReceiptConfig {
+            state_dir: std::path::PathBuf::from("/var/lib/consumer/.rigorix/state"),
+            audit_key: std::env::var("RIGORIX_HMAC_KEY").ok(),
+            permission_mode: rigorix_engine::permission::domain::PermissionMode::WorkspaceWrite,
+        };
+        rigorix_engine::receipt::run_receipt(workspace, receipt, Vec::new(), config).await
+    }
+    let _door = run;
+
+    fn answers(output: &RunReceiptOutput) -> bool {
+        output.attestation.receipt_digest() == output.receipt_digest
+    }
+    let _reads_the_answer = answers as fn(&RunReceiptOutput) -> bool;
+
+    // And the refusal a host matches on, so the type is not merely present.
+    fn refused(error: &RunReceiptError) -> bool {
+        matches!(error, RunReceiptError::Refused(_))
+    }
+    let _matches_the_refusal = refused as fn(&RunReceiptError) -> bool;
 }
 RUST
 }
@@ -154,7 +181,7 @@ PACKAGED="$UNPACK/$CRATE-$VERSION"
 [[ -d "$PACKAGED" ]] || { echo "❌ check-packaged-surface: the tarball did not unpack to $PACKAGED" >&2; exit 1; }
 
 if run_check "$VERSION" "$PACKAGED" verbose; then
-    echo -e "${GREEN}✅ packaged surface: $CRATE $VERSION exposes receipt::{Receipt, verify, Attestation} with default features, and withholds it under \`portable\`${NC}"
+    echo -e "${GREEN}✅ packaged surface: $CRATE $VERSION exposes receipt::{Receipt, verify, Attestation, run_receipt} with default features, and withholds it under \`portable\`${NC}"
 else
     exit 1
 fi

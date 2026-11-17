@@ -23,6 +23,7 @@
 //! [`application::service::verify`]; an attestation that lies cannot be produced, and one that is
 //! altered afterwards fails [`domain::attestation::verify_attestation`].
 
+pub mod api;
 pub mod application;
 pub mod domain;
 pub mod infrastructure;
@@ -42,3 +43,6 @@ pub use domain::receipt::{
 };
 pub use domain::refusal::{ReceiptRefusal, ReceiptVerdict};
 pub use domain::schema::{RECEIPT_SCHEMA_PATH, receipt_schema, receipt_schema_text};
+
+// The crate's documented run surface (#1619): the call a host that links this crate makes.
+pub use api::{RunReceiptConfig, RunReceiptError, RunReceiptOutput, run_receipt};

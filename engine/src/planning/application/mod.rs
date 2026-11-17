@@ -21,6 +21,7 @@ pub mod mock_extractor;
 pub mod pipeline_factory_impl;
 pub mod pipeline_impl;
 pub mod service;
+pub mod supplied_steps;
 pub mod symbol_validation_impl;
 
 pub use factory::*;
@@ -29,4 +30,5 @@ pub use mock_extractor::*;
 pub use pipeline_factory_impl::*;
 pub use pipeline_impl::*;
 pub use service::*;
+pub use supplied_steps::*;
 pub use symbol_validation_impl::*;
