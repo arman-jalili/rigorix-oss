@@ -341,7 +341,7 @@ async fn service(
     policy: Arc<super::RecordingPolicy>,
 ) -> OrchestratorServiceImpl {
     use crate::orchestrator::application::orchestrator_mocks as mocks;
-    OrchestratorServiceImpl::new(
+    OrchestratorServiceImpl::ungoverned(
         crate::orchestrator::domain::OrchestratorConfig::default(),
         Arc::new(mocks::MockPlanningService::new()),
         Arc::new(CountingExecutionService { calls }),
@@ -1260,7 +1260,7 @@ async fn writing_service(
     captured: Arc<std::sync::Mutex<Option<audit_app::BuildEnvelopeInput>>>,
 ) -> OrchestratorServiceImpl {
     use crate::orchestrator::application::orchestrator_mocks as mocks;
-    OrchestratorServiceImpl::new(
+    OrchestratorServiceImpl::ungoverned(
         crate::orchestrator::domain::OrchestratorConfig::default(),
         Arc::new(mocks::MockPlanningService::new()),
         Arc::new(WritingExecutionService {

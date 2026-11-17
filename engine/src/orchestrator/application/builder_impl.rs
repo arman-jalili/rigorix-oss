@@ -275,7 +275,7 @@ impl OrchestratorBuilder for OrchestratorBuilderImpl {
         let scored_evaluation_service = self.scored_evaluation_service;
         let sequence_policy_service = self.sequence_policy_service;
 
-        let mut orchestrator = OrchestratorServiceImpl::new(
+        let mut orchestrator = OrchestratorServiceImpl::ungoverned(
             config,
             planning_pipeline,
             execution_service,

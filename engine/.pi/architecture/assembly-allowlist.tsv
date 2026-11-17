@@ -1,0 +1,31 @@
+# One-assembly allow-list (#1627, ADR-025 D5).
+#
+# Every entry here is a place that reaches a governed seam **without** going through
+# `engine/src/gate/infrastructure/assembly.rs`. A published assembly is a convenience until something
+# fails when it is bypassed; `engine/tests/one_assembly.rs` is that something, and this file is its
+# subject — a named list rather than a regex inside the test, because a judgement with no record is the
+# silence the register removes.
+#
+# Columns (tab-separated):
+#   needle    the text that must not appear outside the assembly
+#   path      the file allowed to contain it (`*` matches one path segment)
+#   reason    why that site may bypass the assembly — write it as a sentence
+#
+# What the scan reads, and what it deliberately does not:
+#
+#   * production lines only — a doc comment that names a seam is not a call site;
+#   * nothing after the first `#[cfg(test)]` in a file, and no file under a `tests/` directory: a test
+#     that arms a seam against a fixture repository is measuring the seam, not composing a host;
+#   * nothing under `target/`.
+#
+# The third rule is why there are no `tests` rows here: an exception for a path the scan never visits is
+# a stale permission, and a stale permission is how the next bypass gets waved through. The test fails on
+# a row that matches nothing, in either direction.
+OrchestratorServiceImpl::ungoverned	engine/src/orchestrator/application/builder_impl.rs	`OrchestratorBuilderImpl` takes every collaborator from its caller and wires no seam, so it *is* the ungoverned path; a host that wants governance calls the assembly (#1626)
+PreconditionSetup::from_env	engine/src/gate/infrastructure/setup.rs	`GateSetup` is where the loading semantics live (absent → no gate, malformed → unarmed gate); the assembly calls `GateSetup`
+SequencePolicySetup::from_env	engine/src/gate/infrastructure/setup.rs	the same rule as the precondition setup: one loader, called by the assembly
+PreconditionSetup::from_env	cli/src/cli_boundary/doctor.rs	`rigorix doctor` reports which operator files are malformed: it *reads* the files to answer a question and constructs no engine
+SequencePolicySetup::from_env	cli/src/cli_boundary/doctor.rs	the same report, for the plan-time gate
+CapacitySetup::from_env	cli/src/cli_boundary/doctor.rs	the same report, for the capacity ledger
+EffectCommitmentSetup::from_env	cli/src/cli_boundary/doctor.rs	the same report, for the commitment seam
+ApprovalBindingSetup::from_env_with_signing_key	cli/src/cli_boundary/doctor.rs	the same report, for the approval store

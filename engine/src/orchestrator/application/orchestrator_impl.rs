@@ -351,8 +351,70 @@ impl OrchestratorServiceImpl {
         }
     }
 
+    /// Build an orchestrator that has **not** been through the governed assembly.
+    ///
+    /// The name is the documentation (#1626, ADR-025 D2). It exists for the callers that legitimately
+    /// need an ungated engine — unit tests, the portable slice, a deliberately ungoverned probe — and
+    /// `engine/tests/one_assembly.rs` counts its call sites so the list cannot grow quietly. A host
+    /// reaches the governed path through `gate::infrastructure::assemble`, which passes the witness
+    /// this constructor requires.
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub fn ungoverned(
+        config: OrchestratorConfig,
+        planning_pipeline: Arc<dyn crate::planning::application::PlanningPipelineService>,
+        execution_service: Arc<dyn exec_svc::ParallelExecutionService>,
+        state_manager: Arc<dyn state_svc::StateManagerService>,
+        cancellation_service: Arc<dyn cancel_app::CancellationService>,
+        event_bus: Arc<dyn event_app::EventBusService>,
+        audit_service: Option<Arc<dyn audit_app::AuditService>>,
+        budget_service: Arc<dyn budget_app::LlmBudgetService>,
+        code_graph_service: Option<Arc<dyn CodeGraphServiceTrait>>,
+    ) -> Self {
+        Self::build(
+            config,
+            planning_pipeline,
+            execution_service,
+            state_manager,
+            cancellation_service,
+            event_bus,
+            audit_service,
+            budget_service,
+            code_graph_service,
+        )
+    }
+
+    /// Build an orchestrator the governed assembly produced.
+    ///
+    /// The witness is the argument that matters: without it this constructor does not typecheck, so
+    /// "this engine consults ADR-017's gate" stops being a property of a source file (#1626).
+    #[allow(clippy::too_many_arguments)]
+    pub fn governed(
+        _governed: crate::gate::domain::Governed,
+        config: OrchestratorConfig,
+        planning_pipeline: Arc<dyn crate::planning::application::PlanningPipelineService>,
+        execution_service: Arc<dyn exec_svc::ParallelExecutionService>,
+        state_manager: Arc<dyn state_svc::StateManagerService>,
+        cancellation_service: Arc<dyn cancel_app::CancellationService>,
+        event_bus: Arc<dyn event_app::EventBusService>,
+        audit_service: Option<Arc<dyn audit_app::AuditService>>,
+        budget_service: Arc<dyn budget_app::LlmBudgetService>,
+        code_graph_service: Option<Arc<dyn CodeGraphServiceTrait>>,
+    ) -> Self {
+        Self::build(
+            config,
+            planning_pipeline,
+            execution_service,
+            state_manager,
+            cancellation_service,
+            event_bus,
+            audit_service,
+            budget_service,
+            code_graph_service,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build(
         config: OrchestratorConfig,
         planning_pipeline: Arc<dyn crate::planning::application::PlanningPipelineService>,
         execution_service: Arc<dyn exec_svc::ParallelExecutionService>,
@@ -591,7 +653,7 @@ impl OrchestratorServiceImpl {
 
     #[cfg(test)]
     pub fn default_test() -> Self {
-        Self::new(
+        Self::ungoverned(
             OrchestratorConfig::default(),
             Arc::new(super::super::orchestrator_mocks::MockPlanningService::new()),
             Arc::new(super::super::orchestrator_mocks::MockExecutionService),

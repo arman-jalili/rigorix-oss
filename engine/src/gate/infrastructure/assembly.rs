@@ -478,7 +478,8 @@ pub async fn assemble(config: GovernedAssemblyConfig) -> Result<GovernedAssembly
     ));
 
     // ── The orchestrator, and the two halves of the seal ──────────────────────
-    let mut orchestrator = OrchestratorServiceImpl::new(
+    let mut orchestrator = OrchestratorServiceImpl::governed(
+        crate::gate::domain::Governed::witness(),
         config.orchestrator.clone(),
         Arc::clone(&config.planning),
         Arc::clone(&execution),
