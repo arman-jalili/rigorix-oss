@@ -60,7 +60,8 @@
 #
 # The **band** is the movement this table treats as noise, per row, in integer seconds:
 #
-#   band = min(78, warm_ceiling)        for a stage;   band = 0 for `total`
+#   band        = min(78, warm_ceiling)   for a stage
+#   band_total  = sum of the stage bands  for `total`   (78+17+78+33+78+78+31+1 = 394 below)
 #   78   = 1.3 min x 60 = 13 x 6        the largest per-stage run-to-run spread recorded in
 #                                       `.github/ci-budgets.tsv` (0.4-1.3 minutes per stage)
 #
@@ -71,9 +72,24 @@
 # `warm_ceiling` keeps a short row honest — a 1-second stage cannot be 78 seconds of noise, because
 # that is twice its whole budget.
 #
-# `total` has no band: its subject is the run, and a run that overshoots by four minutes is not the
-# same code measured twice. `validate-budget-derivation.sh` recomputes every band from these two
-# rules and from the spread recorded in `.github/ci-budgets.tsv`.
+# The run-level row's band is the **sum of the stage bands**, because that is what its subject is made
+# of (#1618). It used to be 0, and the arithmetic did not support the separation: the eight stage warm
+# ceilings sum to 779 s against a total ceiling of 770 s, so a run in which every stage sat exactly at
+# its ceiling — no row failing anything — failed the run by 9 s; and a run in which every stage moved
+# inside its own band (up to 394 s of movements each individually called noise) failed the run while
+# every stage printed "warn". Two rows answering "is this too slow?" with different rules is the defect
+# class #1562 and #1604 belong to; this row was the last one where a one-second movement was a failure.
+#
+# So a run-level overrun means what it says: the stages agree, because their tolerances have already
+# been spent and the run is still outside. A one-second overrun past `ceiling + band` is a failure, a
+# movement of one second anywhere inside it is not, and a stage over its own ceiling is named in the
+# run's verdict — `local-ci.sh` prints the contributing rows rather than the total alone.
+#
+# The invariant that made the defect reachable is now checked, not trusted: `warm_ceiling + band` for
+# `total` must be at least the sum of the stage warm ceilings (770 + 394 >= 779), so a ceiling that is
+# really a bound on a decomposition of itself is refused by `validate-budget-derivation.sh`, which
+# recomputes the band from the rows above it and re-derives every stage band from the spread in
+# `.github/ci-budgets.tsv`.
 #
 # The conditioning rule the guard also checks:
 #
@@ -135,4 +151,4 @@ guards	83	4	76	unmeasured	221	6	201	unmeasured	78	2026-11-15	8-core (aarch64, ma
 coverage	379	4	345	unmeasured	379	6	345	unmeasured	78	2026-11-15	8-core (aarch64, macOS)
 docs	31	4	29	unmeasured	38	6	35	unmeasured	31	2026-11-15	8-core (aarch64, macOS)
 integration	1	4	1	unmeasured	1	6	1	unmeasured	1	2026-11-15	8-core (aarch64, macOS)
-total	770	5	700	unmeasured	2409	6	2190	unmeasured	0	2026-11-15	8-core (aarch64, macOS)
+total	770	5	700	unmeasured	2409	6	2190	unmeasured	394	2026-11-15	8-core (aarch64, macOS)
