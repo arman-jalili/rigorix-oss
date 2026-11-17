@@ -36,6 +36,17 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   per-stage conditioning working by passing on the cold column; the run-level row now answers the same way. No ceiling moved —
   the `total` row's cold sample is still the 2409s one — so a 23-minute run that built crates passes and a 23-minute run that
   built nothing still fails.
+- **Governance is a type and a guard, not a convention** (#1626, #1627, ADR-025 D2/D5). `OrchestratorServiceImpl::new` accepted a
+  caller-built execution service, so "this engine consults ADR-017's gate at dispatch" was a property of a source file. It is now
+  two instruments, because neither is sufficient: **`gate::domain::Governed`** is a witness with no content, a private field and
+  one `pub(crate)` producer — the assembly — that `OrchestratorServiceImpl::governed` requires, so an orchestrator that has not
+  passed the seam order does not typecheck; and **`engine/tests/one_assembly.rs`** is a source scan with
+  `engine/.pi/architecture/assembly-allowlist.tsv` as its subject, because a type cannot reach `cfg`-gated code, macro-generated
+  code, or a host that writes its own import. The named alternative for a caller that legitimately needs no gate is
+  `OrchestratorServiceImpl::ungoverned`: the name is the documentation, and its call sites are counted. The guard reads
+  production lines only and **skips** (not truncates at) a `#[cfg(test)]` module — a first version broke at the marker and was
+  blind to everything below it, measured by planting a seam at the end of `mcp/src/host/mod.rs` and watching it pass. A row that
+  matches nothing is a failure too: a stale permission is how the next bypass gets waved through.
 - **One governed assembly: the engine publishes the call every host makes** (#1625, ADR-025 D1/D5). The tree had four assemblies of one
   machine, measured rather than asserted: `mcp::host::build_real_engine` wired nine seams by hand (2 297 lines),
   `actions::main` eight (1 284), `cli::cli_boundary::orchestrator` used `GateSetup` and wired the rest (888), and

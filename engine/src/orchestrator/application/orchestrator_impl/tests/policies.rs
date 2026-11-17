@@ -229,7 +229,7 @@ async fn test_sequence_policy_corrupt_config_refuses_run_no_steps_execute() {
     let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(
         TomlSequencePolicyRepository::new(&path),
     )));
-    let orch = OrchestratorServiceImpl::new(
+    let orch = OrchestratorServiceImpl::ungoverned(
         OrchestratorConfig::default(),
         Arc::new(super::super::super::orchestrator_mocks::MockPlanningService::new()),
         executor,
@@ -311,7 +311,7 @@ async fn test_sequence_policy_promotion_recorded_in_envelope_events_redacted() {
     let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
         config: Some(conference_policy(RuleAction::Promote)),
     })));
-    let orch = OrchestratorServiceImpl::new(
+    let orch = OrchestratorServiceImpl::ungoverned(
         OrchestratorConfig::default(),
         Arc::new(super::super::super::orchestrator_mocks::MockPlanningService::new()),
         executor,
@@ -567,7 +567,7 @@ fn test_planning_prompt_content_gated() {
     assert!(orch_off.planning_prompt_content(&planning).is_none());
 
     // Enabled -> deterministic JSON of template + resolved parameters.
-    let orch_on = OrchestratorServiceImpl::new(
+    let orch_on = OrchestratorServiceImpl::ungoverned(
         OrchestratorConfig {
             capture_planning_prompt: true,
             ..Default::default()
@@ -705,7 +705,7 @@ async fn test_r7_cross_run_same_principal_remove_then_add_refused_at_plan_time()
             Box::new(RetryEvaluationServiceImpl::new()),
             Arc::new(EventBusServiceImpl::default()),
         ));
-    let orch = OrchestratorServiceImpl::new(
+    let orch = OrchestratorServiceImpl::ungoverned(
         OrchestratorConfig::default(),
         Arc::new(super::super::super::orchestrator_mocks::MockPlanningService::new()),
         executor,

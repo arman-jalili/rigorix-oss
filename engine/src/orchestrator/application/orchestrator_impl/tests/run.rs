@@ -86,7 +86,7 @@ async fn test_run_from_template_refused_when_budget_exhausted() {
     // Budget allows only 2 calls; the runbook needs 3.
     let budget: Arc<dyn budget_app::LlmBudgetService> =
         Arc::new(LlmBudgetImpl::new(2, 1000, "test".into()));
-    let orch = OrchestratorServiceImpl::new(
+    let orch = OrchestratorServiceImpl::ungoverned(
         OrchestratorConfig::default(),
         Arc::new(super::super::super::orchestrator_mocks::MockPlanningService::new()),
         executor,

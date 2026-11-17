@@ -223,7 +223,7 @@ fn real_orchestrator_with_conference_policy(action: RuleAction) -> OrchestratorS
     let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
         config: Some(conference_policy(action)),
     })));
-    OrchestratorServiceImpl::new(
+    OrchestratorServiceImpl::ungoverned(
         OrchestratorConfig::default(),
         Arc::new(super::super::orchestrator_mocks::MockPlanningService::new()),
         executor,
@@ -324,7 +324,7 @@ fn real_orchestrator_with_requirement(config: SequencePolicyConfig) -> Orchestra
     let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
         config: Some(config),
     })));
-    OrchestratorServiceImpl::new(
+    OrchestratorServiceImpl::ungoverned(
         OrchestratorConfig::default(),
         Arc::new(super::super::orchestrator_mocks::MockPlanningService::new()),
         executor,
