@@ -80,7 +80,7 @@ fn main() {
             audit_key: std::env::var("RIGORIX_HMAC_KEY").ok(),
             permission_mode: rigorix_engine::permission::domain::PermissionMode::WorkspaceWrite,
         };
-        rigorix_engine::receipt::run_receipt(workspace, receipt, Vec::new(), config).await
+        rigorix_engine::receipt::run_receipt(workspace, receipt, config).await
     }
     let _door = run;
 

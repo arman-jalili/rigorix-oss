@@ -17,6 +17,20 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+## [1.16.1] - 2026-11-18
+
+### Fixed
+
+- **The packaged-surface check compiles against the run surface the crate actually has** (#1643). `1.16.0`
+  was tagged and published nothing: the release's `check-packaged-surface.sh` fixture — the one artifact
+  that proves the *tarball* exposes the door a host compiles against — still called
+  `run_receipt(workspace, receipt, Vec::new(), config)` with the `steps` argument #1629 removed, so the
+  release failed at `error[E0061]: this function takes 3 arguments but 4 arguments were supplied` before
+  `cargo publish` ran. The fixture now calls `run_receipt(workspace, receipt, config)`, and the packaged
+  tarball is asserted to expose `receipt::{Receipt, verify, Attestation, run_receipt}` and
+  `gate::infrastructure::assemble`. No crate was published under `1.16.0`; the version is skipped rather
+  than moved, because a tag is immutable even when the run behind it produced nothing.
+
 ## [1.16.0] - 2026-11-18
 
 ### Changed
