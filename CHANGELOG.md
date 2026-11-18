@@ -81,9 +81,13 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   state directory, the signing key and the permission mode have no default — each one defaulted wrongly produces a run that
   looks governed and is not. All four hosts now call it; `PreconditionSetup::from_env` and `SequencePolicySetup::from_env` appear
   nowhere outside the engine. `run_receipt` gained what the assembly made visible: `RunReceiptError::RefusedAtGate`, because a
-  step refused before dispatch is not a step that ran, and `TaskResult` gained `failure_type`, because the dispatcher had always
-  recorded *why* a step failed (`precondition_denied`, `sandbox_undeclared`) and the orchestrator's mapping dropped it — leaving
-  a host to match on a sentence.
+  step refused before dispatch is not a step that ran.
+- **A step result says *why* it failed, so a host can match a code instead of a sentence** (#1625). The dispatcher has recorded
+  the reason a step was refused (`precondition_denied`, `sandbox_undeclared`) since the precondition gate landed; the
+  orchestrator's mapping dropped the field, so every host saw only the prose — the same defect class as an abbreviated digest,
+  a fact present and unusable. `TaskResult` now carries `failure_type: Option<String>`, and `TaskResult::refusal(..)` fills it.
+  This is a **host-visible behaviour change**: `rigorix_mcp`, `rigorix_cli` and `rigorix_actions` receive the code, and
+  `RunReceiptError::RefusedAtGate { step, code, detail }` is that code surfaced to a receipt's caller.
 - **The attestation store has a read side, and the location rule has one owner** (#1628, ADR-025 D4). `FileAttestationStore`
   exposed `put` and no `get`, so the only way to obtain a sealed attestation was to know where the store had put it — and
   `receipt::api::run_receipt` did exactly that, spelling `<state dir>/attestations/<id>.json` in a second file. Two files held
