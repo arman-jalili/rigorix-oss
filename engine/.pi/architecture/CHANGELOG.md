@@ -1,3 +1,44 @@
+## [2026-11-18] — ADR-025 Accepted: one governed assembly, and the builds that prove it is the only one
+
+### Added
+- **ADR-025 (Accepted).** The engine constructed its own machine four times — `mcp::host::build_real_engine`
+  (2 297 lines), `actions::main` (1 284), `cli::cli_boundary::orchestrator` (888, the only one calling
+  `GateSetup`) and `receipt::api::run_receipt` (#1619, 417, which attached **no** gate). The fourth was written
+  *after* `GateSetup` existed and did not mention it, which is `GateSetup`'s own header coming true: "the next
+  runtime would have to rediscover it". ADR-025 makes the assembly the crate's, publishes it as
+  `gate::infrastructure::assemble`, and moves all four hosts onto it (#1625).
+- `gate::domain::Governed` — a witness with a private field and one `pub(crate)` producer, so an orchestrator
+  cannot be built without the assembly's say-so; `OrchestratorServiceImpl::ungoverned` names the escape rather
+  than leaving a `new` that looks ordinary (#1626). The module is gated out of the portable slice, because a
+  token claiming a seam order no build in the slice performs is a claim with no subject (#1640).
+- `receipt::api::run_receipt(workspace, &receipt, config)` — the runbook is the document: `ReceiptStep` carries
+  `id`, `tool`, `parameters`, `depends_on`, `declared_effects`, `expectation`, `requires_approval` and
+  `timeout_secs`, so the steps are derived in one exhaustive destructor instead of being supplied beside the
+  receipt (#1629). `verify_against_plan` now checks the derived plan, not the caller's.
+- `FileAttestationStore::get` and a typed `NotFound`, so the location rule has one owner; `run_receipt` stops
+  spelling `state_dir/attestations/<id>.json` (#1628).
+- `ParallelExecutionFactoryConfig::precondition` becomes `PreconditionArming::{Armed, Absent}` with no `Default`
+  impl: `None` was the value you get by omitting the field, so "this executor consults no gate" was a decision
+  nobody wrote (#1636).
+- `TaskResult` carries `failure_type`. The dispatcher had recorded why a step failed since ADR-017; the
+  orchestrator's mapping discarded it, so every host could only match on a sentence (#1625).
+
+### Fixed
+- **`mcp/src/engine_wiring.rs` — a fifth assembly that no module declared.** `grep -rn 'mod engine_wiring'` found
+  nothing, so `rustc` never saw the file; its `#[cfg(feature = "real-engine")]` selected a feature no manifest
+  defines, and `build_engine_facade` had one mention in the workspace — its own definition — around an
+  unconditional `panic!`. The panic baseline held a row for a site no build ever produced, and ADR-024 cited the
+  file as evidence for where the state dir lives. All three are gone; the baseline reports 36 production sites
+  (was 37) and ADR-024 names the citation as a file that never ran (#1637).
+- **The portable slice has one owner.** `local-ci` ran the same `cargo check` without the pipeline's
+  `RUSTFLAGS: "-D warnings"`, and `Governed::witness` was dead code in the slice: the local gate reported 126/126
+  while two CI jobs failed to build it. The invocation now lives in `validate-portable-slice.sh`
+  (`--require-target --with-tests --with-bundle`), `local-ci` and the pipeline both call it, and
+  `engine/tests/one_portable_invocation.rs` fails when the workflow restates it (#1641).
+- `validate-source-reachability.sh` — every `*.rs` under a crate's `src/` must be reachable from its crate root,
+  allow-listed with a reason per row. A file no module declares is invisible to both the compiler and to a guard
+  that scans code that compiles (#1637).
+
 ## [2026-11-13] — ADR-024 is Proposed: the receipt the host writes, the attestation only the engine can sign
 
 ### Added

@@ -2850,7 +2850,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-actions"
-version = "1.15.0"
+version = "1.16.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2879,7 +2879,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-cli"
-version = "1.15.0"
+version = "1.16.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2906,7 +2906,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-engine"
-version = "1.15.0"
+version = "1.16.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -2945,7 +2945,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-gate-wasi"
-version = "1.15.0"
+version = "1.16.0"
 dependencies = [
  "rigorix-gate-wasm",
  "serde",
@@ -2954,7 +2954,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-gate-wasm"
-version = "1.15.0"
+version = "1.16.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2969,7 +2969,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-mcp"
-version = "1.15.0"
+version = "1.16.0"
 dependencies = [
  "apple-native-keyring-store",
  "async-trait",
@@ -3006,7 +3006,7 @@ dependencies = [
 
 [[package]]
 name = "rigorix-server"
-version = "1.15.0"
+version = "1.16.0"
 dependencies = [
  "async-trait",
  "axum",

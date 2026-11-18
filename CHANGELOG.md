@@ -17,6 +17,8 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-11-18
+
 ### Changed
 
 - **The local gate has the noise floor the CI-side gate already had** (#1612, first half). A release-prep run at `23a78b2d`
