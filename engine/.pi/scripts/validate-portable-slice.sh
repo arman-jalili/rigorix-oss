@@ -131,7 +131,13 @@ run() {
 
     if [ "$WITH_TESTS" = 'true' ]; then
         local tout tstatus=0
-        tout="$(RUSTFLAGS="-D warnings" cargo test --locked -p rigorix-engine --features portable \
+        # Deliberately *not* under `-D warnings`: rustc's fingerprint includes RUSTFLAGS, so a test
+        # compile with a different flag set is a second, full build graph of the same crates — it
+        # invalidated the cache on every run (4m22s for a stage whose warm ceiling is 17s) and would
+        # have done so forever. The dead-code question that started this (#1626) is answered by the
+        # `check` above, which does carry the policy; CI's job-level flag still applies to this step
+        # there, where the graph is built once for the whole job.
+        tout="$(cargo test --locked -p rigorix-engine --features portable \
             --tests --manifest-path "$root/Cargo.toml" 2>&1)" || tstatus=$?
         if [ "$tstatus" -ne 0 ]; then
             printf '  %b❌%b the slice'"'"'s own tests fail\n' "$RED" "$NC"

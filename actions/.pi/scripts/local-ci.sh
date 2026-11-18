@@ -960,7 +960,7 @@ stage_build() {
         # The portable tests are the script's subject too (#1641), so they are switched on here
         # rather than restated: one body, and the flags travel with the command.
         run_root_script "validate-portable-slice.sh (wasm32 + inventory + portable tests)" \
-            "$ROOT/.pi/scripts/validate-portable-slice.sh" "--with-tests"
+            ".pi/scripts/validate-portable-slice.sh" "--with-tests"
     fi
     stage_end
 }
