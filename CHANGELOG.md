@@ -36,6 +36,21 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   per-stage conditioning working by passing on the cold column; the run-level row now answers the same way. No ceiling moved —
   the `total` row's cold sample is still the 2409s one — so a 23-minute run that built crates passes and a 23-minute run that
   built nothing still fails.
+- **One governed assembly: the engine publishes the call every host makes** (#1625, ADR-025 D1/D5). The tree had four assemblies of one
+  machine, measured rather than asserted: `mcp::host::build_real_engine` wired nine seams by hand (2 297 lines),
+  `actions::main` eight (1 284), `cli::cli_boundary::orchestrator` used `GateSetup` and wired the rest (888), and
+  `receipt::api::run_receipt` — the only one that looks like an API, written *after* `GateSetup` existed — attached no
+  precondition gate at all (417). A host that reached that fourth one obtained an engine which could not tell "no findings" from
+  "no gate": the two are the same output. `gate::infrastructure::assemble(GovernedAssemblyConfig)` is now the door: one `async
+  fn`, not a builder, which reads the operator's `.rigorix/` files and attaches the precondition gate, the sequence policy, the
+  capacity ledger, the effect commitment, the approval binding, the permission enforcer, the sandbox declaration and the
+  recovery recipes **in the order they are consulted**, then constructs the orchestrator and the seal. The workspace root, the
+  state directory, the signing key and the permission mode have no default — each one defaulted wrongly produces a run that
+  looks governed and is not. All four hosts now call it; `PreconditionSetup::from_env` and `SequencePolicySetup::from_env` appear
+  nowhere outside the engine. `run_receipt` gained what the assembly made visible: `RunReceiptError::RefusedAtGate`, because a
+  step refused before dispatch is not a step that ran, and `TaskResult` gained `failure_type`, because the dispatcher had always
+  recorded *why* a step failed (`precondition_denied`, `sandbox_undeclared`) and the orchestrator's mapping dropped it — leaving
+  a host to match on a sentence.
 - **The attestation store has a read side, and the location rule has one owner** (#1628, ADR-025 D4). `FileAttestationStore`
   exposed `put` and no `get`, so the only way to obtain a sealed attestation was to know where the store had put it — and
   `receipt::api::run_receipt` did exactly that, spelling `<state dir>/attestations/<id>.json` in a second file. Two files held

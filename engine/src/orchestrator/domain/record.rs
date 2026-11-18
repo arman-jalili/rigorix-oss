@@ -110,6 +110,15 @@ pub struct TaskResult {
     /// Error detail if the task failed.
     pub error: Option<String>,
 
+    /// The failure type the dispatcher recorded, when the step failed (#1625).
+    ///
+    /// The executor has carried this since the precondition gate landed — `precondition_denied`,
+    /// `sandbox_undeclared`, `budget_exceeded` — and the orchestrator's mapping dropped it, so the
+    /// only way for a host to tell *why* a step failed was to read the error sentence. A refusal's
+    /// code is a fact a caller branches on; a sentence is not.
+    #[serde(default)]
+    pub failure_type: Option<String>,
+
     /// Number of retry attempts made.
     pub retry_attempts: u32,
 
@@ -310,6 +319,7 @@ impl TaskResult {
             duration_ms,
             output: None,
             error: None,
+            failure_type: None,
             retry_attempts: 0,
             tool_used: None,
         }
@@ -324,8 +334,24 @@ impl TaskResult {
             duration_ms,
             output: None,
             error: Some(error),
+            failure_type: None,
             retry_attempts: 0,
             tool_used: None,
+        }
+    }
+
+    /// The same failure, naming why it failed in the dispatcher's own vocabulary.
+    #[must_use]
+    pub fn refusal(
+        node_id: String,
+        node_name: String,
+        code: impl Into<String>,
+        error: String,
+        duration_ms: u64,
+    ) -> Self {
+        Self {
+            failure_type: Some(code.into()),
+            ..Self::failure(node_id, node_name, error, duration_ms)
         }
     }
 }

@@ -297,14 +297,25 @@ for marker in "begin_effect" "settle_effect" "effect_blocks_dependents" "retry r
     fi
 done
 
+# #1625 / ADR-025 D1: the seam is armed in ONE place — the engine's governed assembly — and the three
+# roots reach it by calling the assembly. The check moved with its subject: before this it looked for
+# `EffectCommitmentSetup::from_env` in each host, which was true while each host wired its own seams and
+# became a false alarm the moment they were consolidated. A check whose subject moved and which was
+# left pointing at the old shape reports the improvement as a regression.
+ASSEMBLY="${PROJECT_ROOT}/engine/src/gate/infrastructure/assembly.rs"
+if grep -qF "EffectCommitmentSetup::from_env" "${ASSEMBLY}"; then
+    pass "the governed assembly arms the seam: engine/src/gate/infrastructure/assembly.rs"
+else
+    fail "the governed assembly missing EffectCommitmentSetup::from_env"
+fi
 for root in \
     "cli/src/cli_boundary/orchestrator.rs" \
     "mcp/src/host/mod.rs" \
     "actions/src/main.rs"; do
-    if grep -qF "EffectCommitmentSetup::from_env" "${PROJECT_ROOT}/${root}"; then
-        pass "composition root armed: ${root}"
+    if grep -qF "GovernedAssemblyConfig" "${PROJECT_ROOT}/${root}"; then
+        pass "composition root calls the governed assembly: ${root}"
     else
-        fail "composition root missing EffectCommitmentSetup::from_env: ${root}"
+        fail "composition root does not call the governed assembly: ${root}"
     fi
 done
 

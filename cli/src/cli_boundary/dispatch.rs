@@ -1313,7 +1313,7 @@ pub async fn dispatch(
 
     // Build full orchestrator for Tier 1 commands + generate + diff-plan
     let (orch, llm_services): (
-        Option<Box<dyn rigorix_engine::orchestrator::application::OrchestratorService>>,
+        Option<std::sync::Arc<dyn rigorix_engine::orchestrator::application::OrchestratorService>>,
         Option<CliServices>,
     ) = match &command {
         CliCommand::Run { .. }

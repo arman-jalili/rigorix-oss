@@ -37,6 +37,7 @@ fn result_for(id: uuid::Uuid, success: bool) -> TaskResult {
         duration_ms: 1,
         output: None,
         error: None,
+        failure_type: None,
         retry_attempts: 0,
         tool_used: None,
     }
