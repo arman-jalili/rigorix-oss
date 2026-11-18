@@ -10,8 +10,8 @@
 use async_trait::async_trait;
 
 use crate::execution_engine::application::factory::{
-    ParallelExecutionFactory, ParallelExecutionFactoryConfig, RetryEvaluationFactory,
-    RetryEvaluationFactoryConfig,
+    ParallelExecutionFactory, ParallelExecutionFactoryConfig, PreconditionArming,
+    RetryEvaluationFactory, RetryEvaluationFactoryConfig,
 };
 use crate::execution_engine::application::service::{
     ParallelExecutionService, RetryEvaluationService,
@@ -64,13 +64,16 @@ impl ParallelExecutionFactoryImpl {
         if let Some(svc) = config.sequence_policy {
             executor = executor.with_sequence_policy(svc);
         }
-        // ADR-017 R1/R2: attach the operator-authored precondition gate and
-        // step-outcome gating mode when the composition root armed them.
-        // `None` keeps the status-quo dispatch path (no gate).
-        if let Some(setup) = config.precondition {
-            executor = executor
-                .with_gating_mode(setup.gating_mode)
-                .with_precondition_gate(setup.gate);
+        // ADR-017 R1/R2: attach the operator-authored precondition gate and step-outcome gating
+        // mode when the composition root armed them. `Absent` is a decision the config had to write
+        // (#1636), not the absence of one.
+        match config.precondition {
+            PreconditionArming::Armed(setup) => {
+                executor = executor
+                    .with_gating_mode(setup.gating_mode)
+                    .with_precondition_gate(setup.gate);
+            }
+            PreconditionArming::Absent => {}
         }
         // ADR-018: attach the operator-declared capacity seam. `None` keeps the
         // status-quo dispatch path: no seam, and no adapter is ever constructed.
@@ -187,7 +190,7 @@ release_dependents_on_failure = false
             .expect("from_env")
             .expect("fixture present");
         let config = ParallelExecutionFactoryConfig {
-            precondition: Some(setup),
+            precondition: PreconditionArming::Armed(setup),
             ..Default::default()
         };
 
@@ -203,11 +206,54 @@ release_dependents_on_failure = false
     }
 
     #[test]
-    fn factory_config_default_leaves_gate_unset() {
+    fn factory_config_default_writes_the_absence_down() {
+        // #1636: `None` was invisible — it is what you get by omitting the field. `absent()` is a
+        // sentence in the diff, and `Default` is the only place it can still be reached without a
+        // call site saying it.
+        let config = ParallelExecutionFactoryConfig::default();
         assert!(
-            ParallelExecutionFactoryConfig::default()
-                .precondition
-                .is_none()
+            matches!(config.precondition, PreconditionArming::Absent),
+            "the default is an absent gate, written: {:?}",
+            config.precondition
+        );
+        assert!(config.precondition.armed().is_none());
+        assert!(
+            !ParallelExecutionFactoryImpl::build_executor(config).precondition_gate_present(),
+            "an absent arming must attach no gate — the executor must not invent one"
+        );
+    }
+
+    #[test]
+    fn an_armed_config_is_the_only_way_a_gate_reaches_the_executor() {
+        // The positive control for the test above: the same constructor, the same assertion, one
+        // different value. Without it, `!precondition_gate_present()` could be true because the
+        // executor never reads the field at all.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let rigorix = dir.path().join(".rigorix");
+        std::fs::create_dir_all(&rigorix).expect("mkdir");
+        std::fs::write(
+            rigorix.join("preconditions.toml"),
+            r#"
+[[preconditions]]
+id = "guard"
+match = { tool = "payment_execute" }
+command = ["/bin/true"]
+
+[gating]
+release_dependents_on_failure = false
+"#,
+        )
+        .expect("write");
+        let setup = crate::precondition::PreconditionSetup::from_env(dir.path())
+            .expect("from_env")
+            .expect("fixture present");
+        let config = ParallelExecutionFactoryConfig {
+            precondition: PreconditionArming::Armed(setup),
+            ..Default::default()
+        };
+        assert!(
+            ParallelExecutionFactoryImpl::build_executor(config).precondition_gate_present(),
+            "an armed config must attach the gate"
         );
     }
 }

@@ -25,6 +25,7 @@
 #
 # guard	reads	why
 .pi/scripts/validate-panic-sites.sh	**/*.rs	the panic surface is production Rust, wherever it lives
+.pi/scripts/validate-source-reachability.sh	engine/src/**, mcp/src/**, cli/src/**, actions/src/**, server/src/**, wasm/src/**	the subject is the module trees the compiler is given, not the files on disk
 .pi/scripts/validate-unsafe-sites.sh	**/*.rs	the `unsafe` surface is production Rust
 .pi/scripts/validate-secret-logs.sh	**/*.rs	secret material can only reach a log from code
 .pi/scripts/validate-script-drift.sh	**/.pi/**	the mirrored scripts live in every crate's `.pi` tree

@@ -764,7 +764,7 @@ run_cargo_nobuild() { # $1 label, then the cargo subcommand and its arguments �
 }
 
 run_script() {
-    local label="$1" crate="$2" script_abs="$3"
+    local label="$1" crate="$2" script_abs="$3" extra="${4:-}"
     # script_abs is e.g. "engine/.pi/scripts/ci/stage_lint.sh"
     # We strip the crate prefix so it runs from the crate dir
     local script_rel="${script_abs#$crate/}"
@@ -773,15 +773,15 @@ run_script() {
     {
         echo '#!/usr/bin/env bash'
         printf 'cd %q || exit 1\n' "$crate"
-        printf 'exec bash %q\n' "$script_rel"
+        printf 'exec bash %q %s\n' "$script_rel" "$extra"
     } > "$fn"
     chmod +x "$fn"
     run_step "$label" "$fn"
 }
 
 run_root_script() {
-    local label="$1" script="$2"
-    run_script "$label" "." "$script"
+    local label="$1" script="$2" extra="${3:-}"
+    run_script "$label" "." "$script" "$extra"
 }
 
 should_run() { [[ -z "$STAGE" || "$STAGE" == "$1" ]]; }
@@ -951,15 +951,16 @@ stage_build() {
     # verbatim, and the target check announces itself when it cannot run.
     if [[ " ${CRATES[*]} " == *" engine "* ]]; then
         subheader "Portable slice"
-        run_cargo "cargo test -p rigorix-engine --features portable --tests" \
-            test --locked -p rigorix-engine --features portable --tests
         # #1626: this step ran the pipeline's `cargo check … --target wasm32-unknown-unknown` and
         # was still a different subject, because the pipeline sets `RUSTFLAGS: -D warnings` for the
         # whole job and this copy did not. A `pub(crate)` producer whose only caller is native-only
         # is dead code in the slice — a *warning* — so the local run said green and both CI jobs
         # (`portable`, `wasm gates`) said red. The invocation now lives in one script that carries
         # the warning policy and the inventory check with it, so the flag cannot be forgotten here.
-        run_root_script "validate-portable-slice.sh (wasm32 + inventory)" "$ROOT/.pi/scripts/validate-portable-slice.sh"
+        # The portable tests are the script's subject too (#1641), so they are switched on here
+        # rather than restated: one body, and the flags travel with the command.
+        run_root_script "validate-portable-slice.sh (wasm32 + inventory + portable tests)" \
+            ".pi/scripts/validate-portable-slice.sh" "--with-tests"
     fi
     stage_end
 }

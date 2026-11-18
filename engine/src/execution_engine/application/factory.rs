@@ -118,13 +118,17 @@ pub struct ParallelExecutionFactoryConfig {
         std::sync::Arc<dyn crate::sequence_policy::application::service::SequencePolicyService>,
     >,
 
-    /// ADR-017: optional dispatch-time precondition gate + R2 gating mode.
+    /// ADR-017: the dispatch-time precondition gate + R2 gating mode, or a written absence (#1636).
     ///
-    /// When set, the factory attaches the armed gate and gating mode to the
-    /// executor; the composition roots build it from the operator config via
-    /// [`crate::precondition::PreconditionSetup::from_env`]. `None` (default)
-    /// preserves today's behavior (no gate — status quo).
-    pub precondition: Option<crate::precondition::PreconditionSetup>,
+    /// This was `Option<PreconditionSetup>`, and `None` is the value you get by *omitting* the field —
+    /// so the decision to run ungated was not expressed anywhere a reviewer reads. It is now
+    /// [`PreconditionArming`], which has no `Default`: a hand-built config must write
+    /// `PreconditionArming::absent()` and say so in the diff.
+    ///
+    /// The composition roots arm it from the operator config through
+    /// [`crate::precondition::PreconditionSetup::from_env`] — the assembly is the only place a
+    /// *loaded* setup is attached (`engine/tests/one_assembly.rs`).
+    pub precondition: PreconditionArming,
 
     /// ADR-018: optional capacity-ledger dispatch seam.
     ///
@@ -197,7 +201,9 @@ impl Default for ParallelExecutionFactoryConfig {
             hook_runner: None,
             approval_binding: None,
             sequence_policy: None,
-            precondition: None,
+            // The `Default` an executor test reaches for means "no gate, on purpose". A host does
+            // not: it calls `assemble`, which arms this from `.rigorix/preconditions.toml`.
+            precondition: PreconditionArming::absent(),
             capacity: None,
             effect_commitment: None,
             recovery: None,
@@ -241,6 +247,52 @@ impl Default for RetryEvaluationFactoryConfig {
             default_policy: crate::execution_engine::domain::RetryPolicy::default(),
             failure_strategy_mapping: Vec::new(),
             enable_decision_logging: true,
+        }
+    }
+}
+
+/// Whether the executor has a precondition gate, said out loud (#1636).
+///
+/// `Option<PreconditionSetup>` could express "no gate" only by omission, which is invisible in a diff
+/// and indistinguishable from "nobody thought about it". Deliberately **no `Default` impl**: a value
+/// this type holds is a decision, so a struct literal has to name it.
+#[derive(Clone)]
+pub enum PreconditionArming {
+    /// The operator's file was loaded: an armed gate, or a fail-closed one for a malformed file
+    /// (ADR-017).
+    Armed(crate::precondition::PreconditionSetup),
+    /// No gate. A decision for *measuring* the executor — a unit test, a probe, a host that has
+    /// nothing to load — never a host's production configuration: a host calls the assembly, which
+    /// arms the gate or refuses.
+    Absent,
+}
+
+impl PreconditionArming {
+    /// No gate, written down.
+    ///
+    /// The name is the point: `precondition: PreconditionArming::absent()` is a sentence, and
+    /// `grep -rn 'PreconditionArming::absent()'` is the list of places an executor was deliberately
+    /// left ungated.
+    #[must_use]
+    pub const fn absent() -> Self {
+        Self::Absent
+    }
+
+    /// The setup, when one was armed.
+    #[must_use]
+    pub fn armed(&self) -> Option<&crate::precondition::PreconditionSetup> {
+        match self {
+            Self::Armed(setup) => Some(setup),
+            Self::Absent => None,
+        }
+    }
+}
+
+impl std::fmt::Debug for PreconditionArming {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Armed(_) => f.write_str("PreconditionArming::Armed(..)"),
+            Self::Absent => f.write_str("PreconditionArming::Absent"),
         }
     }
 }
