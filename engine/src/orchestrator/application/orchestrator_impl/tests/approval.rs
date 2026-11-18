@@ -20,7 +20,7 @@ async fn test_run_from_template_pauses_for_approval_and_resumes() {
             Arc::new(EventBusServiceImpl::default()),
         )),
     );
-    let orch = OrchestratorServiceImpl::new(
+    let orch = OrchestratorServiceImpl::ungoverned(
         OrchestratorConfig::default(),
         Arc::new(super::super::super::orchestrator_mocks::MockPlanningService::new()),
         executor,
@@ -273,7 +273,7 @@ async fn test_sequence_policy_absent_config_run_executes_unchanged() {
     let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(
         TomlSequencePolicyRepository::new(&absent),
     )));
-    let orch = OrchestratorServiceImpl::new(
+    let orch = OrchestratorServiceImpl::ungoverned(
         OrchestratorConfig::default(),
         Arc::new(super::super::super::orchestrator_mocks::MockPlanningService::new()),
         executor,
@@ -357,7 +357,7 @@ async fn test_requirement_promote_pauses_and_envelope_records_finding() {
     let policy = Arc::new(SequencePolicyServiceImpl::new(Box::new(FixedPolicyRepo {
         config: Some(cfg),
     })));
-    let orch = OrchestratorServiceImpl::new(
+    let orch = OrchestratorServiceImpl::ungoverned(
         OrchestratorConfig::default(),
         Arc::new(super::super::super::orchestrator_mocks::MockPlanningService::new()),
         executor,

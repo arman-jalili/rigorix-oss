@@ -106,7 +106,7 @@ async fn test_r7_unanchored_history_refusal_is_structured() {
             Box::new(RetryEvaluationServiceImpl::new()),
             Arc::new(EventBusServiceImpl::default()),
         ));
-    let orch = OrchestratorServiceImpl::new(
+    let orch = OrchestratorServiceImpl::ungoverned(
         OrchestratorConfig::default(),
         Arc::new(super::super::super::orchestrator_mocks::MockPlanningService::new()),
         executor,

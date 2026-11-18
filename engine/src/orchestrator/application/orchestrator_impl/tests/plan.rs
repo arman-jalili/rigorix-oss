@@ -94,7 +94,7 @@ async fn test_planning_failure() {
             Uuid::new_v4()
         }
     }
-    let orch = OrchestratorServiceImpl::new(
+    let orch = OrchestratorServiceImpl::ungoverned(
         OrchestratorConfig::default(),
         Arc::new(FailPlan),
         Arc::new(super::super::super::orchestrator_mocks::MockExecutionService),
