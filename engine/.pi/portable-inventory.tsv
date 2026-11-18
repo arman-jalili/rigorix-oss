@@ -72,6 +72,7 @@ item	precondition::infrastructure::repository	toml_repository	tokio::fs	Precondi
 item	precondition::application::service_impl	default provider	names HttpProviderClient	UnavailableProviderClient	2
 item	precondition::application::setup	whole module (native composition root)	names ProcessPreconditionRunner + TomlPreconditionRepository	—	2
 item	gate::infrastructure	whole module (native composition root)	names `PreconditionSetup` + `SequencePolicySetup` (both native-only)	the slice's ports are supplied by the host	2
+item	gate::domain	whole module governed	names the orchestrator (whole module gated: tokio::fs)	the slice has no orchestrator (FR-011 aggregate), so it has nothing to witness	1
 item	policy_engine::infrastructure::default_policy_repository	whole file	tokio::fs	policy rules are supplied	0
 item	sequence_policy::infrastructure::repository	toml_repository + bundle_repository	tokio::fs	precedence/retention repositories stay	4
 item	sequence_policy::infrastructure::history_anchored	AnchoredHistoryAdapter	names the audit anchor	EnvelopeHistoryAdapter stays	1
@@ -102,6 +103,7 @@ item	error	14 of the root enum's variants + their `use`/match arms	names exclude
 # submodule goes, the logging does not). They are item rows now; `--gates` compares the
 # manifest with `cfg(not(feature = "portable"))` in both directions, so a row cannot claim an
 # exclusion the code does not perform.
-# 29 items gated inside the 19 modules that remain (one of them is gate::infrastructure, #1406)
+# 30 items gated inside the 19 modules that remain (gate::infrastructure is #1406; gate::domain::governed
+# is ADR-025 D2's witness, which follows the orchestrator out of the slice)
 # `cargo check -p rigorix-engine --features portable --target wasm32-unknown-unknown` → exit 0
 # normal+build tree: 74 crates, none of tree-sitter/reqwest/ring/libc/prometheus/tracing-appender

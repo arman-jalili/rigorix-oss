@@ -34,6 +34,7 @@
 .pi/scripts/validate-docs.sh	**/*.md	a document anywhere can carry a link that does not resolve or a claim that is not true
 .pi/scripts/validate-wiring-claims.sh	**/*.md	"it is wired" is a claim made in documents
 .pi/scripts/validate-portable-inventory.sh	engine/src/**	the portable slice's counts are read from the engine's code
+.pi/scripts/validate-portable-slice.sh	engine/src/**, engine/.pi/portable-inventory.tsv	the subject is the crate as the slice compiles it, not as this machine's default flags compile it
 .pi/scripts/ci/check_effect-commitment_contracts.sh	engine/src/**	the frozen contracts are implemented in the engine
 .pi/scripts/ci/check_capacity-ledger_contracts.sh	engine/src/**	the frozen interfaces are implemented in the engine
 .pi/scripts/ci/stage_workspace_check.sh	**/Cargo.toml	the workspace's members, features and pins

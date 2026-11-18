@@ -953,13 +953,13 @@ stage_build() {
         subheader "Portable slice"
         run_cargo "cargo test -p rigorix-engine --features portable --tests" \
             test --locked -p rigorix-engine --features portable --tests
-        if rustup target list --installed 2>/dev/null | grep -qx "wasm32-unknown-unknown"; then
-            run_cargo "cargo check -p rigorix-engine --features portable (wasm32)" \
-                check --locked -p rigorix-engine --features portable --target wasm32-unknown-unknown
-        else
-            echo "  ⚠️  wasm32-unknown-unknown not installed — the portable *type* check cannot run here."
-            echo "      install: rustup target add wasm32-unknown-unknown   (the slice's tests above still ran)"
-        fi
+        # #1626: this step ran the pipeline's `cargo check … --target wasm32-unknown-unknown` and
+        # was still a different subject, because the pipeline sets `RUSTFLAGS: -D warnings` for the
+        # whole job and this copy did not. A `pub(crate)` producer whose only caller is native-only
+        # is dead code in the slice — a *warning* — so the local run said green and both CI jobs
+        # (`portable`, `wasm gates`) said red. The invocation now lives in one script that carries
+        # the warning policy and the inventory check with it, so the flag cannot be forgotten here.
+        run_root_script "validate-portable-slice.sh (wasm32 + inventory)" "$ROOT/.pi/scripts/validate-portable-slice.sh"
     fi
     stage_end
 }

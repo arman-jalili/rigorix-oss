@@ -31,6 +31,7 @@ pub mod decision;
 pub mod error;
 pub mod facts;
 pub mod finding;
+#[cfg(not(feature = "portable"))]
 pub mod governed;
 pub mod outcome;
 pub mod step;
@@ -41,6 +42,7 @@ pub use decision::{GateDecision, decision_canonical_bytes, decision_digest};
 pub use error::GateError;
 pub use facts::{CapacityFacts, CommittedEffect, EffectFacts};
 pub use finding::{GateFinding, GateId};
+#[cfg(not(feature = "portable"))]
 pub use governed::Governed;
 pub use outcome::GateOutcome;
 pub use step::GatedStep;
