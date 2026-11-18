@@ -71,14 +71,15 @@ async fn executor_with(
     event_bus: Arc<dyn EventBusService>,
     with_config: bool,
 ) -> Box<dyn ParallelExecutionService> {
+    // #1636: the ungated arm is a written decision, not an omitted field.
     let precondition = if with_config {
-        Some(
+        rigorix_engine::execution_engine::application::PreconditionArming::Armed(
             PreconditionSetup::from_env(repo_root)
                 .expect("from_env")
                 .expect("fixture present"),
         )
     } else {
-        None
+        rigorix_engine::execution_engine::application::PreconditionArming::absent()
     };
     ParallelExecutionFactoryImpl::new()
         .create(ParallelExecutionFactoryConfig {

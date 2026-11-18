@@ -122,7 +122,11 @@ impl GateSetup {
         mut config: ParallelExecutionFactoryConfig,
     ) -> ParallelExecutionFactoryConfig {
         config.sequence_policy = self.sequence.clone();
-        config.precondition = self.precondition.clone();
+        // #1636: the absence is named here, once, instead of travelling as `None`.
+        config.precondition = match self.precondition.clone() {
+            Some(setup) => crate::execution_engine::application::PreconditionArming::Armed(setup),
+            None => crate::execution_engine::application::PreconditionArming::absent(),
+        };
         config
     }
 
