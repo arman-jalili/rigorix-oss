@@ -274,7 +274,10 @@ What exists, measured:
 - **A durable store already exists, and both hosts put it inside the repository.** The state manager is a
   `FileSystemStateRepository` rooted at a `state_dir` (`state_persistence/application/state_manager_factory_impl.rs:31-46`),
   and both hosts root it at `<repo_root>/.rigorix/state`:
-  `mcp/src/engine_wiring.rs:66-67` and `mcp/src/host/mod.rs:1667-1670`. Approval records are appended to that persisted
+  `mcp/src/engine_wiring.rs:66-67` and `mcp/src/host/mod.rs:1667-1670`. (The first of those two citations was to a file
+  that no module declared and rustc therefore never compiled; it was deleted in #1637 and the surviving citation is the
+  one that describes behaviour. The decision is unchanged — the state dir is still the host's choice — but the evidence
+  for it is now only code that runs.) Approval records are appended to that persisted
   state (`approval/infrastructure/mod.rs:8`), and execution records are JSON files with atomic tmp+rename writes
   (`state_persistence/infrastructure/filesystem_execution_record_repository.rs:21-64`).
 - **The agent's write tools are contained to `workspace_root`** — which is exactly why "inside the repo" is reachable.

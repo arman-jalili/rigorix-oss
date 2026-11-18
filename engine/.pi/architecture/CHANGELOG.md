@@ -11,7 +11,8 @@
   store the executing agent cannot write), E9 (the signed evidence *is* the attestation) and E12 (the gate level is
   a caller claim today — `evaluate_gate` reads `input.observed_level`).
 - **Measured, not assumed:** both hosts root the state manager inside the repository
-  (`mcp/src/engine_wiring.rs:66-67`, `mcp/src/host/mod.rs:1667-1670` → `<repo_root>/.rigorix/state`), approval records
+  (`mcp/src/host/mod.rs:1667-1670` → `<repo_root>/.rigorix/state`; a second citation to `mcp/src/engine_wiring.rs` was to a
+  file no module declared, deleted in #1637), approval records
   are appended to that state (`approval/infrastructure/mod.rs:8`), and the directory is reachable by a tool confined
   to `workspace_root`. That is why the seal needs a location rule rather than a new adapter.
 - **Also measured:** the effect ledger's port has only `in_memory` (a `HashMap` behind a `Mutex`) and `http` (a

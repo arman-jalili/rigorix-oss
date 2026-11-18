@@ -107,7 +107,7 @@ decision is explicit rather than accidental.
 | site | kind | severity | reason |
 |---|---|---|---|
 | `engine/src/execution_engine/application/factory.rs:222` | `expect` | **medium** | fail-fast at composition: approval store must open |
-| `mcp/src/engine_wiring.rs:31` | `panic!` | **medium** | fail-fast at composition: without an engine the host cannot serve; logs then panics |
+| ~~`mcp/src/engine_wiring.rs:31`~~ | `panic!` | — | **deleted in #1637.** The file was never a module: no `mod engine_wiring;` anywhere, so rustc never compiled it, and the row in this table was found by reading text rather than by a build. The MCP's engine construction is `gate::infrastructure::assemble` (#1625) |
 | `mcp/src/host/mod.rs:1922` | `expect` | **medium** | app_state() before init_app_state() — programmer error; panics instead of a typed error |
 
 ## Fragile internal invariants (`invariant`) — `chain.rs` resolved in #997

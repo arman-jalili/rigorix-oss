@@ -95,8 +95,6 @@ RULES = [
     (r"^engine/examples/", "demo", "low",
      "runnable demo: its asserts are the evidence it prints, so panicking on a "
      "violated invariant is the intended behaviour (a reader sees the failure)"),
-    (r"^mcp/src/engine_wiring\.rs$", "startup", "medium",
-     "fail-fast at composition: without an engine the host cannot serve; logs then panics"),
     (r"^mcp/src/host/mod\.rs$", "startup", "medium",
      "app_state() before init_app_state() — programmer error; panics instead of a typed error"),
     (r"^engine/src/execution_engine/application/factory\.rs$", "startup", "medium",

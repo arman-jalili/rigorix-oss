@@ -19,6 +19,7 @@
 # guard	class	tier	run_here	owner	notes
 .pi/scripts/validate-guards.sh	guards	advisory	no	security	meta: registry integrity; runs the gating set below
 .pi/scripts/validate-panic-sites.sh	panic-surface	gating	yes	security	new production panic is removed or baselined (ratchet)
+.pi/scripts/validate-source-reachability.sh	source-reachability	gating	yes	ci	#1637: every `*.rs` under a crate's `src/` must be reachable from its root — `mcp/src/engine_wiring.rs` was a second engine composition that no module declared, so rustc never compiled it and no build-derived guard could see it
 .pi/scripts/validate-unsafe-sites.sh	unsafe	gating	yes	security	new production unsafe is removed or baselined (ratchet)
 .pi/scripts/validate-secret-logs.sh	secret-in-log	gating	yes	security	tracing a secret-ish identifier must be redacted
 .pi/scripts/validate-shell-exit-status.sh	shell-exit-status	gating	no	tooling	a `(( X++ ))` under errexit ends the script on bash 4.4+ (and silently, before any verdict); gates via its own `Shell exit status` CI stage, and scans every copy of the mirrored scripts (#1291)
