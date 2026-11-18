@@ -40,30 +40,59 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
 TARGET='wasm32-unknown-unknown'
 
+# Which target this machine can actually build. The pipeline uses `--target wasm32-unknown-unknown`;
+# a host that has not installed it gets the *host* target, which compiles the same crate with the same
+# features — the dead-code question is about the feature set, not the architecture, and it was
+# reproduced on both. The resolved target is printed, so no run has to guess which subject it measured.
+slice_target() {
+    # Test hook: the CI `audit` job runs guard self-tests on a host without the wasm target, so the
+    # seed has to be provable in exactly that condition. Forcing the host target is measurable; a seed
+    # that only runs on a machine with a second target installed is a seed half the pipeline skips.
+    if [ -n "${RIGORIX_SLICE_FORCE_HOST:-}" ]; then
+        printf '%s' ''
+        return
+    fi
+    if rustup target list --installed 2>/dev/null | grep -qx "$TARGET"; then
+        printf '%s' "$TARGET"
+    else
+        printf '%s' ''
+    fi
+}
+
 # The pipeline's own invocation, so it cannot drift from the job it mirrors.
 check_slice() {
-    local root="$1"
-    RUSTFLAGS="-D warnings" cargo check --locked -p rigorix-engine --features portable \
-        --target "$TARGET" --manifest-path "$root/Cargo.toml" 2>&1
+    local root="$1" target
+    target="$(slice_target)"
+    if [ -n "$target" ]; then
+        RUSTFLAGS="-D warnings" cargo check --locked -p rigorix-engine --features portable \
+            --target "$target" --manifest-path "$root/Cargo.toml" 2>&1
+    else
+        RUSTFLAGS="-D warnings" cargo check --locked -p rigorix-engine --features portable \
+            --manifest-path "$root/Cargo.toml" 2>&1
+    fi
 }
 
 run() {
     local root="$1" failed=0
 
-    if ! rustup target list --installed 2>/dev/null | grep -qx "$TARGET"; then
-        printf '  %b⚠%b skipped: %s is not installed (`rustup target add %s`) — CI installs it, so this machine is not the pipeline\n' \
+    local target which
+    target="$(slice_target)"
+    which="${target:-the host target}"
+    if [ -z "$target" ]; then
+        printf '  %b⚠%b %s is not installed (`rustup target add %s`) — measuring the host target instead, which compiles the same crate with the same features\n' \
             "$YELLOW" "$NC" "$TARGET" "$TARGET"
-    else
+    fi
+    {
         local out status=0
         out="$(check_slice "$root")" || status=$?
         if [ "$status" -ne 0 ]; then
-            printf '  %b❌%b the slice does not build for %s\n' "$RED" "$NC" "$TARGET"
+            printf '  %b❌%b the slice does not build for %s\n' "$RED" "$NC" "$which"
             printf '%s\n' "$out" | grep -E '^(error|warning)' -A4 | head -40
             failed=$((failed + 1))
         else
-            printf '  %b✅%b the slice builds for %s under -D warnings\n' "$GREEN" "$NC" "$TARGET"
+            printf '  %b✅%b the slice builds for %s under -D warnings\n' "$GREEN" "$NC" "$which"
         fi
-    fi
+    }
 
     if ! bash "$root/.pi/scripts/validate-portable-inventory.sh" --gates >/tmp/portable-gates.out 2>&1; then
         printf '  %b❌%b a portable gate and the inventory disagree\n' "$RED" "$NC"
@@ -112,7 +141,10 @@ PY2
             printf '  %b❌%b self-test seed did not apply: the copy is unchanged\n' "$RED" "$NC"
             ko=$((ko + 1))
         else
-            out="$(check_slice "$tree")" || status=$?
+            # The worktree is a different source tree, so its engine artifacts cannot be reused — but
+            # its *dependencies* can, and they are what makes a cold check expensive. Sharing the
+            # root target dir keeps the seed to the crate under test (one file changed).
+            out="$(CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}" check_slice "$tree")" || status=$?
             if printf '%s' "${out:-}" | grep -q 'never used'; then
                 printf '  %b✅%b a producer with no caller in the slice fails the check (fails, as it must)\n' "$GREEN" "$NC"
             else
