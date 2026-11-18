@@ -516,8 +516,18 @@ self-test)
 
     # 12. #1365 seed H — a manifest-derived count, off by one. The guard used to
     #     compute it, print it, and never look at the record's copy.
-    mutate '29 inner items' '28 inner items' "$tmp/acountH.md"
-    expect "derived count off by one: inner items (#1365 seed H)" 1 "$MANIFEST" "$LIB" "$tmp/acountH.md"
+    #     The seed is *derived from the record*, not hard-coded: it read `29` and went inert the
+    #     moment the count became `30` (#1626), which is a seed that asserts nothing while
+    #     reporting ✅. A planted value that must be edited by hand with the value it guards is
+    #     a second copy of the answer.
+    inner="$(grep -oE '[0-9]+ inner items' "$ADR" | head -1 | grep -oE '^[0-9]+' || true)"
+    if [ -z "$inner" ]; then
+        printf '  %b❌%b seed inert: <n> inner items matches nothing in the record\n' "$RED" "$NC"
+        ko=$((ko + 1))
+    else
+        mutate "${inner} inner items" "$((inner - 1)) inner items" "$tmp/acountH.md"
+        expect "derived count off by one: inner items (#1365 seed H)" 1 "$MANIFEST" "$LIB" "$tmp/acountH.md"
+    fi
 
     # 13. #1365 seed I — the dependency count, likewise.
     sed 's/9 dependencies/10 dependencies/' "$ADR" > "$tmp/acountI.md"
