@@ -289,8 +289,11 @@ pub struct RunFromTemplateInput {
     ///
     /// `None` means the caller declared nothing, which is what every caller did before this field
     /// existed. A verified receipt's digest reaches [`RunOutput::receipt_digest`] and the audit
-    /// envelope; its steps are **not** yet the plan (see the PR: P2 verifies the declaration, it does
-    /// not derive the runbook from it).
+    /// envelope, and its steps **are** the plan when the run is submitted through
+    /// `receipt::run_receipt`: that surface derives `steps` from this document
+    /// (`receipt::application::service::plan_from_receipt`) instead of taking a second list from the
+    /// caller (#1629, ADR-025 D3). On the `run_from_template` path the two are compared instead
+    /// (`verify_against_plan`), because this DTO is also the carrier a host fills in by hand.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receipt: Option<crate::receipt::domain::receipt::Receipt>,
 }

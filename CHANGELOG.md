@@ -36,6 +36,17 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   per-stage conditioning working by passing on the cold column; the run-level row now answers the same way. No ceiling moved —
   the `total` row's cold sample is still the 2409s one — so a 23-minute run that built crates passes and a 23-minute run that
   built nothing still fails.
+- **The receipt is the runbook: `run_receipt` derives the plan instead of taking one** (#1629, ADR-025 D3). `ReceiptStep` already
+  carried `id`, `tool`, `parameters`, `depends_on`, `declared_effects`, `expectation`, `requires_approval` and `timeout_secs` —
+  every field a plan step needs — and the surface took a second, caller-supplied `Vec<TemplateStepDef>` beside the declaration.
+  While that parameter existed a host could run a plan its receipt did not describe, and the only thing that noticed was
+  `verify_against_plan`: a comparison whose failure arrives *after* the effects. `run_receipt(workspace, &receipt, config)` now
+  derives the runbook through one total function, `plan_from_receipt`, whose destructuring names **every** field of
+  `ReceiptStep` so a future field is a compile error at the mapping site rather than a silently dropped property. A step it
+  cannot map (an empty id, an id that repeats) is a typed refusal naming the offending id, before the graph and before any
+  state write — refusal, not repair, because a declaration the engine completes on the author's behalf is not one. The one
+  field with no counterpart, `expectation.description`, is carried into the runbook's description rather than invented, and
+  nothing in the engine reads it.
 - **Governance is a type and a guard, not a convention** (#1626, #1627, ADR-025 D2/D5). `OrchestratorServiceImpl::new` accepted a
   caller-built execution service, so "this engine consults ADR-017's gate at dispatch" was a property of a source file. It is now
   two instruments, because neither is sufficient: **`gate::domain::Governed`** is a witness with no content, a private field and

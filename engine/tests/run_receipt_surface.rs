@@ -107,21 +107,6 @@ impl Drop for Fixture {
     }
 }
 
-/// One declared step that reads a file, so the run needs no shell and no sandbox declaration.
-fn step() -> rigorix_engine::orchestrator::dto::TemplateStepDef {
-    rigorix_engine::orchestrator::dto::TemplateStepDef {
-        name: "read".to_string(),
-        tool: "file-read".to_string(),
-        description: "read the README".to_string(),
-        parameters: serde_json::json!({ "path": "README.md" }),
-        require_identity: false,
-        requires_approval: false,
-        timeout_secs: None,
-        evaluate_score: false,
-        depends_on: Vec::new(),
-    }
-}
-
 /// The fixture file's bytes, as both the runbook and the receipt see them.
 fn fixture_file_contents() -> String {
     "# fixture\n".to_string()
@@ -185,7 +170,7 @@ async fn a_submitted_receipt_returns_an_attestation_that_answers_it() {
     let execution_id = uuid::Uuid::now_v7();
     let receipt = receipt_for(&fixture.tree(), execution_id);
 
-    let output = run_receipt(fixture.root(), &receipt, vec![step()], config(&fixture))
+    let output = run_receipt(fixture.root(), &receipt, config(&fixture))
         .await
         .expect("a receipt over this workspace must be accepted");
 
@@ -222,7 +207,7 @@ async fn a_receipt_for_another_tree_is_refused_by_the_same_entry_point() {
         uuid::Uuid::now_v7(),
     );
 
-    let error = run_receipt(fixture.root(), &receipt, vec![step()], config(&fixture))
+    let error = run_receipt(fixture.root(), &receipt, config(&fixture))
         .await
         .expect_err("a receipt naming another tree must be refused");
 
@@ -247,7 +232,7 @@ async fn a_run_without_a_key_refuses_rather_than_writing_an_unsigned_attestation
     let mut cfg = config(&fixture);
     cfg.audit_key = None;
 
-    let error = run_receipt(fixture.root(), &receipt, vec![step()], cfg)
+    let error = run_receipt(fixture.root(), &receipt, cfg)
         .await
         .expect_err("an unsigned run has no attestation to return");
 

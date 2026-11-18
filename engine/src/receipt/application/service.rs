@@ -82,6 +82,85 @@ impl PlanStep {
 ///
 /// # Errors
 /// One refusal per divergence found, naming the position and the side that disagrees.
+/// The plan a receipt declares — the runbook, derived rather than supplied (#1629, ADR-025 D3).
+///
+/// `ReceiptStep` already carries every field a step needs: `id`, `tool`, `parameters`, `depends_on`,
+/// `declared_effects`, `expectation`, `requires_approval`, `timeout_secs`. While `run_receipt` took a
+/// caller-supplied step list beside the declaration, the two could disagree and the only thing that
+/// noticed was `verify_against_plan` — after the effects. ADR-024 replaced "a checklist kept beside a
+/// plan somebody else wrote" with "the declaration is the authority the run must satisfy"; a surface
+/// that takes both is the old arrangement with a new type name.
+///
+/// # Total, and exhaustive on purpose
+///
+/// The destructuring below names **every** field of `ReceiptStep`, so a future field is a compile error
+/// at this site rather than a silently dropped property. The `expectation.description` is the only field
+/// with no counterpart in the step DTO, and it is mapped rather than invented: nothing in the engine
+/// *reads* it (`$defs.Expectation` is `{description, quality_level}`, and the outcome is read from the
+/// observed state), so it stays a human-readable sentence in the runbook and is never load-bearing.
+///
+/// # Errors
+/// `InvalidState` for a step whose id cannot be a node name (an empty id, or one that repeats) — refused
+/// before the graph rather than repaired, because a declaration the engine completes on the author's
+/// behalf is not one.
+pub fn plan_from_receipt(
+    receipt: &Receipt,
+) -> Result<Vec<crate::orchestrator::dto::TemplateStepDef>, Vec<ReceiptRefusal>> {
+    use crate::orchestrator::dto::TemplateStepDef;
+    use crate::receipt::domain::receipt::ReceiptStep;
+
+    let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    let mut refusals = Vec::new();
+    let mut steps = Vec::with_capacity(receipt.steps.len());
+
+    for (index, step) in receipt.steps.iter().enumerate() {
+        // Exhaustive: a new `ReceiptStep` field breaks this line, which is the point.
+        let ReceiptStep {
+            id,
+            tool,
+            parameters,
+            depends_on,
+            declared_effects: _,
+            expectation,
+            requires_approval,
+            timeout_secs,
+        } = step;
+
+        if id.trim().is_empty() {
+            refusals.push(ReceiptRefusal::MalformedDocument {
+                detail: format!("step {index} has an empty id"),
+            });
+            continue;
+        }
+        if !seen.insert(id.as_str()) {
+            // The vocabulary already has this fact's shape: a name that is not a unique step, with the
+            // steps that are. A second refusal variant saying the same thing would be a second answer.
+            refusals.push(ReceiptRefusal::UnknownStep {
+                step: format!("{id} (repeated)"),
+                known: seen.iter().map(|known| (*known).to_string()).collect(),
+            });
+            continue;
+        }
+        steps.push(TemplateStepDef {
+            name: id.clone(),
+            tool: tool.clone(),
+            description: expectation.description.clone(),
+            parameters: parameters.clone(),
+            requires_approval: *requires_approval,
+            require_identity: false,
+            timeout_secs: *timeout_secs,
+            evaluate_score: false,
+            depends_on: depends_on.clone(),
+        });
+    }
+
+    if refusals.is_empty() {
+        Ok(steps)
+    } else {
+        Err(refusals)
+    }
+}
+
 pub fn verify_against_plan(
     receipt: &Receipt,
     plan: &[PlanStep],
