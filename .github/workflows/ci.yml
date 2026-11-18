@@ -235,30 +235,20 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-key: portable
-      - name: The slice compiles for wasm32
-        # ADR-014 §1: the engine compiles for `wasm32-unknown-unknown` with
-        # `--features portable`.
-        run: |
-          rustup target add wasm32-unknown-unknown
-          cargo check --locked -p rigorix-engine --features portable --target wasm32-unknown-unknown
-      - name: No forbidden crate in the wasm32 graph
-        # #1412: the step calls the owner. `wasm/ci/check-bundle-independence.sh` holds the
-        # list, the reason per entry and the tokio feature-set rule; a second inline list here
-        # disagreed with it (six names against ten, plus `ring` which the script permitted) and
-        # its success line counted neither. The script's subject is the shipped crate's graph,
-        # which is what ADR-014's independence claim is about.
+      - name: Install the slice's target
+        # The script refuses to skip when it is told the target is required, so the target must be
+        # present before it is called. This step installs; it does not compile.
+        run: rustup target add wasm32-unknown-unknown
+      - name: The portable slice, through its owner
+        # #1641: this job used to restate three of the script's invocations, and the warning policy
+        # that made #1626's outage possible lived in two places — the job-level `env:` here and the
+        # script's own `RUSTFLAGS`. They agreed the day they disagreed. The job now calls the script
+        # that owns the subject; `engine/tests/one_portable_invocation.rs` fails if a `--features
+        # portable` or `wasm32-unknown-unknown` invocation reappears in this file outside one.
         #
-        # The script is fail-closed: it refuses when the tree cannot be computed.
-        run: bash wasm/ci/check-bundle-independence.sh
-      - name: The slice's own tests run natively
-        # `--tests`, not the whole suite: an example demonstrating an excluded module
-        # cannot exist in the slice, and gating an example file leaves no `main` (E0601).
-        run: cargo test --locked -p rigorix-engine --features portable --tests
-      - name: Manifest versus cfg gates, both directions
-        # A gate with no row is an exclusion nobody reviewed; a row with no gate is a
-        # claim about a build that still compiles the module. The compiler can say
-        # neither: removing a gate names a build script (`tree-sitter`), not the module.
-        run: bash .pi/scripts/validate-portable-inventory.sh --gates
+        # The two subjects the script does not own by default are switched on here, so the job body
+        # has no cargo invocation of its own.
+        run: bash .pi/scripts/validate-portable-slice.sh --require-target --with-tests --with-bundle
 
   # ── Stage 3b: Coverage (real line coverage via cargo-llvm-cov) ──
   coverage:

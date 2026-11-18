@@ -19,11 +19,19 @@
 #     an exclusion nobody reviewed, and a row with no gate is a claim about a
 #     build that still compiles the module.
 #
-# What it deliberately does not run: the pipeline's `cargo test --features
-# portable --tests` (minutes, and the `lint` stage already runs the same tests
-# natively) and `wasm/ci/check-bundle-independence.sh` (it computes the shipped
-# crate's graph; `guards` runs it). Both are named here so the difference
-# between "this script" and "the portable job" is a recorded decision.
+# What it does not run by default, and now can on request (#1641):
+#
+#   * `--with-tests`   — the pipeline's `cargo test -p rigorix-engine
+#     --features portable --tests`. Minutes, and `local-ci`'s `lint` stage runs
+#     the same tests natively, so the local default is off; CI turns it on.
+#   * `--with-bundle`  — `wasm/ci/check-bundle-independence.sh`, whose subject is
+#     the shipped crate's dependency graph. CI turns it on.
+#
+# #1641 moved CI onto this script for all four steps, because the job and the
+# script owned the same invocation twice and the warning policy lived in two
+# places (`ci.yml`'s job-level `env:` and this script's `RUSTFLAGS`). They
+# agreed the day they disagreed. The guard that keeps it that way is
+# `engine/tests/one_portable_invocation.rs`.
 #
 # A missing target is a *skip with its reason*, not a pass: CI installs the
 # target in the step before, so the skip can only happen on a machine that has
@@ -34,6 +42,18 @@
 #   validate-portable-slice.sh --self-test  # prove the check bites
 # ============================================================================
 set -uo pipefail
+
+WITH_TESTS='false'
+WITH_BUNDLE='false'
+for arg in "$@"; do
+    case "$arg" in
+        --with-tests) WITH_TESTS='true' ;;
+        --with-bundle) WITH_BUNDLE='true' ;;
+        --require-target) RIGORIX_SLICE_REQUIRE_TARGET='1' ;;
+        --self-test) ;;
+        *) printf 'unknown argument: %s\n' "$arg"; exit 2 ;;
+    esac
+done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -78,6 +98,13 @@ run() {
     local target which
     target="$(slice_target)"
     which="${target:-the host target}"
+    if [ -z "$target" ] && [ "${RIGORIX_SLICE_REQUIRE_TARGET:-}" = '1' ]; then
+        # A job cannot skip its subject: with `--require-target`, a missing target is the run's
+        # verdict, not a caveat printed under a green line.
+        printf '  %b❌%b %s is required (--require-target) and not installed — `rustup target add %s` first\n' \
+            "$RED" "$NC" "$TARGET" "$TARGET"
+        return 1
+    fi
     if [ -z "$target" ]; then
         printf '  %b⚠%b %s is not installed (`rustup target add %s`) — measuring the host target instead, which compiles the same crate with the same features\n' \
             "$YELLOW" "$NC" "$TARGET" "$TARGET"
@@ -100,6 +127,30 @@ run() {
         failed=$((failed + 1))
     else
         printf '  %b✅%b every portable gate has an inventory row\n' "$GREEN" "$NC"
+    fi
+
+    if [ "$WITH_TESTS" = 'true' ]; then
+        local tout tstatus=0
+        tout="$(RUSTFLAGS="-D warnings" cargo test --locked -p rigorix-engine --features portable \
+            --tests --manifest-path "$root/Cargo.toml" 2>&1)" || tstatus=$?
+        if [ "$tstatus" -ne 0 ]; then
+            printf '  %b❌%b the slice'"'"'s own tests fail\n' "$RED" "$NC"
+            printf '%s\n' "$tout" | grep -E '^(error|failures:)' -A4 | head -30
+            failed=$((failed + 1))
+        else
+            printf '  %b✅%b the slice'"'"'s own tests pass (%s)\n' "$GREEN" "$NC" \
+                "$(printf '%s' "$tout" | grep -c 'test result: ok') suite(s)"
+        fi
+    fi
+
+    if [ "$WITH_BUNDLE" = 'true' ]; then
+        if bash "$root/wasm/ci/check-bundle-independence.sh" >/tmp/portable-bundle.out 2>&1; then
+            printf '  %b✅%b the shipped crate'"'"'s graph carries no forbidden dependency\n' "$GREEN" "$NC"
+        else
+            printf '  %b❌%b the bundle independence check failed\n' "$RED" "$NC"
+            sed 's/\x1b\[[0-9;]*m//g' /tmp/portable-bundle.out | tail -15
+            failed=$((failed + 1))
+        fi
     fi
 
     return "$failed"

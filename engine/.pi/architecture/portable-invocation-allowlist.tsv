@@ -1,0 +1,12 @@
+# path	needle	reason
+#
+# #1641: `--features portable` and `wasm32-unknown-unknown` may appear in the pipeline only on a line
+# that invokes the owner of the portable slice, or here — with a sentence saying why the line is not an
+# invocation. A row that matches nothing fails the guard, so this file cannot rot into a set of
+# permissions for code that is gone.
+#
+# The compiled subject is `.pi/scripts/validate-portable-slice.sh`; everything below installs a target
+# or selects a toolchain, and none of it compiles the engine.
+
+.github/workflows/ci.yml	rustup target add wasm32-unknown-unknown	the portable job installs the target the script requires; the script compiles, it does not install
+.github/workflows/ci.yml	targets: wasm32-unknown-unknown	the wasm-gates job's toolchain input for the shipped crate, which is a different subject (the bundle, not the portable engine slice)
