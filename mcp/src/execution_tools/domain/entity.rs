@@ -56,6 +56,36 @@ pub trait EngineFacade: Send + Sync {
         verification_failure: Option<String>,
     ) -> Result<ExecutionResult, EngineFacadeError>;
 
+    /// Execute a plan under a receipt the caller supplied (#1630, ADR-025 D6).
+    ///
+    /// The declaration travels with the request rather than beside it: the engine builds an
+    /// attestation *about* the receipt, so a surface that cannot carry one can only ever report
+    /// `receipt_digest: None` — which is indistinguishable from "nothing was declared".
+    ///
+    /// The default implementation refuses a supplied receipt instead of silently dropping it. An
+    /// implementation that has not been taught to carry a declaration must not appear to accept one.
+    async fn execute_with_receipt(
+        &self,
+        plan: PlanTemplate,
+        repository: Option<String>,
+        author: Option<String>,
+        identity: Option<rigorix_engine::identity::IdentityRef>,
+        verification_failure: Option<String>,
+        receipt: Option<crate::execution_tools::domain::receipt_input::ReceiptInput>,
+    ) -> Result<ExecutionResult, EngineFacadeError> {
+        match receipt {
+            None => {
+                self.execute(plan, repository, author, identity, verification_failure)
+                    .await
+            }
+            Some(_) => Err(EngineFacadeError::ReceiptRefused {
+                code: "receipt_unsupported".to_string(),
+                detail: "this engine implementation cannot carry a receipt; the declaration was                          not dropped, it was refused"
+                    .to_string(),
+            }),
+        }
+    }
+
     /// Validate a plan against enforcement policies.
     ///
     /// Checks the plan against the policy engine without executing it.

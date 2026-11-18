@@ -92,6 +92,10 @@ pub const RIGORIX_EXECUTE_INPUT_SCHEMA: &str = r#"{
         "author": {
             "type": "string",
             "description": "Author identity for audit (e.g. email or username)"
+        },
+        "receipt": {
+            "type": "object",
+            "description": "Optional execution receipt (R0): the declaration this run must satisfy, validated against the crate's published schema. When supplied, the run's evidence is an attestation pinned to this document, and the response reports `receipt_digest`, `attestation_digest` and `receipt_state`. This parameter changes no other field and is additive."
         }
     }
 }"#;
@@ -169,6 +173,10 @@ pub const RIGORIX_RUN_INPUT_SCHEMA: &str = r#"{
         "author": {
             "type": "string",
             "description": "Author identity for audit (e.g. email or username)"
+        },
+        "receipt": {
+            "type": "object",
+            "description": "Optional execution receipt (R0): the declaration this run must satisfy, validated against the crate's published schema. A malformed receipt is refused before dispatch with the crate's own refusal code in `data.code`; a valid one makes this run's evidence an attestation pinned to the document."
         }
     },
     "required": ["template_name"]

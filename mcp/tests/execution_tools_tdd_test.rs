@@ -231,6 +231,7 @@ async fn test_executehandler_handles_execution() {
             author: None,
             identity: None,
             identity_verification_failure: None,
+            receipt: None,
         })
         .await;
 

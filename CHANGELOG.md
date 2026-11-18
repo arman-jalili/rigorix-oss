@@ -36,6 +36,17 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   per-stage conditioning working by passing on the cold column; the run-level row now answers the same way. No ceiling moved —
   the `total` row's cold sample is still the 2409s one — so a 23-minute run that built crates passes and a 23-minute run that
   built nothing still fails.
+- **The MCP surface carries a receipt, and names which "no digest" state it is in** (#1630, ADR-025 D6). `rigorix_run` built
+  `RunFromTemplateInput { … receipt: None }`, so every tool call returned a digest-less record and a caller could not tell "no
+  receipt was declared" from "this surface cannot carry one". `rigorix_run` and `rigorix_execute` now accept an optional
+  `receipt`, validated through the **crate's** door (`Receipt::from_document`) before the enforcement pre-check and long before
+  the graph, so a malformed declaration is refused with the crate's own vocabulary and operands in `data.code` — deliberately
+  disjoint from the gate's `precondition_checked` / `precondition_findings` / `precondition_denied`, because a declaration the
+  engine could not accept is not a step it declined to run. The response names the state: `receipt_state` is one of
+  `not_declared`, `sealed` or `not_sealed`, three facts a caller acts on differently, alongside `receipt_digest` and
+  `attestation_digest`. The five `EXECUTION_TOOL_NAMES` do not move and the parameter is optional, so a call that sends none
+  behaves exactly as before. An implementation of the façade that has not been taught to carry a declaration *refuses* one
+  rather than dropping it — the default `execute_with_receipt` exists so a silently ignored receipt is impossible.
 - **The receipt is the runbook: `run_receipt` derives the plan instead of taking one** (#1629, ADR-025 D3). `ReceiptStep` already
   carried `id`, `tool`, `parameters`, `depends_on`, `declared_effects`, `expectation`, `requires_approval` and `timeout_secs` —
   every field a plan step needs — and the surface took a second, caller-supplied `Vec<TemplateStepDef>` beside the declaration.
@@ -70,9 +81,13 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   state directory, the signing key and the permission mode have no default — each one defaulted wrongly produces a run that
   looks governed and is not. All four hosts now call it; `PreconditionSetup::from_env` and `SequencePolicySetup::from_env` appear
   nowhere outside the engine. `run_receipt` gained what the assembly made visible: `RunReceiptError::RefusedAtGate`, because a
-  step refused before dispatch is not a step that ran, and `TaskResult` gained `failure_type`, because the dispatcher had always
-  recorded *why* a step failed (`precondition_denied`, `sandbox_undeclared`) and the orchestrator's mapping dropped it — leaving
-  a host to match on a sentence.
+  step refused before dispatch is not a step that ran.
+- **A step result says *why* it failed, so a host can match a code instead of a sentence** (#1625). The dispatcher has recorded
+  the reason a step was refused (`precondition_denied`, `sandbox_undeclared`) since the precondition gate landed; the
+  orchestrator's mapping dropped the field, so every host saw only the prose — the same defect class as an abbreviated digest,
+  a fact present and unusable. `TaskResult` now carries `failure_type: Option<String>`, and `TaskResult::refusal(..)` fills it.
+  This is a **host-visible behaviour change**: `rigorix_mcp`, `rigorix_cli` and `rigorix_actions` receive the code, and
+  `RunReceiptError::RefusedAtGate { step, code, detail }` is that code surfaced to a receipt's caller.
 - **The attestation store has a read side, and the location rule has one owner** (#1628, ADR-025 D4). `FileAttestationStore`
   exposed `put` and no `get`, so the only way to obtain a sealed attestation was to know where the store had put it — and
   `receipt::api::run_receipt` did exactly that, spelling `<state dir>/attestations/<id>.json` in a second file. Two files held

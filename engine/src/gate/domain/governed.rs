@@ -36,6 +36,30 @@
 /// The field is private and the only constructor in the crate is [`Governed::witness`], so the type
 /// cannot be named into existence elsewhere: `Governed { .. }` does not compile outside this module, and
 /// neither does `Default::default()`.
+///
+/// # The property, tested by the compiler
+///
+/// A doctest is compiled as an external crate, which makes it the one instrument that can test a
+/// privacy property. This block is the claim — an ungated orchestrator cannot be built by writing a
+/// literal:
+///
+/// ```compile_fail
+/// use rigorix_engine::gate::domain::Governed;
+///
+/// // `_private` is private, so there is no literal to write. This is what makes the type a witness
+/// // and not a flag; if this block ever compiles, ADR-025 D2 has been undone.
+/// let ungated = Governed { _private: () };
+/// ```
+///
+/// And this block is the *attribution*: naming the type and passing it across a function boundary are
+/// both allowed, so the failure above is the private field and not a wrong path or a missing
+/// re-export. Without it, `compile_fail` would pass for any reason at all, including a typo.
+///
+/// ```
+/// use rigorix_engine::gate::domain::Governed;
+///
+/// fn accepts_the_witness(_governed: Governed) {}
+/// ```
 #[derive(Debug)]
 pub struct Governed {
     /// Private on purpose. Its value is irrelevant; its *existence* is the claim, and a unit field

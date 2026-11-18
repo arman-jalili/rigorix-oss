@@ -225,6 +225,21 @@ impl HostError {
                     "unmet": unmet,
                 }),
             ),
+            // #1630: a receipt the caller sent and the engine could not accept. Its own error type —
+            // `receipt_refused` — because a declaration the engine refused before dispatch is not a
+            // policy verdict about a step, and a client that already branches on
+            // `precondition_checked` / `precondition_findings` must not see those codes here.
+            // The *type* stays `invalid_params`: the caller sent a document this surface could not
+            // accept, and the JSON-RPC taxonomy is a frozen published contract (`errors.json`,
+            // `x-error-codes`). The refusal's own code — `malformed_document`, `workspace_mismatch`,
+            // `receipt_unsupported`, … — travels in `data.code`, which is where a client branches and
+            // is deliberately disjoint from the precondition family (`precondition_checked`,
+            // `precondition_findings`, `precondition_denied`): a declaration the engine could not
+            // accept is not a step it declined to run.
+            EngineFacadeError::ReceiptRefused { code, detail } => {
+                Self::new(ErrorType::InvalidParams, error.to_string())
+                    .with_details(serde_json::json!({ "code": code, "detail": detail }))
+            }
             EngineFacadeError::BudgetExceeded { .. } => {
                 Self::new(ErrorType::BudgetExhausted, error.to_string())
             }

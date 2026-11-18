@@ -301,6 +301,48 @@ impl EngineFacade for EngineFacadeImpl {
         identity: Option<rigorix_engine::identity::IdentityRef>,
         verification_failure: Option<String>,
     ) -> Result<ExecutionResult, EngineFacadeError> {
+        self.execute_with_receipt(
+            plan,
+            repository,
+            author,
+            identity,
+            verification_failure,
+            None,
+        )
+        .await
+    }
+
+    async fn execute_with_receipt(
+        &self,
+        plan: PlanTemplate,
+        repository: Option<String>,
+        author: Option<String>,
+        identity: Option<rigorix_engine::identity::IdentityRef>,
+        verification_failure: Option<String>,
+        receipt: Option<crate::execution_tools::domain::receipt_input::ReceiptInput>,
+    ) -> Result<ExecutionResult, EngineFacadeError> {
+        // #1630: the declaration is validated *here*, before the enforcement pre-check and long before
+        // the graph — through the crate's own door, so the refusal is the crate's vocabulary with the
+        // crate's operands rather than a message this surface invented.
+        let receipt = match receipt {
+            None => None,
+            Some(input) => match input.verify() {
+                Ok((receipt, _)) => Some(receipt),
+                Err(refusals) => {
+                    return Err(EngineFacadeError::ReceiptRefused {
+                        code: refusals
+                            .first()
+                            .map(|refusal| refusal.kind().to_string())
+                            .unwrap_or_else(|| "malformed_document".to_string()),
+                        detail: refusals
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join("; "),
+                    });
+                }
+            },
+        };
         // Optional enforcement pre-check
         if self.config.enforcement_enabled {
             let _enforcement = self
@@ -339,9 +381,9 @@ impl EngineFacade for EngineFacadeImpl {
             // The crate's door for a host that *has* a receipt is
             // `rigorix_engine::receipt::run_receipt`, which runs it, seals the attestation and reads
             // it back. What the façade can honestly report is that it declared nothing — and it does:
-            // `receipt_digest` below is `None` for every run started here, so "this run was admitted
-            // under a receipt" is never claimed by a path that had none.
-            receipt: None,
+            // #1630: the declaration the caller sent, when it sent one. `None` here is now a fact about
+            // *this call* rather than about the surface, and the response names which state it is in.
+            receipt: receipt.clone(),
         };
 
         let run_output = timeout(
@@ -391,7 +433,15 @@ impl EngineFacade for EngineFacadeImpl {
         .with_receipt_digest(run_output.receipt_digest.clone())
         // #1570: and so does the attestation, which lives in a directory the client cannot read.
         // Without this field a sealed run and an unsealed one are the same response.
-        .with_attestation_digest(run_output.attestation_digest.clone());
+        .with_attestation_digest(run_output.attestation_digest.clone())
+        // #1630: the three "no digest" states are different facts, and the value a caller acts on
+        // should not collapse them.
+        .with_receipt_state(
+            crate::execution_tools::domain::receipt_input::ReceiptState::classify(
+                run_output.receipt_digest.as_deref(),
+                run_output.attestation_digest.as_deref(),
+            ),
+        );
 
         self.repository.save_execution(&result).await?;
         Ok(result)
