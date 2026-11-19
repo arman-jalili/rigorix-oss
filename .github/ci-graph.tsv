@@ -43,8 +43,9 @@ docs	affected	-	claims checked against the source and the canonical documents
 conformance	affected	-	replays the vectors against the crate it builds itself
 integration	affected,test	tested binaries	end-to-end over the binaries `test` already ran
 portable	affected,workspace	-	its own subject: the slice builds for wasm32 and its tests run natively
+packaged-surface	affected,workspace	-	its own subject: the tarball a consumer downloads, which `cargo package` produces and two `cargo check` windows compile. A leaf: it exports nothing to a dependent, and it must not sit behind `lint` — the defect it exists for (#1643) was invisible to every stage that shares its tree
 shell	affected	-	its own subject: exit statuses in scripts
 wasm-gates	affected	-	its own subject: the crate's eleven gates
 wasi	affected	-	its own subject: a second artifact — a recorded import section that no decision reads
-ci-report	affected,lint,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates,wasi	-	reports every stage; a leaf
-gate	affected,lint,test,coverage,portable,audit,docs,integration,conformance,shell,wasm-gates,wasi	-	the verdict; requires every mandatory stage
+ci-report	affected,lint,test,coverage,portable,packaged-surface,audit,docs,integration,conformance,shell,wasm-gates,wasi	-	reports every stage; a leaf
+gate	affected,lint,test,coverage,portable,packaged-surface,audit,docs,integration,conformance,shell,wasm-gates,wasi	-	the verdict; requires every mandatory stage
