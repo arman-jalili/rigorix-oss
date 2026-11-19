@@ -178,6 +178,18 @@ run_check() { # $1 tarball-version, $2 unpacked dir, $3 mode (quiet|verbose) →
     consumer_main > "$consumer/src/main.rs"
     consumer_manifest "$unpacked" "$version" "" > "$consumer/Cargo.toml"
 
+    # The consumer is outside the workspace, so rustup would answer with the runner's `stable` rather
+    # than this repository's pin — and with `RUSTFLAGS=-D warnings` inherited from CI's job, a *newer*
+    # stable's deprecations read as a compile error in a crate that compiles fine here:
+    # `use of deprecated method Atomic::<u32>::fetch_update` and eight more, on 2026-11-19, from a
+    # tarball this check had just accepted locally. The subject is "the surface a consumer of *this*
+    # release gets", so the consumer compiles with the toolchain the release is built with.
+    if [[ -f "$ROOT/rust-toolchain.toml" ]]; then
+        cp "$ROOT/rust-toolchain.toml" "$consumer/rust-toolchain.toml"
+    elif [[ -f "$ROOT/rust-toolchain" ]]; then
+        cp "$ROOT/rust-toolchain" "$consumer/rust-toolchain"
+    fi
+
     # ── assertion 1: default features reach the three paths ──
     # `|| status` rather than `if !`: a pipeline reports the last command's status, and the negation
     # discards it, which would make this branch unreachable (measured in local-ci once already).
