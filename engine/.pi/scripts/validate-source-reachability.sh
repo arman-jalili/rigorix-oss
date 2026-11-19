@@ -35,22 +35,24 @@ CRATES="engine mcp cli actions server wasm"
 
 scan() {
     # $1 = repo root. Prints one `path<TAB>stem` line per unreachable file.
-    local root="$1" crate src file stem hit
+    #
+    # One grep per crate, not one per file. The first version ran `grep -rlE "mod <stem>;"` for every
+    # file, which is quadratic: it took the `guards` stage from ~1m16s to over 4m and blew its ceiling
+    # — a guard that makes the gate it lives in too slow is a guard that gets switched off. The
+    # declarations are collected once and matched as a set.
+    local root="$1" crate src file stem decls
     for crate in $CRATES; do
         src="$root/$crate/src"
         [ -d "$src" ] || continue
+        decls="$(grep -rhoE '^[[:space:]]*(pub([[:space:]]*\([^)]*\))?[[:space:]]+)?mod[[:space:]]+[A-Za-z0-9_]+[[:space:]]*;' \
+            "$src" 2>/dev/null | sed -E 's/.*mod[[:space:]]+([A-Za-z0-9_]+).*/\1/' | sort -u)"
         while IFS= read -r file; do
             case "$file" in
                 */mod.rs|*/lib.rs|*/main.rs) continue ;;
                 */src/bin/*) continue ;;   # cargo targets, declared by the manifest
             esac
             stem="$(basename "$file" .rs)"
-            # `mod foo;` in any file of the same crate, including `pub mod foo;` and
-            # `pub(crate) mod foo;`. An *inline* `mod foo {` also makes the name real, but it
-            # is not a file-backed module, so only the `;` form counts here.
-            hit="$(grep -rlE "^[[:space:]]*(pub([[:space:]]*\([^)]*\))?[[:space:]]+)?mod[[:space:]]+${stem}[[:space:]]*;" \
-                "$src" 2>/dev/null | head -1)"
-            if [ -z "$hit" ]; then
+            if ! printf '%s\n' "$decls" | grep -qx "$stem"; then
                 printf '%s\t%s\n' "${file#"$root"/}" "$stem"
             fi
         done < <(find "$src" -name '*.rs' -type f | sort)
