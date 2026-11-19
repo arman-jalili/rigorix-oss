@@ -25,7 +25,7 @@
 #
 # guard	reads	why
 .pi/scripts/validate-panic-sites.sh	**/*.rs	the panic surface is production Rust, wherever it lives
-.pi/scripts/validate-source-reachability.sh	engine/src/**, mcp/src/**, cli/src/**, actions/src/**, server/src/**, wasm/src/**	the subject is the module trees the compiler is given, not the files on disk
+.pi/scripts/validate-source-reachability.sh	*/src/**	the subject is the module trees the compiler is given, not the files on disk — one glob, because the column is matched with fnmatch and a comma-separated list is a pattern that matches nothing (#1643)
 .pi/scripts/validate-unsafe-sites.sh	**/*.rs	the `unsafe` surface is production Rust
 .pi/scripts/validate-secret-logs.sh	**/*.rs	secret material can only reach a log from code
 .pi/scripts/validate-script-drift.sh	**/.pi/**	the mirrored scripts live in every crate's `.pi` tree
@@ -35,7 +35,7 @@
 .pi/scripts/validate-docs.sh	**/*.md	a document anywhere can carry a link that does not resolve or a claim that is not true
 .pi/scripts/validate-wiring-claims.sh	**/*.md	"it is wired" is a claim made in documents
 .pi/scripts/validate-portable-inventory.sh	engine/src/**	the portable slice's counts are read from the engine's code
-.pi/scripts/validate-portable-slice.sh	engine/src/**, engine/.pi/portable-inventory.tsv	the subject is the crate as the slice compiles it, not as this machine's default flags compile it
+.pi/scripts/validate-portable-slice.sh	engine/src/**	the subject is the crate as the slice compiles it, not as this machine's default flags compile it — one glob; the inventory it also reads is covered by the row above
 .pi/scripts/ci/check_effect-commitment_contracts.sh	engine/src/**	the frozen contracts are implemented in the engine
 .pi/scripts/ci/check_capacity-ledger_contracts.sh	engine/src/**	the frozen interfaces are implemented in the engine
 .pi/scripts/ci/stage_workspace_check.sh	**/Cargo.toml	the workspace's members, features and pins

@@ -48,6 +48,37 @@ SELF_TEST=0
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
+# The call shape the fixture compiles against, stated as a *value* so the failure prints it (#1643).
+#
+# 1.16.0 was tagged and published nothing: `#1629` removed `run_receipt`'s `steps` parameter, the
+# fixture below kept the old argument list, and the only failure was `E0061` from a script that ran
+# nowhere until the tag existed. A reader who has the expected shape, the artifact's name and the
+# version finds that in ten seconds; a reader who has `E0061` starts an investigation.
+EXPECTED_SHAPE="$(cat <<'SHAPE'
+    receipt::run_receipt(
+        workspace: &Path,
+        receipt:   &Receipt,
+        config:    RunReceiptConfig { state_dir, audit_key, permission_mode },
+    ) -> Result<RunReceiptOutput, RunReceiptError>
+
+    gate::infrastructure::assemble(
+        config: GovernedAssemblyConfig,
+    ) -> Result<GovernedAssembly, AssemblyError>
+
+    receipt::Receipt::from_document(&str) -> Result<Receipt, Vec<ReceiptRefusal>>
+    receipt::verify(&[u8], &[u8]) -> Result<VerifiedAttestation, String>
+    Attestation::receipt_digest(&self) -> &str
+SHAPE
+)"
+
+print_expected_shape() {
+    printf '\n%s  the consumer compiles against this call shape — a mismatch is a fixture that did not\n' "$YELLOW"
+    printf '  move with the crate, and the fix is the argument list below, not the crate:%s\n' "$NC" >&2
+    printf '%s\n' "$EXPECTED_SHAPE" | sed 's/^/      /' >&2
+    printf '  crate: %s   version: %s   subject: the packaged tarball (target/package/%s-%s.crate)\n' \
+        "$CRATE" "$VERSION" "$CRATE" "$VERSION" >&2
+}
+
 version_of() { # $1 manifest → the version the crate claims
     sed -n 's/^version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$1" | head -1
 }
@@ -147,13 +178,26 @@ run_check() { # $1 tarball-version, $2 unpacked dir, $3 mode (quiet|verbose) →
     consumer_main > "$consumer/src/main.rs"
     consumer_manifest "$unpacked" "$version" "" > "$consumer/Cargo.toml"
 
+    # The consumer is outside the workspace, so rustup would answer with the runner's `stable` rather
+    # than this repository's pin — and with `RUSTFLAGS=-D warnings` inherited from CI's job, a *newer*
+    # stable's deprecations read as a compile error in a crate that compiles fine here:
+    # `use of deprecated method Atomic::<u32>::fetch_update` and eight more, on 2026-11-19, from a
+    # tarball this check had just accepted locally. The subject is "the surface a consumer of *this*
+    # release gets", so the consumer compiles with the toolchain the release is built with.
+    if [[ -f "$ROOT/rust-toolchain.toml" ]]; then
+        cp "$ROOT/rust-toolchain.toml" "$consumer/rust-toolchain.toml"
+    elif [[ -f "$ROOT/rust-toolchain" ]]; then
+        cp "$ROOT/rust-toolchain" "$consumer/rust-toolchain"
+    fi
+
     # ── assertion 1: default features reach the three paths ──
     # `|| status` rather than `if !`: a pipeline reports the last command's status, and the negation
     # discards it, which would make this branch unreachable (measured in local-ci once already).
     out_ok="$( cd "$consumer" && cargo check --quiet 2>&1 )" || status_ok=$?
     if [[ "${status_ok:-0}" -ne 0 ]]; then
         printf '%s\n' "$out_ok" | tail -20 >&2
-        echo -e "${RED}❌ the packaged $CRATE $version does not expose the receipt surface a consumer names${NC}" >&2
+        echo -e "${RED}❌ the packaged $CRATE $version does not expose the surface a consumer names${NC}" >&2
+        print_expected_shape
         return 1
     fi
 
@@ -197,7 +241,10 @@ PACKAGED="$UNPACK/$CRATE-$VERSION"
 [[ -d "$PACKAGED" ]] || { echo "❌ check-packaged-surface: the tarball did not unpack to $PACKAGED" >&2; exit 1; }
 
 if run_check "$VERSION" "$PACKAGED" verbose; then
-    echo -e "${GREEN}✅ packaged surface: $CRATE $VERSION exposes receipt::{Receipt, verify, Attestation, run_receipt} and gate::infrastructure::assemble with default features, and withholds it under \`portable\`${NC}"
+    echo -e "${GREEN}✅ packaged surface: $CRATE $VERSION — the tarball target/package/$CRATE-$VERSION.crate — exposes${NC}"
+    printf '     %s\n' "receipt::{Receipt::from_document, verify, Attestation::receipt_digest, run_receipt, RunReceiptConfig, RunReceiptOutput, RunReceiptError}"
+    printf '     %s\n' "gate::infrastructure::assemble::{GovernedAssembly, GovernedAssemblyConfig, AssemblyError}"
+    echo -e "${GREEN}   with default features, and withholds receipt under \`portable\`${NC}"
 else
     exit 1
 fi

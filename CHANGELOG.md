@@ -52,6 +52,16 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   per-stage conditioning working by passing on the cold column; the run-level row now answers the same way. No ceiling moved —
   the `total` row's cold sample is still the 2409s one — so a 23-minute run that built crates passes and a 23-minute run that
   built nothing still fails.
+- **The packaged surface is compiled before the tag, not after it** (#1643). `1.16.0` was tagged and published nothing:
+  `#1629` removed `run_receipt`'s `steps` parameter, the packaged-consumer fixture kept the old call, and
+  `.github/scripts/check-packaged-surface.sh` had exactly one caller — `release.yml`, i.e. the event it guards. Every gate was
+  green on a tree whose packaged tarball had never been produced. **CI now runs it on every change that can reach the surface**
+  (`📦 Packaged surface`, a mandatory stage keyed by new `engine/src/receipt/**` and `engine/src/gate/**` rows in the affected
+  map), and `local-ci` gained a `packaged` stage with its own budget row — `cargo package` plus two `cargo check` windows is
+  ~75 s, which no existing stage's ceiling covers, and widening a stage to host an unrelated check is how a budget row stops
+  describing its subject. A failure now prints the **expected call shape**, the crate, the version and the tarball it checked, so
+  fixture drift is a ten-second read instead of an `E0061` investigation; the success line names every path it asserted.
+  `RELEASING.md` and the wasm runbook gained the pre-tag block that runs it before a tag exists.
 - **An executor's gate is a value the config has to name, not a field it can omit** (#1636). `ParallelExecutionFactoryConfig::precondition`
   was `Option<PreconditionSetup>`, and `None` is what you get by *omitting* the field — so "run ungated" was a decision nobody
   wrote down and a reviewer could not see. It is now `PreconditionArming`, which has **no `Default`**: a hand-built config writes

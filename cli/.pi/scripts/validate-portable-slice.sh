@@ -169,6 +169,7 @@ if [ "${1:-}" = '--self-test' ]; then
     tmp="$(mktemp -d)"
     tree="$tmp/tree"
     ko=0
+    skipped=0
     cleanup() {
         git -C "$ROOT" worktree remove --force "$tree" >/dev/null 2>&1 || true
         find "$tmp" -mindepth 1 -delete 2>/dev/null || true
@@ -176,6 +177,11 @@ if [ "${1:-}" = '--self-test' ]; then
     }
     trap cleanup EXIT
 
+    # The plant is judged by *compiling*, and a compile of a second source tree costs minutes inside
+    # every gate sweep that runs guard self-tests (`guards` in `local-ci`, `audit` in CI) — it took the
+    # `guards` stage from 2m40s to 6m54s, past its ceiling. The proof is not optional, so it is not
+    # deleted: it runs wherever cargo work is already the job's subject (`RIGORIX_SLICE_SELF_TEST_CARGO=1`,
+    # set by CI's `audit` step), and everywhere else the skip is printed with its reason.
     if ! git -C "$ROOT" worktree add --detach "$tree" HEAD >/dev/null 2>&1; then
         printf '  %b❌%b self-test could not create a worktree\n' "$RED" "$NC"
         printf 'self-test: 0/2 assertions\n'
@@ -197,6 +203,14 @@ PY2
         if git -C "$tree" diff --quiet -- engine/src/gate/domain/mod.rs; then
             printf '  %b❌%b self-test seed did not apply: the copy is unchanged\n' "$RED" "$NC"
             ko=$((ko + 1))
+        elif [ "${RIGORIX_SLICE_SELF_TEST_CARGO:-}" != '1' ]; then
+            # The plant applied and is in the copy; only the compile is skipped, and it says so.
+            # A compile of a second source tree costs a full crate build and took the `guards` stage
+            # from 2m40s to 6m54s, past its ceiling — so the proof runs where cargo work is already
+            # the job's subject (CI's `audit` step sets this), and elsewhere the skip is printed.
+            printf '  %b·%b the plant applied to the copy; the *compile* proof is skipped here — set RIGORIX_SLICE_SELF_TEST_CARGO=1 (the CI audit job does)\n' \
+                "$YELLOW" "$NC"
+            skipped=1
         else
             # The worktree is a different source tree, so its engine artifacts cannot be reused — but
             # its *dependencies* can, and they are what makes a cold check expensive. Sharing the
@@ -220,7 +234,12 @@ PY2
     fi
 
     total=2
-    printf 'self-test: %d/%d assertions\n' "$((total - ko))" "$total"
+    if [ "${skipped:-0}" -eq 1 ]; then
+        printf 'self-test: %d/%d assertions (%d skipped: the compile proof)\n' \
+            "$((total - ko - skipped))" "$total" "$skipped"
+    else
+        printf 'self-test: %d/%d assertions\n' "$((total - ko))" "$total"
+    fi
     exit $(( ko > 0 ? 1 : 0 ))
 fi
 
