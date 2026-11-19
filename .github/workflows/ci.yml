@@ -250,6 +250,34 @@ jobs:
         # has no cargo invocation of its own.
         run: bash .pi/scripts/validate-portable-slice.sh --require-target --with-tests --with-bundle
 
+  # ── The packaged surface (#1643) ─────────────────────────────────
+  # The subject is the *tarball a consumer downloads*, not the workspace, and it is the one check
+  # whose absence let 1.16.0 publish nothing: `#1629` removed a parameter from `run_receipt`, the
+  # consumer fixture kept the old call, and every gate was green because nothing ran the fixture —
+  # `.github/scripts/check-packaged-surface.sh` had exactly one caller, in `release.yml`.
+  #
+  # Its own job rather than a step in someone else's: `cargo package` plus two `cargo check` windows
+  # is ~75 s, which no existing stage's ceiling covers, and widening a stage's subject to host a
+  # check that has nothing to do with it is how a budget row stops describing what it measures.
+  # `.pi/local-ci-budget.tsv` has a `packaged` row for the same reason.
+  packaged-surface:
+    name: 📦 Packaged surface
+    if: contains(needs.affected.outputs.subjects, ' packaged-surface ')
+    needs: [affected, workspace]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: packaged-surface
+      - name: 📦 The tarball a consumer downloads exposes the documented surface
+        # The script names the crate, the version and the paths it asserted in its own output, so a
+        # drift is a one-line read rather than an E0061 investigation.
+        run: bash .github/scripts/check-packaged-surface.sh
+      - name: 🧪 The check bites
+        run: bash .github/scripts/check-packaged-surface.sh --self-test
+
   # ── Stage 3b: Coverage (real line coverage via cargo-llvm-cov) ──
   coverage:
     name: 📊 Coverage (workspace)
@@ -600,7 +628,7 @@ jobs:
   # `ci-report` there (`📋 Stage report`).
   ci-report:
     name: 📋 Stage report
-    needs: [affected, lint, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates, wasi]
+    needs: [affected, lint, test, coverage, portable, packaged-surface, audit, docs, integration, conformance, shell, wasm-gates, wasi]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -616,6 +644,7 @@ jobs:
           RESULT_TEST: ${{ needs.test.result }}
           RESULT_COVERAGE: ${{ needs.coverage.result }}
           RESULT_PORTABLE: ${{ needs.portable.result }}
+          RESULT_PACKAGED_SURFACE: ${{ needs.packaged-surface.result }}
           RESULT_AUDIT: ${{ needs.audit.result }}
           RESULT_DOCS: ${{ needs.docs.result }}
           RESULT_INTEGRATION: ${{ needs.integration.result }}
@@ -627,7 +656,7 @@ jobs:
   # ── Stage 8: Final Gate ───────────────────────────────────────
   gate:
     name: 🚪 Final Gate
-    needs: [affected, lint, test, coverage, portable, audit, docs, integration, conformance, shell, wasm-gates, wasi]
+    needs: [affected, lint, test, coverage, portable, packaged-surface, audit, docs, integration, conformance, shell, wasm-gates, wasi]
     # A superseded run gets no verdict (#1289). `cancelled` is the scheduler's
     # fact, not the change's: with `cancel-in-progress` every push to the same
     # ref cancels the previous run, so the old `!= 'success'` test accused the
@@ -648,6 +677,7 @@ jobs:
           RESULT_TEST: ${{ needs.test.result }}
           RESULT_COVERAGE: ${{ needs.coverage.result }}
           RESULT_PORTABLE: ${{ needs.portable.result }}
+          RESULT_PACKAGED_SURFACE: ${{ needs.packaged-surface.result }}
           RESULT_AUDIT: ${{ needs.audit.result }}
           RESULT_DOCS: ${{ needs.docs.result }}
           RESULT_INTEGRATION: ${{ needs.integration.result }}

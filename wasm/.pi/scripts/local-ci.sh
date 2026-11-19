@@ -32,10 +32,10 @@ SELF_TEST=false; PROBE_EXIT=""; LOCK_FILE=""; JOBS=""
 START_TIME=$(date +%s)
 CRATES=("engine" "mcp" "cli" "actions" "server")
 REPORT_DIR="${REPORT_DIR:-.pi/output}"
-VALID_STAGES=" lint build test security guards coverage docs integration "
+VALID_STAGES=" lint build packaged test security guards coverage docs integration "
 # The table's order, and the serial order: the legacy one, so `--jobs 1` reproduces what a
 # contributor ran before this change (#1551's acceptance asks for the order and the duration).
-STAGE_ORDER=("lint" "build" "test" "security" "guards" "coverage" "docs" "integration")
+STAGE_ORDER=("lint" "build" "packaged" "test" "security" "guards" "coverage" "docs" "integration")
 
 usage() {
     echo "usage: local-ci.sh [--quick] [--release] [--stage=<stage>|--stage <stage>]" >&2
@@ -1017,6 +1017,20 @@ stage_coverage() {
     stage_end
 }
 
+stage_packaged() {
+    # #1643: the subject is the *tarball a consumer downloads*. It has its own stage because
+    # `cargo package` plus two `cargo check` windows is ~75 s, and no existing stage's ceiling covers
+    # that — widening, say, `build` (17 s) to host it would make that row stop describing its subject.
+    # `release.yml` ran this check and nothing else did, which is how 1.16.0 published nothing: the
+    # consumer fixture kept a call `run_receipt` no longer takes, and every gate was green on a tree
+    # whose packaged surface had never been produced.
+    stage_begin packaged "Stage 2b: Packaged surface"
+    info "the subject is the artifact, not the workspace: cargo package, then a consumer crate checks it"
+    run_cmd "check-packaged-surface.sh (the tarball a consumer downloads)" \
+        bash .github/scripts/check-packaged-surface.sh
+    stage_end
+}
+
 stage_integration() {
     stage_begin integration "Stage 6: Integration"
     for script in .pi/scripts/validate-integration.sh .pi/scripts/validate-operations.sh; do
@@ -1103,12 +1117,15 @@ else
     # invocations contend on the same `target/` lock and the run took 43m53s instead of speeding
     # up. Cargo already serialises on that directory; adding callers to the queue does not add
     # throughput. What waves buy is the non-cargo stages overlapping, which is what they do.
-    SCHEDULED=(lint docs security guards build test coverage integration)
+    SCHEDULED=(lint docs security guards build packaged test coverage integration)
     run_wave lint docs security guards
     # `build` gets its own wave: the portable slice and the wasm32 check live in it, and it was
     # silently absent from this path once already — 111 checks instead of 126, and nothing failed,
     # because the summary only ever described the stages that wrote a result file.
     run_wave build
+    # `packaged` runs its own `cargo package` + two `cargo check` windows, so it shares `target/` with
+    # everything else and must not be waved beside `build` (#1555's lesson: one lock, serial).
+    run_wave packaged
     run_wave test
     run_wave coverage
     run_wave integration

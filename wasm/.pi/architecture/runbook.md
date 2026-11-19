@@ -78,7 +78,7 @@ nothing to catch.
 1. A **mismatch** between two runtimes is a real finding: find which side changed.
 2. The **seeded divergence vector matched** → the comparator is broken. That is the highest
    severity failure in this repo: every other conformance result is now meaningless.
-3. A **skip** or a zero-test run → the harness did not run. Also a failure.
+5. A **skip** or a zero-test run → the harness did not run. Also a failure.
 4. An **unlabelled vector** → add `"gate": "cli" | "fixture" | "seeded"`.
 
 Adding a vector: put `scenario`, `fixtures`, `clock`, `seed`, `expected`, `seeded_divergence`
@@ -129,11 +129,17 @@ version, and to appear in the release notes. A member that is added to the works
 to the train fails that guard, which is the defect `rigorix-actions` carried for seven weeks.
 
 1. `bash wasm/ci/run-wasm-gates.sh --with-npm` — all gates including independence.
-2. `bash .pi/scripts/validate-release-train.sh` — the train matches the manifests.
-3. Bump `version` in `wasm/Cargo.toml` **and** in `engine`, `cli`, `mcp`, `actions`: the
+2. `bash .github/scripts/check-packaged-surface.sh` — the tarball a consumer downloads still
+   exposes the surface (`receipt::{…}`, `run_receipt`, `gate::infrastructure::assemble`). It has
+   to run **before** the tag: `1.16.0` was tagged and published nothing because the packaged
+   consumer fixture kept a call `#1629` had changed, and the only thing that compiles the fixture
+   used to run in `release.yml`, after the tag (#1643). The script prints the expected call shape
+   when it fails, so the fix is the argument list, not an `E0061` investigation.
+3. `bash .pi/scripts/validate-release-train.sh` — the train matches the manifests.
+4. Bump `version` in `wasm/Cargo.toml` **and** in `engine`, `cli`, `mcp`, `actions`: the
    release `verify` job fails when any crate's version differs from the tag, and the guard
    above fails when the train versions differ from each other.
-4. Tag. Publish order is `engine` → `rigorix-gate-wasm` (crates.io) → `rigorix-gate` (npm),
+5. Tag. Publish order is `engine` → `rigorix-gate-wasm` (crates.io) → `rigorix-gate` (npm),
    so a host that pins both the engine and the npm package resolves one version.
 
 **Two secrets, not one.** `CARGO_REGISTRY_TOKEN` (already used) and **`NPM_TOKEN`** (new:

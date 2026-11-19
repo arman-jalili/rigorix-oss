@@ -23,6 +23,8 @@ deny.toml	ALL	the audit's subject is the whole dependency graph
 .github/**	ALL	the pipeline is the thing being narrowed
 .pi/**	ALL	the guards and mirrors gate every crate
 .rigorix/**	ALL	product configuration the engine reads at run time
+engine/src/receipt/**	packaged-surface	the fixture in `.github/scripts/check-packaged-surface.sh` names `receipt::{Receipt, verify, Attestation, run_receipt}` and reads `RunReceiptOutput`; adding these rows does not narrow `engine/src/**`, because the map unions every matching row (#1643)
+engine/src/gate/**	packaged-surface	the consumer calls `gate::infrastructure::assemble` and matches `AssemblyError`, so the assembly's signature is part of the packaged surface (#1643)
 engine/src/**	engine,test,portable,conformance,coverage,wasm-gates,wasi,actions,cli,mcp,server,integration,audit	the engine and everything that builds against it — the comment was true of the intent and false of the row until #1468: `portable` proves the slice compiles, it does not replay a decision, and every other member's tests link it
 engine/tests/**	engine,test,portable,conformance,coverage,wasm-gates,wasi,actions,cli,mcp,server,integration,audit	the engine's test binaries — and, like its sources, every member that links the crate
 **/.pi/**	audit	the mirrored guards and the crate documents a guard reads, in every crate: `**/*.md` alone sent `actions/.pi/INDEX.md` to `docs` and nothing else, and `validate-script-drift.sh` reads exactly that tree (#1514)

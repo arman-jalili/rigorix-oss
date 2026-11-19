@@ -18,7 +18,10 @@
 # `build` left this list with the job (#1438): it decided nothing, uploaded nothing, and five
 # stages waited eleven minutes for it. Its two subjects live in `lint` (clippy and the
 # conventions suite) and in the stages that compile what they need.
-CI_MANDATORY_STAGES="lint test coverage portable audit conformance shell wasm-gates"
+# `packaged-surface` joined this list with its job (#1643). The subject is the tarball a consumer
+# downloads, and it is the one check whose absence let 1.16.0 ship a consumer fixture that did not
+# compile: every gate was green on a tree whose packaged surface had never been produced.
+CI_MANDATORY_STAGES="lint test coverage portable packaged-surface audit conformance shell wasm-gates"
 # Reported but not required — whether they should be is a separate decision.
 CI_REPORTED_STAGES="docs integration"
 

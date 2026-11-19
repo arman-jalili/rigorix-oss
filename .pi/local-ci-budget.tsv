@@ -151,4 +151,9 @@ guards	83	4	76	unmeasured	221	6	201	unmeasured	78	2026-11-15	8-core (aarch64, ma
 coverage	379	4	345	unmeasured	379	6	345	unmeasured	78	2026-11-15	8-core (aarch64, macOS)
 docs	31	4	29	unmeasured	38	6	35	unmeasured	31	2026-11-15	8-core (aarch64, macOS)
 integration	1	4	1	unmeasured	1	6	1	unmeasured	1	2026-11-15	8-core (aarch64, macOS)
-total	770	5	700	unmeasured	2409	6	2190	unmeasured	394	2026-11-15	8-core (aarch64, macOS)
+# `packaged` (#1643): two warm runs so far, 74 s and 110 s (`cargo package` plus two `cargo check`
+# windows; the second run paid the packaging of a larger tree). The ceiling is derived from the
+# *slowest* sample, never from the first: floor(11 × 110 / 10) = 121. The first draft used 74 → 81 and
+# the 110 s run then warned inside its band — measured, not guessed, and the row says 2 runs.
+packaged	121	2	110	unmeasured	121	2	110	unmeasured	78	2026-11-18	8-core (aarch64, macOS)
+total	770	5	700	unmeasured	2409	6	2190	unmeasured	472	2026-11-18	8-core (aarch64, macOS)
