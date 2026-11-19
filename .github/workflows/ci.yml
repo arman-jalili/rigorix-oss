@@ -368,6 +368,13 @@ jobs:
         run: bash .pi/scripts/validate-guards.sh
       - name: Guard self-tests (each gating guard fails on a planted regression)
         shell: bash
+        # `RIGORIX_SLICE_SELF_TEST_CARGO=1`: the portable-slice guard's seed plants a dead producer in
+        # a second source tree and **compiles** it. That compile is the proof, and it cost the
+        # `guards` stage a full crate build (2m40s → 6m54s, past its ceiling), so the local sweep skips
+        # it with the reason printed and this job — where cargo work is already the subject — runs it
+        # (#1643).
+        env:
+          RIGORIX_SLICE_SELF_TEST_CARGO: "1"
         run: bash .pi/scripts/validate-guards.sh --self-test
       # NOTE: the "Root + per-crate scripts" convention loop is deliberately
       # NOT run here. It takes ~20 min (runs every proofing/stage script,
