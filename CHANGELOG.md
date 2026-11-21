@@ -52,6 +52,12 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   per-stage conditioning working by passing on the cold column; the run-level row now answers the same way. No ceiling moved —
   the `total` row's cold sample is still the 2409s one — so a 23-minute run that built crates passes and a 23-minute run that
   built nothing still fails.
+- **The gate run for #1622 was red for a reason that was not in the tree**, and it is filed rather than patched here (see #1646):
+  `shell_policy::resolve_program` accepts the first `PATH` entry whose file *exists*, so a non-executable
+  `~/.local/bin/env` shadowed `/usr/bin/env` and every `run-command` spawn failed with
+  `EACCES` — reported as `Failed to execute command 'env': Permission denied`, naming the command and not the file it
+  chose. Bisected by hand (`env -i` passed, the full environment failed, `PATH` was the variable) and disclosed because
+  this branch's gate was re-run with `/usr/bin` first to measure the change under test.
 - **A budget sample says what machine it was taken on, and a contended host does not judge the code** (#1622). A ceiling is a
   duration; a duration is a measurement of the code only when the host is not also moving — the same portable step ran **2 s alone
   and 45 s inside a run at load 16.15**, and the budget could only report the 45 s and fail the run. Every row's `machine` column
