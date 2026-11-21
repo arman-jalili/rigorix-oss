@@ -52,6 +52,14 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   per-stage conditioning working by passing on the cold column; the run-level row now answers the same way. No ceiling moved —
   the `total` row's cold sample is still the 2409s one — so a 23-minute run that built crates passes and a 23-minute run that
   built nothing still fails.
+- **The suite runs once, and the feature set does not flip (#1647, guardian-framework#105).** `validate-ci.sh` ran
+  `cargo build` + `cargo test`, and `validate-integration.sh` ran `cargo test --tests`, in every crate, after the `test` stage had
+  already run the suite — and a plain `cargo test` **resets the feature set to the default**, so every test binary the gate had
+  just linked was relinked. `.pi/scripts/local-ci.sh` now exports `GUARDIAN_GATE_RAN=1` when the run will execute its `test` stage,
+  and only then — a flag set unconditionally would make `--stage lint` skip the tests and run nothing, which is the bug the
+  framework shipped first. The two validators skip the build and the suite, print which stage owns that subject, and keep
+  everything the gate does not own: workspace shape, clippy, format, audit, and the integration-seam check, which now asserts
+  reachability instead of re-running the binaries.
 - **The gate run for #1622 was red for a reason that was not in the tree**, and it is filed rather than patched here (see #1646):
   `shell_policy::resolve_program` accepts the first `PATH` entry whose file *exists*, so a non-executable
   `~/.local/bin/env` shadowed `/usr/bin/env` and every `run-command` spawn failed with
