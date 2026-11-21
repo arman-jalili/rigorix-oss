@@ -52,6 +52,15 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   per-stage conditioning working by passing on the cold column; the run-level row now answers the same way. No ceiling moved —
   the `total` row's cold sample is still the 2409s one — so a 23-minute run that built crates passes and a 23-minute run that
   built nothing still fails.
+- **A budget sample says what machine it was taken on, and a contended host does not judge the code** (#1622). A ceiling is a
+  duration; a duration is a measurement of the code only when the host is not also moving — the same portable step ran **2 s alone
+  and 45 s inside a run at load 16.15**, and the budget could only report the 45 s and fail the run. Every row's `machine` column
+  now carries the load its sample was measured under (`8-core (aarch64, macOS), load 11.01`); `load unrecorded` is legal only for
+  samples taken before the counter existed, and `validate-budget-derivation.sh` refuses it after that date, refuses a row that
+  states no load at all, and plants both defects in its self-test. A full run prints `the budget was judged at load N on M core(s)`
+  and, when load exceeds the core count, the rows it finds over their ceiling are reported as **not judged** — printed, counted
+  separately, neither passed nor failed — because "could not measure" is its own state (#1599) whether the missing thing is the
+  compile count or a quiet machine. The `packaged` row took the first sample with a load recorded.
 - **The packaged surface is compiled before the tag, not after it** (#1643). `1.16.0` was tagged and published nothing:
   `#1629` removed `run_receipt`'s `steps` parameter, the packaged-consumer fixture kept the old call, and
   `.github/scripts/check-packaged-surface.sh` had exactly one caller — `release.yml`, i.e. the event it guards. Every gate was

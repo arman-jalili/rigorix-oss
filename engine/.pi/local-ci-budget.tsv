@@ -61,9 +61,23 @@
 # The **band** is the movement this table treats as noise, per row, in integer seconds:
 #
 #   band        = min(78, warm_ceiling)   for a stage
-#   band_total  = sum of the stage bands  for `total`   (78+17+78+33+78+78+31+1 = 394 below)
+#   band_total  = sum of the stage bands  for `total`   (78+17+78+78+33+78+78+31+1 = 472 below)
 #   78   = 1.3 min x 60 = 13 x 6        the largest per-stage run-to-run spread recorded in
 #                                       `.github/ci-budgets.tsv` (0.4-1.3 minutes per stage)
+#
+# The **machine** column says what the sample was taken on, and since #1622 it must also say **the load
+# the sample was measured under**: `8-core (aarch64, macOS), load 2.10`. A duration is a measurement of
+# the code only when the host is not also moving — the same portable step ran 2 s alone and 45 s inside
+# a run at load 16.15 — so a ceiling without its load is a number with half a provenance.
+#
+#   load N.NN          the 1-minute load average when the sample's slowest run ended
+#   load unrecorded    taken before the counter existed (#1622); allowed only for a `measured_on`
+#                      strictly before 2026-11-19, and `.pi/scripts/validate-budget-derivation.sh`
+#                      refuses it for anything later. Every new sample carries a number.
+#
+# A run whose own load is above its core count **does not judge** a row it finds over its ceiling: it
+# prints the row as unmeasured, with both loads, and neither passes nor fails it. That is #1599's rule
+# ("could not measure" is its own state) applied to the environment instead of to the counter.
 #
 # A row that overshoots its ceiling by no more than its band **warns** and does not fail; beyond it,
 # it fails. This is the CI-side gate's rule (`ci_budget_report.sh`, FAIL_OVERAGE 1.5 min, #1523)
@@ -143,17 +157,20 @@
 # A ceiling is raised with a measurement, the date and the machine. A ceiling nudged to fit the last
 # run is a comment that fails the person next week.
 stage	warm_ceiling	warm_runs	warm_slowest	warm_compiled	cold_ceiling	cold_runs	cold_slowest	cold_compiled	band	measured_on	machine
-lint	108	4	99	unmeasured	1172	6	1066	unmeasured	78	2026-11-15	8-core (aarch64, macOS)
-build	17	4	16	unmeasured	756	6	688	unmeasured	17	2026-11-15	8-core (aarch64, macOS)
-test	127	4	116	unmeasured	431	6	392	unmeasured	78	2026-11-15	8-core (aarch64, macOS)
-security	33	4	30	unmeasured	38	6	35	unmeasured	33	2026-11-15	8-core (aarch64, macOS)
-guards	83	4	76	unmeasured	221	6	201	unmeasured	78	2026-11-15	8-core (aarch64, macOS)
-coverage	379	4	345	unmeasured	379	6	345	unmeasured	78	2026-11-15	8-core (aarch64, macOS)
-docs	31	4	29	unmeasured	38	6	35	unmeasured	31	2026-11-15	8-core (aarch64, macOS)
-integration	1	4	1	unmeasured	1	6	1	unmeasured	1	2026-11-15	8-core (aarch64, macOS)
-# `packaged` (#1643): two warm runs so far, 74 s and 110 s (`cargo package` plus two `cargo check`
-# windows; the second run paid the packaging of a larger tree). The ceiling is derived from the
-# *slowest* sample, never from the first: floor(11 × 110 / 10) = 121. The first draft used 74 → 81 and
-# the 110 s run then warned inside its band — measured, not guessed, and the row says 2 runs.
-packaged	121	2	110	unmeasured	121	2	110	unmeasured	78	2026-11-18	8-core (aarch64, macOS)
-total	770	5	700	unmeasured	2409	6	2190	unmeasured	472	2026-11-18	8-core (aarch64, macOS)
+lint	108	4	99	unmeasured	1172	6	1066	unmeasured	78	2026-11-15	8-core (aarch64, macOS), load unrecorded
+build	17	4	16	unmeasured	756	6	688	unmeasured	17	2026-11-15	8-core (aarch64, macOS), load unrecorded
+test	127	4	116	unmeasured	431	6	392	unmeasured	78	2026-11-15	8-core (aarch64, macOS), load unrecorded
+security	33	4	30	unmeasured	38	6	35	unmeasured	33	2026-11-15	8-core (aarch64, macOS), load unrecorded
+guards	83	4	76	unmeasured	221	6	201	unmeasured	78	2026-11-15	8-core (aarch64, macOS), load unrecorded
+coverage	379	4	345	unmeasured	379	6	345	unmeasured	78	2026-11-15	8-core (aarch64, macOS), load unrecorded
+docs	31	4	29	unmeasured	38	6	35	unmeasured	31	2026-11-15	8-core (aarch64, macOS), load unrecorded
+integration	1	4	1	unmeasured	1	6	1	unmeasured	1	2026-11-15	8-core (aarch64, macOS), load unrecorded
+# `packaged` (#1643, re-sampled in #1622): three warm runs — 74 s, 110 s, 96 s (`cargo package` plus two
+# `cargo check` windows). The ceiling is derived from the *slowest* sample, never from the first:
+# floor(11 × 110 / 10) = 121. The first draft used 74 → 81 and the 110 s run then warned inside its
+# band. This is the first row to carry the load its sample was taken under (#1622): 11.01 on 8 cores,
+# which is *above* the core count — the run prints that, and a row over its ceiling under it would be
+# reported as not judged rather than failed. The 110 s sample is kept, not the later 96 s, because a
+# ceiling derives from the slowest run in the sample.
+packaged	121	3	110	unmeasured	121	3	110	unmeasured	78	2026-11-19	8-core (aarch64, macOS), load 11.01
+total	770	5	700	unmeasured	2409	6	2190	unmeasured	472	2026-11-18	8-core (aarch64, macOS), load unrecorded
