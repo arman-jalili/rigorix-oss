@@ -310,9 +310,14 @@ impl Tool for RunCommandTool {
                 ))
             })?
             .map_err(|e| {
+                // #1646: name the file the resolver chose, not only the command the caller wrote —
+                // `Failed to execute command 'env': Permission denied` sent a reader looking at `env`
+                // when the answer was `/home/<user>/.local/bin/env (not executable)`.
                 ToolError::ExecutionFailed(format!(
-                    "Failed to execute command '{}': {}",
-                    command, e
+                    "Failed to execute command '{}' (resolved to {}): {}",
+                    command,
+                    resolved.display(),
+                    e
                 ))
             })?;
 

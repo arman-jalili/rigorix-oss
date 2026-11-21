@@ -232,29 +232,79 @@ pub fn validate_env_overrides(
 /// A name containing a path separator is taken literally (and must exist); a bare
 /// name is searched in the engine's `PATH` in order.
 pub fn resolve_program(program: &str) -> Result<std::path::PathBuf, String> {
+    let search = std::env::var_os("PATH").unwrap_or_default();
+    resolve_program_in(program, &search)
+}
+
+/// [`resolve_program`] against an explicit search path, so a test does not have to mutate the
+/// process environment (#1646).
+///
+/// #1646: the first version returned the first `PATH` entry whose name **existed**, and the spawn then
+/// failed with `EACCES` — on the machine that found it, `~/.local/bin/env` is a shell script with mode
+/// `-rw-r--r--`, it precedes `/usr/bin`, and every `run-command` of an allowlisted `env` failed with
+/// `Failed to execute command 'env': Permission denied`, which names the command and not the file the
+/// resolver chose. An hour of bisecting the environment produced that answer; the message should have.
+///
+/// So: a candidate must be an **executable file**, the search continues past one that is only a file, and
+/// when nothing executable exists the refusal names every candidate it rejected and why.
+pub fn resolve_program_in(
+    program: &str,
+    search: &std::ffi::OsStr,
+) -> Result<std::path::PathBuf, String> {
     use std::path::Path;
     if program.is_empty() {
         return Err("the command has no executable".to_string());
     }
     if program.contains('/') {
         let path = Path::new(program);
-        return if path.is_file() {
+        return if is_executable_file(path) {
             Ok(path.to_path_buf())
         } else {
             Err(format!("{program:?} is not an executable file"))
         };
     }
-    let search = std::env::var_os("PATH").unwrap_or_default();
-    for dir in std::env::split_paths(&search) {
+    let mut rejected: Vec<String> = Vec::new();
+    for dir in std::env::split_paths(search) {
         let candidate = dir.join(program);
-        if candidate.is_file() {
+        if !candidate.is_file() {
+            continue;
+        }
+        if is_executable_file(&candidate) {
             return Ok(candidate);
         }
+        // Named, not skipped: a file that shadows a real executable and cannot run is the whole
+        // subject of this function, and a reader who has its path stops bisecting their environment.
+        rejected.push(format!("{} (not executable)", candidate.display()));
+    }
+    if rejected.is_empty() {
+        return Err(format!(
+            "{program:?} was not found in the engine's PATH; the executable is resolved before any \
+             caller-supplied environment is applied, so a caller cannot point it at another file"
+        ));
     }
     Err(format!(
-        "{program:?} was not found in the engine's PATH; the executable is resolved before any \
-         caller-supplied environment is applied, so a caller cannot point it at another file"
+        "{program:?} has no executable in the engine's PATH; these names exist and cannot be run: {}. \
+         A file earlier in PATH shadows the real executable — remove it or fix its mode. The \
+         executable is resolved before any caller-supplied environment is applied, so a caller \
+         cannot point it at another file",
+        rejected.join(", ")
     ))
+}
+
+/// A file whose mode says "run me" (#1646). On a platform without a mode bit the name is the only
+/// evidence there is, and the spawn's own error is then the report.
+fn is_executable_file(path: &std::path::Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path)
+            .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        path.is_file()
+    }
 }
 
 /// **Global** options a `git_read` step may never use, with the reason (#1498).
@@ -1048,6 +1098,80 @@ mod tests {
         assert!(
             docs.contains("does **not** pin the file"),
             "the doc comment must state the gap the register records (#1495)"
+        );
+    }
+
+    /// #1646: a name that exists but cannot run must not shadow the real executable.
+    ///
+    /// This is the shape that broke a host: `~/.local/bin/env` was a shell script with mode
+    /// `-rw-r--r--`, it precedes `/usr/bin` in `PATH`, and the old resolver returned it because it
+    /// only asked `is_file()`. Every `run-command` of an allowlisted `env` then failed with
+    /// `EACCES`, reported against the command rather than the file.
+    #[cfg(unix)]
+    #[test]
+    fn a_non_executable_file_does_not_shadow_the_real_executable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let shadow = dir.path().join("shadow-tool");
+        std::fs::write(&shadow, "#!/bin/sh\nexit 0\n").expect("write the shadow");
+        std::fs::set_permissions(&shadow, std::fs::Permissions::from_mode(0o644))
+            .expect("chmod 644");
+
+        // The real one, executable, in a second directory later in the search path.
+        let real_dir = tempfile::tempdir().expect("tempdir");
+        let real = real_dir.path().join("shadow-tool");
+        std::fs::write(&real, "#!/bin/sh\nexit 0\n").expect("write the real one");
+        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o755)).expect("chmod 755");
+
+        let search = std::env::join_paths([dir.path(), real_dir.path()]).expect("join paths");
+        let resolved = resolve_program_in("shadow-tool", &search)
+            .expect("the executable later in PATH must be found");
+        assert_eq!(
+            resolved, real,
+            "the non-executable file must be skipped, not returned: {resolved:?}"
+        );
+    }
+
+    /// #1646 acceptance 2: when nothing can run, the refusal names every candidate it rejected.
+    ///
+    /// The old message was `Failed to execute command 'env': Permission denied`, which contains
+    /// neither the directory nor the reason. Finding this cost an hour of bisecting `PATH` by hand.
+    #[cfg(unix)]
+    #[test]
+    fn a_refusal_names_the_candidates_it_rejected_and_why() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let only = dir.path().join("nowhere-tool");
+        std::fs::write(&only, "not a program").expect("write");
+        std::fs::set_permissions(&only, std::fs::Permissions::from_mode(0o644)).expect("chmod 644");
+
+        let search = std::env::join_paths([dir.path()]).expect("join paths");
+        let error =
+            resolve_program_in("nowhere-tool", &search).expect_err("nothing executable exists");
+
+        assert!(
+            error.contains(&only.display().to_string()),
+            "the refusal names the file it found: {error}"
+        );
+        assert!(
+            error.contains("not executable"),
+            "the refusal states the reason, not only the path: {error}"
+        );
+    }
+
+    /// The control: a directory with no such name at all is the "not found" refusal, which must not
+    /// be confused with "found it, cannot run it" — two different remedies.
+    #[test]
+    fn a_name_that_exists_nowhere_is_a_different_refusal() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let search = std::env::join_paths([dir.path()]).expect("join paths");
+        let error =
+            resolve_program_in("absent-tool-that-cannot-exist", &search).expect_err("not found");
+        assert!(
+            error.contains("was not found in the engine's PATH"),
+            "the absent case keeps its own sentence: {error}"
         );
     }
 

@@ -86,23 +86,40 @@ fi
 # invocations of its own, and a counter that lives in one of the two callers is a second copy of the
 # rule waiting to disagree with it. Sourced here, byte-identical in every tree.
 
-echo ""
-echo "--- Build ---"
-if cargo_compiled build $SCOPE_FLAG --quiet; then
-    pass "Build succeeded"
+# The declared gate (`local-ci.sh`) exports `GUARDIAN_GATE_RAN=1` when its `test` stage owns the
+# suite. Re-running it here is not a second opinion, it is a second execution — and worse than the
+# time: `cargo test` flips the feature set back to the default, so every test binary the gate just
+# linked is relinked when the gate runs again (#1647, guardian-framework#105).
+#
+# What this validator keeps is everything the gate does not own: the workspace's shape, the lint, the
+# audit, and the convention checks below. Only the two steps that *are* the gate's subject are skipped,
+# and the skip names the owner so a reader is never left guessing whether a check ran.
+if [ "${GUARDIAN_GATE_RAN:-0}" = "1" ]; then
+    echo ""
+    echo "--- Build ---"
+    echo "   Skipped: the declared gate already built this tree."
+    echo ""
+    echo "--- Tests ---"
+    echo "   Skipped: the declared gate already ran the suite (its \`test\` stage owns that subject)."
 else
-    fail "Build failed"
-fi
+    echo ""
+    echo "--- Build ---"
+    if cargo_compiled build $SCOPE_FLAG --quiet; then
+        pass "Build succeeded"
+    else
+        fail "Build failed"
+    fi
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-echo ""
-echo "--- Tests ---"
-if cargo_compiled test $SCOPE_FLAG --quiet; then
-    pass "All tests passed"
-else
-    fail "Tests failed"
+    # -----------------------------------------------------------------------
+    # Tests
+    # -----------------------------------------------------------------------
+    echo ""
+    echo "--- Tests ---"
+    if cargo_compiled test $SCOPE_FLAG --quiet; then
+        pass "All tests passed"
+    else
+        fail "Tests failed"
+    fi
 fi
 
 # ---------------------------------------------------------------------------

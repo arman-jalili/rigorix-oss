@@ -66,6 +66,23 @@ contended() {  # $1 load, $2 cores → 0 when contended
 
 LOAD_START="$(load_now)"
 CORES="$(cores_now)"
+
+# ── the suite runs once (#1647, guardian-framework#105) ──────────────────────────────────────────
+# The `test` stage owns the suite; the validators that would run it again are told so by one flag,
+# exported once, and only when this run will actually execute that stage. A flag set unconditionally
+# would make `--stage lint` skip the tests and run nothing — the framework shipped exactly that
+# ("it used to be exported inside two of the four branches").
+#
+# The cost removed is not only the time: a plain `cargo test` resets the feature set to the default, so
+# every test binary the `test` stage linked is relinked when the next validator runs the suite again.
+gate_owns_the_suite() {  # reads SCHEDULED, so it is called after the schedule is fixed
+    [[ "${#SCHEDULED[@]}" -gt 0 ]] || return 1
+    local stage
+    for stage in "${SCHEDULED[@]}"; do
+        [[ "$stage" == "test" ]] && return 0
+    done
+    return 1
+}
 CRATES=("engine" "mcp" "cli" "actions" "server")
 REPORT_DIR="${REPORT_DIR:-.pi/output}"
 VALID_STAGES=" lint build packaged test security guards coverage docs integration "
@@ -570,6 +587,19 @@ if [[ "$SELF_TEST" == "true" ]]; then
     # because a blank cell beside a duration is how "I did not look" reads as "there was nothing".
     if [[ "$(load_now)" =~ ^([0-9]+\.[0-9]+|unavailable)$ ]]; then l=ok; else l="bad:$(load_now)"; fi
     check "the recorded load is a number or 'unavailable'" "$l" "ok"
+
+    # ── the suite runs once (#1647) ──
+    # The flag is exported when this run will execute the `test` stage, and *only* then: a flag set
+    # unconditionally would make `--stage lint` skip the tests and run nothing at all — the framework
+    # shipped exactly that bug ("it used to be exported inside two of the four branches").
+    SCHEDULED=(lint docs security guards build test coverage integration)
+    check "a run that schedules the test stage owns the suite" "$(gate_owns_the_suite && echo yes || echo no)" "yes"
+    SCHEDULED=(lint docs security guards build coverage integration)
+    check "a run with no test stage does not claim the suite" "$(gate_owns_the_suite && echo yes || echo no)" "no"
+    SCHEDULED=(lint)
+    check "--stage lint alone does not claim the suite" "$(gate_owns_the_suite && echo yes || echo no)" "no"
+    SCHEDULED=()
+    check "an empty schedule claims nothing" "$(gate_owns_the_suite && echo yes || echo no)" "no"
     # The counter reads what cargo reported, not a line format it happens to print: a transcript with
     # no `Compiling` line in it at all still counts the crates its cargo invocations built (#1599).
     mkdir -p "$tmp/compiled"
@@ -1154,12 +1184,24 @@ run_wave() {  # $@ keys
 # What this run promised to do. The summary checks it afterwards: a stage that was scheduled and
 # produced no result is not a pass, it is a gate that stopped running (#1551).
 SCHEDULED=()
+# ── the suite runs once (#1647, guardian-framework#105) ──────────────────────────────────────────
+# The `test` stage owns the suite. Every validator that would run it again is told so by one flag,
+# exported once and only when this run will actually execute that stage — a flag set unconditionally
+# would make `--stage lint` skip the tests and run nothing. The framework learned this the hard way
+# ("it used to be exported inside two of the four branches, so a TypeScript project still paid for the
+# suite twice"); the shape that survives is: the flag says *the gate ran the suite*, so it is set when
+# the gate is going to.
+#
+# The cost it removes is measured, and it is not only the time: a plain `cargo test` resets the feature
+# set to the default, so every test binary the `test` stage linked with its own features is relinked
+# when the next validator runs `cargo test` again.
 if [[ -n "$STAGE" ]]; then
     SCHEDULED=("$STAGE")
     run_stage "$STAGE"
 elif [[ "$JOBS" -eq 1 ]]; then
     # Serial, in the order this runner used before the stages were separable.
     SCHEDULED=("${STAGE_ORDER[@]}")
+    if gate_owns_the_suite; then export GUARDIAN_GATE_RAN=1; fi
     for key in "${STAGE_ORDER[@]}"; do run_stage "$key"; done
 else
     # Waves. lint/docs/security/guards share no readable or writable state. `build` is deliberately
@@ -1168,6 +1210,7 @@ else
     # up. Cargo already serialises on that directory; adding callers to the queue does not add
     # throughput. What waves buy is the non-cargo stages overlapping, which is what they do.
     SCHEDULED=(lint docs security guards build packaged test coverage integration)
+    if gate_owns_the_suite; then export GUARDIAN_GATE_RAN=1; fi
     run_wave lint docs security guards
     # `build` gets its own wave: the portable slice and the wasm32 check live in it, and it was
     # silently absent from this path once already — 111 checks instead of 126, and nothing failed,

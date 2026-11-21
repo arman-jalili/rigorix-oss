@@ -56,10 +56,15 @@ echo "--- Integration Test Runner ---"
 if [ -d "tests" ]; then
     INT_TEST_FILES=$(find tests -name "*.rs" 2>/dev/null | wc -l | tr -d ' ') || true
     if [ "$INT_TEST_FILES" -gt 0 ]; then
+        # Same rule as `validate-ci.sh` (#1647, guardian-framework#105): when the declared gate has
+        # already run the suite, this validator's subject is that the integration seams *exist and are
+        # reachable* — which does not need the binaries linked a second time in another feature set.
+        if [ "${GUARDIAN_GATE_RAN:-0}" = "1" ]; then
+            pass "Integration seams present ($INT_TEST_FILES test files; the suite was run by the declared gate)"
         # `--tests`, not `--test '*'`: cargo errors when an explicitly selected
         # target declares `required-features` that are not enabled, which made
         # this validator report a false failure. `--tests` skips such targets.
-        if cargo test --tests --quiet 2>/dev/null; then
+        elif cargo test --tests --quiet 2>/dev/null; then
             pass "Integration tests passed ($INT_TEST_FILES test files)"
         else
             fail "Integration tests failed"
