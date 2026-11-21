@@ -30,6 +30,42 @@ export -f cargo_compiled
 QUICK=false; RELEASE=false; STAGE=""; CRATE_FILTER=""; LIST_ONLY=false; SAVE_OUTPUT=false; AFFECTED=false
 SELF_TEST=false; PROBE_EXIT=""; LOCK_FILE=""; JOBS=""
 START_TIME=$(date +%s)
+
+# The machine, as a fact rather than an excuse (#1622). A ceiling is a duration, and a duration is only
+# a measurement of the code when the host is not also moving: the same portable test step ran in 2 s
+# alone and 45 s inside a run at load 16.15, and the budget could only report the 45 s. Recording the
+# load is what lets a reader tell those two apart; the *decision* it feeds is in `budget_verdict`
+# (contended → not judged, rather than failed).
+load_now() {  # the 1-minute load average, two decimals, or `unavailable`
+    if [[ "$(uname -s)" == "Darwin" ]] && command -v sysctl >/dev/null 2>&1; then
+        sysctl -n vm.loadavg 2>/dev/null | awk '{printf "%.2f", $2; found=1} END {if (!found) printf "unavailable"}'
+    elif [[ -r /proc/loadavg ]]; then
+        awk '{printf "%.2f", $1}' /proc/loadavg
+    else
+        printf 'unavailable'
+    fi
+}
+
+cores_now() {  # the machine's core count, or `unavailable`
+    if [[ "$(uname -s)" == "Darwin" ]] && command -v sysctl >/dev/null 2>&1; then
+        sysctl -n hw.ncpu 2>/dev/null || printf 'unavailable'
+    elif command -v nproc >/dev/null 2>&1; then
+        nproc 2>/dev/null || printf 'unavailable'
+    else
+        printf 'unavailable'
+    fi
+}
+
+# A host is contended when the 1-minute load is above its core count: more runnable work than slots,
+# which is the condition the durations stop describing the code under.
+contended() {  # $1 load, $2 cores → 0 when contended
+    local load="$1" cores="$2"
+    [[ "$load" == "unavailable" || "$cores" == "unavailable" ]] && return 1
+    awk -v l="$load" -v c="$cores" 'BEGIN { exit !(l > c) }'
+}
+
+LOAD_START="$(load_now)"
+CORES="$(cores_now)"
 CRATES=("engine" "mcp" "cli" "actions" "server")
 REPORT_DIR="${REPORT_DIR:-.pi/output}"
 VALID_STAGES=" lint build packaged test security guards coverage docs integration "
@@ -520,6 +556,20 @@ if [[ "$SELF_TEST" == "true" ]]; then
     check "a cold guards run of 3m21s is inside the cold ceiling" "$(budget_verdict 201 221)" "pass"
     check "the same 3m21s against the warm ceiling is a failure" "$(budget_verdict 201 84)" "over"
     check "a 27m12s cold run is inside the cold total" "$(budget_verdict 1632 2409)" "pass"
+
+    # ── the machine the sample was taken on (#1622) ──
+    # "The same step ran 2 s alone and 45 s at load 16.15" is the fact this predicate encodes: a host with
+    # more runnable work than slots is contended, and a duration taken there describes the host.
+    if contended 11.01 8; then c=yes; else c=no; fi
+    check "load 11.01 on 8 cores is contended" "$c" "yes"
+    if contended 2.00 8; then c=yes; else c=no; fi
+    check "load 2.00 on 8 cores is not contended" "$c" "no"
+    check "exactly the core count is not contended" "$(contended 8.00 8 && echo yes || echo no)" "no"
+    check "an unmeasurable load is never contended" "$(contended unavailable 8 && echo yes || echo no)" "no"
+    # The value the run prints is a number with two decimals or the word `unavailable` — never empty,
+    # because a blank cell beside a duration is how "I did not look" reads as "there was nothing".
+    if [[ "$(load_now)" =~ ^([0-9]+\.[0-9]+|unavailable)$ ]]; then l=ok; else l="bad:$(load_now)"; fi
+    check "the recorded load is a number or 'unavailable'" "$l" "ok"
     # The counter reads what cargo reported, not a line format it happens to print: a transcript with
     # no `Compiling` line in it at all still counts the crates its cargo invocations built (#1599).
     mkdir -p "$tmp/compiled"
@@ -1227,6 +1277,10 @@ echo ""
 BUDGET_FILE=".pi/local-ci-budget.tsv"
 OVER_BUDGET=()
 BUDGET_WARNED=()
+BUDGET_UNMEASURED=()
+LOAD_AT_JUDGE="$(load_now)"
+RUN_CONTENDED="no"
+contended "$LOAD_AT_JUDGE" "$CORES" && RUN_CONTENDED="yes"
 
 COMPILED_TOTAL=0
 for _k in "${STAGE_ORDER[@]}"; do
@@ -1280,9 +1334,21 @@ if [[ -f "$BUDGET_FILE" ]]; then
         case "$(budget_band "$secs" "$ceiling" "${band:-0}")" in
             over)
                 if [[ "$key" == "total" ]]; then
+                    if [[ "$RUN_CONTENDED" == "yes" ]]; then
+                        # #1622: a duration taken on a contended host is an *observation*, not a
+                        # measurement of the code — the same step ran 2 s alone and 45 s at load 16.15.
+                        # It is printed, counted separately, and neither passed nor failed: "could not
+                        # measure" is its own state (#1599), not a green tick and not an accusation.
+                        BUDGET_UNMEASURED+=("$key: $(fmt_dur "$secs") > $row_column ceiling $(fmt_dur "$ceiling") (+$(fmt_dur $((secs - ceiling))), beyond the $(fmt_dur "${band:-0}") band — the sum of the stage bands) — judged at load ${LOAD_AT_JUDGE} on ${CORES} core(s), so the duration describes the host, not the code ($key built ${built} crate(s) ($condition); $row_column sample ${runs:-?} run(s), slowest $(fmt_dur "${slowest:-0}"), sample compiled ${sample_compiled:-unmeasured})")
+                    else
                     OVER_BUDGET+=("$key: $(fmt_dur "$secs") > $row_column ceiling $(fmt_dur "$ceiling") (+$(fmt_dur $((secs - ceiling))), beyond the $(fmt_dur "${band:-0}") band — the sum of the stage bands) — $(budget_contributors) — $key built ${built} crate(s) ($condition), so the $row_column column applies; the $row_column sample is ${runs:-?} run(s), slowest $(fmt_dur "${slowest:-0}"), sample compiled ${sample_compiled:-unmeasured}")
+                    fi
                 else
+                    if [[ "$RUN_CONTENDED" == "yes" ]]; then
+                        BUDGET_UNMEASURED+=("$key: $(fmt_dur "$secs") > $row_column ceiling $(fmt_dur "$ceiling") (+$(fmt_dur $((secs - ceiling))), beyond the $(fmt_dur "${band:-0}") band) — judged at load ${LOAD_AT_JUDGE} on ${CORES} core(s), so the duration describes the host, not the code ($key built ${built} crate(s) ($condition); $row_column sample ${runs:-?} run(s), slowest $(fmt_dur "${slowest:-0}"), sample compiled ${sample_compiled:-unmeasured})")
+                    else
                     OVER_BUDGET+=("$key: $(fmt_dur "$secs") > $row_column ceiling $(fmt_dur "$ceiling") (+$(fmt_dur $((secs - ceiling))), beyond the $(fmt_dur "${band:-0}") band) — $key built ${built} crate(s) ($condition), so the $row_column column applies; the $row_column sample is ${runs:-?} run(s), slowest $(fmt_dur "${slowest:-0}"), sample compiled ${sample_compiled:-unmeasured}")
+                    fi
                 fi
                 ;;
             warn)
@@ -1296,6 +1362,10 @@ if [[ -f "$BUDGET_FILE" ]]; then
     done < "$BUDGET_FILE"
 fi
 
+echo -e "  ${BLUE}ℹ${NC} the budget was judged at load ${LOAD_AT_JUDGE} on ${CORES} core(s); the run started at load ${LOAD_START} (#1622)"
+if [[ "$RUN_CONTENDED" == "yes" ]]; then
+    echo -e "  ${YELLOW}⚠${NC}  this host is contended (load ${LOAD_AT_JUDGE} > ${CORES} core(s)): a duration taken here describes the machine, so a row over its ceiling is reported as not judged instead of failed"
+fi
 echo -e "  ${BLUE}ℹ${NC} this run built $COMPILED_TOTAL crate(s) — the total row is judged on the $TOTAL_COLUMN column ($TOTAL_CONDITION), the same rule every stage above follows"
 echo -e "  ${BLUE}ℹ${NC} a stage's ceiling is selected by that stage's own compiled count — 0 crates: the warm (nothing-built) column, 1+ or unmeasured: the cold (built-something) column — printed per stage above as \`budget\`"
 
@@ -1306,6 +1376,17 @@ if [[ "${#BUDGET_WARNED[@]}" -gt 0 ]]; then
     done
     echo "  The band is the per-stage run-to-run spread this project measured (0.4-1.3 min, recorded in"
     echo "  .github/ci-budgets.tsv): failing inside it reports the measurement, not the code (#1612)."
+fi
+
+if [[ "${#BUDGET_UNMEASURED[@]}" -gt 0 ]]; then
+    echo -e "${YELLOW}row(s) over their ceiling but NOT judged — the machine was the variable ($BUDGET_FILE):${NC}"
+    for u in "${BUDGET_UNMEASURED[@]}"; do
+        echo -e "  ${YELLOW}⚠${NC}  $u"
+    done
+    echo "  A ceiling is a duration, and a duration is a measurement of the code only when the host is not"
+    echo "  also moving: the same portable step ran 2 s alone and 45 s at load 16.15 (#1622). These rows are"
+    echo "  neither passed nor failed. Re-run on a still box: the load is printed above, so the next run"
+    echo "  says which machine it was."
 fi
 
 if [[ "${#OVER_BUDGET[@]}" -gt 0 ]]; then

@@ -53,6 +53,11 @@ BAND_RULE_TEXT="band        = min(78, warm_ceiling)"
 # rule because it is derived from *other rows* rather than from a sample of its own: a total band that
 # does not follow its stages is a second answer to the question the stages already answered.
 TOTAL_BAND_RULE_TEXT="band_total  = sum of the stage bands"
+# #1622: a ceiling is a duration, and a duration is a measurement of the code only when the host is not
+# also moving. `machine` therefore states the load the sample was taken under, and `load N.NN` is the
+# literal the header must contain — the same text-asserted shape as the three rules above.
+MACHINE_RULE_TEXT="the load the sample was measured under"
+LOAD_RECORDED_FROM='2026-11-19'
 # Sums over the stage rows, read before the row loop so the answer does not depend on row order.
 stage_band_sum() {  # $1 file → integer sum of the stage rows' bands
     awk -F'\t' '$1 != "stage" && $1 != "total" && $1 !~ /^#/ && NF > 9 { b += $10 } END { print b + 0 }' "$1"
@@ -108,7 +113,17 @@ check_file() {
         echo -e "${RED}❌${NC} $file: the header does not state the band rule ($BAND_RULE_TEXT)"
         failures=$((failures + 1))
     fi
-    band_max="$(derived_band_max)"
+    # ── the machine each sample was taken on (#1622) ──
+# A ceiling is a duration; a duration is a measurement of the code only when the host is not also
+# moving. The same portable step ran 2 s alone and 45 s inside a run at load 16.15, and the table could
+# only record the 45 s. So the column states the load, and a sample taken from `LOAD_RECORDED_FROM` on
+# must carry a number — `load unrecorded` stays legal only for the samples that predate the counter.
+if ! grep -q 'load N.NN' "$file"; then
+    echo -e "${RED}❌${NC} $file: the header does not state what the machine column must contain ($MACHINE_RULE_TEXT) — a ceiling without its load is a number with half a provenance"
+    failures=$((failures + 1))
+fi
+
+band_max="$(derived_band_max)"
     if [[ "$band_max" -eq 0 ]]; then
         echo -e "${RED}❌${NC} $SPREAD_FILE records no per-stage spread (expected '0.4-1.3 minutes'), so the band cannot be derived — a tolerance nobody measured is a preference"
         failures=$((failures + 1))
@@ -138,6 +153,20 @@ check_file() {
         if [[ "$cold_ceiling" != "$derived_cold" ]]; then
             echo -e "${RED}❌${NC} $key cold: recorded ${cold_ceiling}s, the rule gives ${derived_cold}s from slowest ${cold_slowest}s"
             failures=$((failures + 1))
+        fi
+        # ── the machine (#1622) ──
+        if [[ -z "${_machine:-}" ]]; then
+            echo -e "${RED}❌${NC} $key: no machine column — a sample that does not say what it was taken on cannot be re-read"
+            failures=$((failures + 1))
+        elif ! [[ "${_machine}" =~ load\ ([0-9]+\.[0-9]+|unrecorded) ]]; then
+            echo -e "${RED}❌${NC} $key: machine '${_machine}' does not state the load ($MACHINE_RULE_TEXT)"
+            failures=$((failures + 1))
+        elif [[ "${_machine}" == *"load unrecorded"* ]]; then
+            # ISO dates compare lexicographically, which is the point of the format.
+            if [[ ! "${_on:-}" < "$LOAD_RECORDED_FROM" ]]; then
+                echo -e "${RED}❌${NC} $key: measured_on ${_on:-?} is not before ${LOAD_RECORDED_FROM}, so 'load unrecorded' is refused — record the load the sample was taken under"
+                failures=$((failures + 1))
+            fi
         fi
         # ── the noise band (#1612) ──
         # A row's tolerance is derived, not chosen: `min(band_max, warm ceiling)` for a stage, 0 for
@@ -239,17 +268,18 @@ self_test() {
     # A record that follows the rule, built from the rule and not from the live table: a fixture copied
     # from the subject agrees with the subject whatever the rule says.
     {
-        printf '# fixture\n# %s\n# %s\n# %s\n# %s\n# %s\n' "$RULE_TEXT" "$COLD_RULE_TEXT" "$CONDITION_RULE_TEXT" "$BAND_RULE_TEXT" "$TOTAL_BAND_RULE_TEXT"
+        printf '# fixture\n# %s\n# %s\n# %s\n# %s\n# %s\n# %s\n#   load N.NN the load the sample was measured under (#1622)\n' \
+            "$RULE_TEXT" "$COLD_RULE_TEXT" "$CONDITION_RULE_TEXT" "$BAND_RULE_TEXT" "$TOTAL_BAND_RULE_TEXT" "$MACHINE_RULE_TEXT"
         printf 'stage\twarm_ceiling\twarm_runs\twarm_slowest\twarm_compiled\tcold_ceiling\tcold_runs\tcold_slowest\tcold_compiled\tband\tmeasured_on\tmachine\n'
-        printf 'lint\t108\t4\t99\t0\t1172\t6\t1066\t19\t78\t2026-11-15\tfixture\n'
-        printf 'build\t17\t4\t16\t0\t756\t6\t688\t1\t17\t2026-11-15\tfixture\n'
-        printf 'test\t127\t4\t116\tunmeasured\t431\t6\t392\tunmeasured\t78\t2026-11-15\tfixture\n'
-        printf 'security\t33\t4\t30\t0\t38\t6\t35\t3\t33\t2026-11-15\tfixture\n'
-        printf 'guards\t83\t4\t76\t0\t221\t6\t201\t38\t78\t2026-11-15\tfixture\n'
-        printf 'coverage\t379\t4\t345\t0\t379\t6\t345\t12\t78\t2026-11-15\tfixture\n'
-        printf 'docs\t31\t4\t29\t0\t38\t6\t35\t2\t31\t2026-11-15\tfixture\n'
-        printf 'integration\t1\t4\t1\t0\t1\t6\t1\t1\t1\t2026-11-15\tfixture\n'
-        printf 'total\t770\t5\t700\t0\t2409\t6\t2190\t488\t394\t2026-11-15\tfixture\n'
+        printf 'lint\t108\t4\t99\t0\t1172\t6\t1066\t19\t78\t2026-11-15\tfixture, load 1.00\n'
+        printf 'build\t17\t4\t16\t0\t756\t6\t688\t1\t17\t2026-11-15\tfixture, load 1.00\n'
+        printf 'test\t127\t4\t116\tunmeasured\t431\t6\t392\tunmeasured\t78\t2026-11-15\tfixture, load 1.00\n'
+        printf 'security\t33\t4\t30\t0\t38\t6\t35\t3\t33\t2026-11-15\tfixture, load 1.00\n'
+        printf 'guards\t83\t4\t76\t0\t221\t6\t201\t38\t78\t2026-11-15\tfixture, load 1.00\n'
+        printf 'coverage\t379\t4\t345\t0\t379\t6\t345\t12\t78\t2026-11-15\tfixture, load 1.00\n'
+        printf 'docs\t31\t4\t29\t0\t38\t6\t35\t2\t31\t2026-11-15\tfixture, load 1.00\n'
+        printf 'integration\t1\t4\t1\t0\t1\t6\t1\t1\t1\t2026-11-15\tfixture, load 1.00\n'
+        printf 'total\t770\t5\t700\t0\t2409\t6\t2190\t488\t394\t2026-11-15\tfixture, load 1.00\n'
     } > "$tmp/good.tsv"
 
     if check_file "$tmp/good.tsv" >/dev/null 2>&1; then
@@ -436,9 +466,33 @@ self_test() {
         failures=$((failures + 1))
     fi
 
+    # ── #1622: the machine a sample was taken on ──
+    # A ceiling whose row does not say what it was measured on cannot be re-read: the 45 s portable step
+    # at load 16.15 and the 2 s step alone are the same code, and only the load distinguishes them.
+    sed 's/\tfixture, load 1.00/\tfixture/' "$tmp/good.tsv" > "$tmp/no-load.tsv"
+    rc=0; out="$(check_file "$tmp/no-load.tsv" 2>&1)" || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        echo -e "  ${GREEN}✅${NC} a sample that does not state its load is refused (fails, as it must)"
+    else
+        echo -e "  ${RED}❌${NC} a sample that does not state its load passed"
+        failures=$((failures + 1))
+    fi
+
+    # The date bound: `load unrecorded` is legal only for samples taken before the counter existed. A row
+    # that says today and does not know the load is a row that chose not to write it down.
+    sed "s/^build\t17\t4\t16\t0\t756\t6\t688\t1\t17\t2026-11-15\tfixture, load 1.00\$/build\t17\t4\t16\t0\t756\t6\t688\t1\t17\t${LOAD_RECORDED_FROM}\tfixture, load unrecorded/" \
+        "$tmp/good.tsv" > "$tmp/unrecorded-today.tsv"
+    rc=0; out="$(check_file "$tmp/unrecorded-today.tsv" 2>&1)" || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        echo -e "  ${GREEN}✅${NC} 'load unrecorded' on a sample taken after ${LOAD_RECORDED_FROM} is refused (fails, as it must)"
+    else
+        echo -e "  ${RED}❌${NC} 'load unrecorded' on a sample taken after ${LOAD_RECORDED_FROM} passed"
+        failures=$((failures + 1))
+    fi
+
     # A plant that does not apply is not a test: each fixture above asserts it changed the file.
     local planted
-    for planted in warm-built cold-idle total-cold vague wide-band short-band total-band stale-total total-too-low; do
+    for planted in warm-built cold-idle total-cold vague wide-band short-band total-band stale-total total-too-low no-load unrecorded-today; do
         if cmp -s "$tmp/good.tsv" "$tmp/$planted.tsv"; then
             echo -e "  ${RED}❌${NC} the '$planted' fixture is identical to the good table — it planted nothing"
             failures=$((failures + 1))
