@@ -270,10 +270,12 @@ impl FileAttestationStore {
             .map(std::path::Path::to_path_buf)
             .unwrap_or_else(|| self.state_dir.clone());
         // sink: receipt:attestation-file
-        std::fs::create_dir_all(&dir).map_err(|e| AttestationStoreError::WriteFailed {
-            stage: "create",
-            path: dir.to_string_lossy().to_string(),
-            detail: e.to_string(),
+        crate::common::private_fs::create_dir_all(&dir).map_err(|e| {
+            AttestationStoreError::WriteFailed {
+                stage: "create",
+                path: dir.to_string_lossy().to_string(),
+                detail: e.to_string(),
+            }
         })?;
 
         // A seal is authoritative (ADR-024 §6, rule 3): read what is there before replacing it.
@@ -343,11 +345,24 @@ impl FileAttestationStore {
             &digest[..16]
         ));
         // sink: receipt:attestation-file
-        std::fs::write(&tmp, &body).map_err(|e| AttestationStoreError::WriteFailed {
-            stage: "write",
-            path: tmp.to_string_lossy().to_string(),
-            detail: e.to_string(),
-        })?;
+        // #1658 item 2: owner-only at creation — an attestation names what was observed.
+        {
+            use std::io::Write;
+            let mut file = crate::common::private_fs::create_private(&tmp).map_err(|e| {
+                AttestationStoreError::WriteFailed {
+                    stage: "write",
+                    path: tmp.to_string_lossy().to_string(),
+                    detail: e.to_string(),
+                }
+            })?;
+            file.write_all(&body)
+                .and_then(|()| file.sync_all())
+                .map_err(|e| AttestationStoreError::WriteFailed {
+                    stage: "write",
+                    path: tmp.to_string_lossy().to_string(),
+                    detail: e.to_string(),
+                })?;
+        }
         // sink: receipt:attestation-file
         std::fs::rename(&tmp, &path).map_err(|e| AttestationStoreError::WriteFailed {
             stage: "rename",

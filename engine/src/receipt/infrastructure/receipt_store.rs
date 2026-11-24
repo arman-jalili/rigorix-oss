@@ -159,18 +159,33 @@ impl FileReceiptStore {
 
         let dir = self.state_dir.join("receipts");
         // sink: receipt:receipt-file
-        std::fs::create_dir_all(&dir).map_err(|e| ReceiptStoreError::Io {
+        crate::common::private_fs::create_dir_all(&dir).map_err(|e| ReceiptStoreError::Io {
             stage: "create",
             path: dir.to_string_lossy().to_string(),
             detail: e.to_string(),
         })?;
         let tmp = dir.join(format!(".{execution_id}.{}.tmp", &digest[..16]));
         // sink: receipt:receipt-file
-        std::fs::write(&tmp, &body).map_err(|e| ReceiptStoreError::Io {
-            stage: "write",
-            path: tmp.to_string_lossy().to_string(),
-            detail: e.to_string(),
-        })?;
+        // #1658 item 2: the temp file is created owner-only and *is* what the rename makes the
+        // destination. Measured before the change: `std::fs::write` under `umask 022` gives 0644, so
+        // every receipt was readable by every account on the host.
+        {
+            use std::io::Write;
+            let mut file = crate::common::private_fs::create_private(&tmp).map_err(|e| {
+                ReceiptStoreError::Io {
+                    stage: "write",
+                    path: tmp.to_string_lossy().to_string(),
+                    detail: e.to_string(),
+                }
+            })?;
+            file.write_all(&body)
+                .and_then(|()| file.sync_all())
+                .map_err(|e| ReceiptStoreError::Io {
+                    stage: "write",
+                    path: tmp.to_string_lossy().to_string(),
+                    detail: e.to_string(),
+                })?;
+        }
         // sink: receipt:receipt-file
         std::fs::rename(&tmp, &path).map_err(|e| ReceiptStoreError::Io {
             stage: "rename",

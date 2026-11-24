@@ -407,6 +407,23 @@ impl FilesystemTemplateRepository {
             ))
         })?;
 
+        // #1658 item 2: the template is operator configuration under `.rigorix/`, and it was written
+        // 0644 — readable by every account on the host. The temp file carries the mode into the
+        // destination, since the rename is what makes it the destination.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            tokio::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600))
+                .await
+                .map_err(|e| {
+                    TemplateError::RepositoryError(format!(
+                        "Failed to set owner-only mode on '{}': {}",
+                        tmp_path.display(),
+                        e
+                    ))
+                })?;
+        }
+
         // fsync the temp file
         let file = tokio::fs::File::open(&tmp_path).await.map_err(|e| {
             TemplateError::RepositoryError(format!(

@@ -207,6 +207,27 @@ The engine computes it (#1480); since #1491 both surfaces show it:
 `not_requested` is always stated, never omitted: an absent field cannot be told apart from
 a client that does not know the field, which is how the original defect stayed invisible.
 
+## The state directory is owner-only (#1658 item 2)
+
+Measured before the change: with `umask 022`, `std::fs::write` creates **0644** and `create_dir_all`
+**0755**, so every envelope under `.rigorix/audit/` — which records the planning prompt, the file paths and
+the findings — was readable by every account on the host. Templates (`.rigorix/templates/`, operator
+configuration, and therefore the gates a run is judged by) and receipts and attestations were in the same
+state. The agent's own writes never were: `fs_at` opens them `0600`.
+
+Now:
+
+| what | mode | created by |
+|---|---|---|
+| `.rigorix/audit/`, `…/receipts/`, `…/attestations/`, `.versions/` | `0700` | `common::private_fs::create_dir_all` |
+| an envelope, a receipt, an attestation, a template, a kept version | `0600` | the same module, through the temp file that the atomic rename makes the destination |
+
+**What this is not.** It is not a permission model: it does not defend against another process running as
+the owner, and it does not rewrite files written before it existed — those are tightened the next time the
+store replaces them, because the temp file carries the mode. A deployment that needs the old files closed
+now must walk them itself. It also does not make the audit trail tamper-evident; that is the anchor's job
+(ADR-016), and `RIGORIX_ANCHOR_KEY` being absent is a *state* the trail reports, not a mode.
+
 ## The HTTP front door: one origin decision, and free mode as a non-claim (#1650)
 
 `rigorix-server` mounts four routes — `/health`, `/rpc`, `/mcp`, `/events` — and **one** function

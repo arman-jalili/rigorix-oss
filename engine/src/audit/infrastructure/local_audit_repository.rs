@@ -115,7 +115,7 @@ impl LocalAuditEnvelopeRepository {
     /// Creates the base directory if it doesn't exist.
     pub fn new(base_path: PathBuf) -> Self {
         // sink: audit:local-chain
-        std::fs::create_dir_all(&base_path).ok();
+        crate::common::private_fs::create_dir_all(&base_path).ok();
         Self {
             base_path,
             max_envelopes: None,
@@ -130,7 +130,7 @@ impl LocalAuditEnvelopeRepository {
     /// bug in a completely different test.
     pub fn with_max_envelopes(base_path: PathBuf, max_envelopes: usize) -> Self {
         // sink: audit:local-chain
-        std::fs::create_dir_all(&base_path).ok();
+        crate::common::private_fs::create_dir_all(&base_path).ok();
         Self {
             base_path,
             max_envelopes: Some(max_envelopes),
@@ -143,17 +143,19 @@ impl LocalAuditEnvelopeRepository {
     }
 
     /// Atomically write content to a file using write-rename pattern.
+    /// One atomic, owner-only write (#1658 item 2).
+    ///
+    /// Measured before the change: `std::fs::write` under the usual `umask 022` produces **0644**, so an
+    /// envelope — which records the planning prompt, the file paths and the findings — was readable by
+    /// every account on the host. The temp file carries mode 0600 and *is* what the rename makes the
+    /// destination, so a file written before this rule is tightened the next time it is replaced.
     fn atomic_write(path: &Path, content: &str) -> Result<(), AuditError> {
-        let temp_path = path.with_extension("tmp");
         // sink: audit:local-chain
-        std::fs::write(&temp_path, content).map_err(|e| AuditError::Internal {
-            detail: format!("Failed to write temp file: {e}"),
-        })?;
-        // sink: audit:local-chain
-        std::fs::rename(&temp_path, path).map_err(|e| AuditError::Internal {
-            detail: format!("Failed to rename temp file: {e}"),
-        })?;
-        Ok(())
+        crate::common::private_fs::write_atomic(path, content.as_bytes()).map_err(|e| {
+            AuditError::Internal {
+                detail: format!("Failed to write '{}': {e}", path.display()),
+            }
+        })
     }
 }
 

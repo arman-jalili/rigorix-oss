@@ -241,6 +241,39 @@ fn test_stdio_list_resources() {
         "resources/read should resolve rigorix://templates/echo-template, got: {read_response}"
     );
 
+    // #1658 item 7: a percent-encoded segment resolves. A URI carries its path encoded, and the lookup
+    // used the segment literally, so a client that encoded a character asked for a template named
+    // `echo%2Dtemplate` and was told "not found" — a failure about the encoding, reported as if it were
+    // about the template.
+    let encoded_response = send_rpc(
+        r#"{"jsonrpc":"2.0","id":6,"method":"resources/read","params":{"uri":"rigorix://templates/echo%2Dtemplate"}}"#,
+        &mut stdin,
+        &mut stdout,
+    );
+    let parsed_encoded: serde_json::Value =
+        serde_json::from_str(&encoded_response).expect("Response should be valid JSON");
+    assert!(
+        parsed_encoded["result"]["contents"][0]["text"]
+            .as_str()
+            .map(|t| t.contains("echo-template"))
+            .unwrap_or(false),
+        "a percent-encoded template name must resolve to the same template, got: {encoded_response}"
+    );
+
+    // The decode happens **before** validation, so an encoded separator is refused by the same rule that
+    // refuses a literal one — it does not reach the store as a name.
+    let smuggled_response = send_rpc(
+        r#"{"jsonrpc":"2.0","id":7,"method":"resources/read","params":{"uri":"rigorix://templates/..%2F..%2Fetc%2Fpasswd"}}"#,
+        &mut stdin,
+        &mut stdout,
+    );
+    let parsed_smuggled: serde_json::Value =
+        serde_json::from_str(&smuggled_response).expect("Response should be valid JSON");
+    assert!(
+        parsed_smuggled["error"].is_object(),
+        "an encoded path separator must be refused as malformed, got: {smuggled_response}"
+    );
+
     // An unknown resource must return a proper error — not "not implemented".
     let bad_response = send_rpc(
         r#"{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"rigorix://nope/xyz"}}"#,

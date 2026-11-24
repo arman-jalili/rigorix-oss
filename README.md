@@ -189,6 +189,11 @@ failure = "deny"                                   # refuse the step; the only v
 The answer is **never cached across the gap**: authority at T₀ is not authority at
 Tₙ, so the check is re-read per dispatch.
 
+**The provider's endpoint is verified, not just reachable.** A provider endpoint must be `https://`; a
+plaintext `http://` endpoint is refused unless the operator names its host in
+`RIGORIX_PRECONDITION_ALLOW_PLAINTEXT`, because the answer gates a step and an on-path attacker would decide
+it. Naming one host does not admit another.
+
 **Non-inheritance is normative (R4).** A provider's permitting answer is
 *evidence, not authority*: there is deliberately **no "provider says allow"
 short-circuit**. Every other matching precondition is still evaluated, an unknown
@@ -275,6 +280,9 @@ like any other policy.
 Stated because a security reader should be able to rely on a claim without
 discovering a hidden gap.
 
+- **Not a permission model for the state directory.** `.rigorix/` files are created owner-only (`0600`,
+  directories `0700`) so another account on the host cannot read the audit trail or a template — files
+  written before that rule are tightened when the store next replaces them, not retroactively.
 - **Not a workflow engine.** The precondition primitive is exactly *match a step,
   run a check, refuse on failure, record the outcome*. No loops, no conditionals,
   no policy DSL, no multi-step orchestration.
