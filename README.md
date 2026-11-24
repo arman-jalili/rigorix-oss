@@ -183,7 +183,7 @@ id = "beneficiary-eligible"
 match = { tool = "payment_execute" }
 require_params = ["/beneficiary", "/amount"]      # absent → deny
 command = ["/opt/rigorix/checks/beneficiary-eligible"]   # argv, resolved OUTSIDE the agent-writable workspace
-action = "deny"                                    # refuse; or "promote" to gate
+failure = "deny"                                   # refuse the step; the only v1 action
 ```
 
 The answer is **never cached across the gap**: authority at T₀ is not authority at

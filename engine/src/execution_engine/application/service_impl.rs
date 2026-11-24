@@ -639,6 +639,13 @@ mod dispatch;
 mod gate;
 mod tools;
 
+/// The tool names the step dispatcher recognises (#1657).
+///
+/// Re-exported from the dispatcher's module so "is this a tool name" has one answer a validator can
+/// ask — the missing answer is why `rigorix_validate_plan` returned `valid: true` for a name nothing
+/// could execute.
+pub use tools::DISPATCHABLE_TOOL_NAMES;
+
 mod node;
 
 pub struct ParallelExecutionServiceImpl {

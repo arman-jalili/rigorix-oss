@@ -11,6 +11,24 @@ use crate::tools::application::shell_policy::{
     find_shell_control_operator,
 };
 
+/// The tool names `execute_tool` dispatches (#1657).
+///
+/// One list, because two answers to "is this a tool name" is how `rigorix_validate_plan` came to
+/// return `valid: true` for `tool: "definitely_not_a_tool"`: the tool set existed in the dispatcher's
+/// `match` and nowhere a validator could ask. A test below asserts every name here has an arm in this
+/// file and every arm has a name, so the list cannot drift from the dispatch it describes.
+pub const DISPATCHABLE_TOOL_NAMES: &[&str] = &[
+    "run_command",
+    "file_read",
+    "file_write",
+    "file_append",
+    "file_patch",
+    "git_read",
+    "git_stage",
+    "git_commit",
+    "edit_file",
+];
+
 impl ParallelExecutionServiceImpl {
     /// Execute a single tool node and return the TaskResult.
     ///
@@ -1766,5 +1784,52 @@ mod tests {
                  gate would let it run without one (#1498)"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod dispatchable_tool_names {
+    use super::DISPATCHABLE_TOOL_NAMES;
+
+    /// The list and the dispatcher are the same fact (#1657).
+    ///
+    /// Read from this file's own source rather than restated: a name without an arm is a name the
+    /// validator would accept and the dispatcher would fail, and an arm without a name is a tool the
+    /// validator rejects while it works.
+    #[test]
+    fn every_listed_tool_has_a_dispatch_arm_and_every_arm_is_listed() {
+        let source = include_str!("tools.rs");
+        let arms: Vec<String> = source
+            .split("let result = match tool_name {")
+            .nth(1)
+            .expect("the dispatcher's match block")
+            .split("_ => {")
+            .next()
+            .expect("the arm list")
+            .lines()
+            .filter_map(|line| {
+                let trimmed = line.trim_start();
+                let rest = trimmed.strip_prefix('"')?;
+                let name = rest.split('"').next()?;
+                if trimmed.contains("=>") {
+                    Some(name.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut listed: Vec<String> = DISPATCHABLE_TOOL_NAMES
+            .iter()
+            .map(|n| n.to_string())
+            .collect();
+        let mut armed = arms;
+        listed.sort();
+        armed.sort();
+        armed.dedup();
+        assert_eq!(
+            listed, armed,
+            "DISPATCHABLE_TOOL_NAMES and the dispatcher's arms disagree"
+        );
     }
 }

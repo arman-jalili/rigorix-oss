@@ -26,6 +26,7 @@ use super::PermissionMode;
 /// All fields have safe defaults so the enforcer works without
 /// explicit configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PermissionConfig {
     /// Default permission mode applied when no mode is explicitly set.
     #[serde(default)]

@@ -48,6 +48,7 @@ use super::event::HookEvent;
 /// - All fields are empty `Vec`s by default (no hooks registered)
 /// - Default timeout is 30 seconds
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HookConfig {
     /// Commands to run before every tool execution.
     /// These can modify input, block, or override permissions.

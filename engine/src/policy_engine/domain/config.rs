@@ -25,6 +25,7 @@ use super::condition::PolicyCondition;
 /// Loaded from `.rigorix/policy.toml` and converted to a list of
 /// `PolicyRule` instances for evaluation.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PolicyConfig {
     /// The list of rule definitions.
     pub rules: Vec<RuleDefinition>,

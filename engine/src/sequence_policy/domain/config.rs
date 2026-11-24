@@ -51,6 +51,7 @@ pub struct SafetyCaps {
 
 /// The loaded sequence-policy rule set.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SequencePolicyConfig {
     /// Fail closed on config errors at plan time. Defaults to `true` — a
     /// corrupt rule file must refuse the plan rather than silently degrade.
