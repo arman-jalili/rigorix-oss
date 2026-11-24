@@ -320,7 +320,9 @@ pub async fn post_handler(
 ) -> Response {
     // #1650: one decision for every route — this handler used to own the only copy, and the copy is
     // why `/rpc` and `/events` had none.
-    if let Some(refusal) = crate::origin::refusal(crate::origin::decide(&headers, true), "/mcp") {
+    if let Some(refusal) =
+        crate::route_policy::policy_for("/mcp").and_then(|p| p.enforce_origin(&headers))
+    {
         return refusal;
     }
 
@@ -370,7 +372,14 @@ pub async fn post_handler(
 /// `GET /mcp` — the optional server-initiated stream. This host does not offer
 /// one (the catalog is request/response; live events are on `GET /events`), so
 /// it answers `405` as the spec permits.
-pub async fn get_handler() -> Response {
+pub async fn get_handler(headers: HeaderMap) -> Response {
+    // #1659: the table says this path is `Guarded`; a handler that answers before consulting the
+    // row is a hole in the table, even when its answer is a constant. The table test found this.
+    if let Some(refusal) =
+        crate::route_policy::policy_for("/mcp").and_then(|p| p.enforce_origin(&headers))
+    {
+        return refusal;
+    }
     (
         StatusCode::METHOD_NOT_ALLOWED,
         [(header::ALLOW, "POST, DELETE")],
@@ -381,6 +390,11 @@ pub async fn get_handler() -> Response {
 
 /// `DELETE /mcp` — terminate the session.
 pub async fn delete_handler(State(state): State<ServerState>, headers: HeaderMap) -> Response {
+    if let Some(refusal) =
+        crate::route_policy::policy_for("/mcp").and_then(|p| p.enforce_origin(&headers))
+    {
+        return refusal;
+    }
     let Some(id) = headers.get(SESSION_HEADER).and_then(|h| h.to_str().ok()) else {
         return session_not_found(&Value::Null);
     };
@@ -609,9 +623,12 @@ mod tests {
             .split("crate::rpc::")
             .next()
             .expect("the handler body");
+        // #1659: the handler now asks its *row* for the decision, which is stronger than calling
+        // `origin::decide` itself — the row is what the router was built from.
         assert!(
-            handler.contains("crate::origin::decide(&headers, true)"),
-            "post_handler must call the one origin decision (#1650)"
+            handler.contains("route_policy::policy_for(\"/mcp\")")
+                && handler.contains("enforce_origin(&headers)"),
+            "post_handler must take the origin decision from its declared policy row (#1650, #1659)"
         );
         assert!(
             !handler.contains("fn origin_allowed"),

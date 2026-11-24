@@ -22,6 +22,7 @@
 //! | [`event_bridge`] | engine `EventBusService` → [`events::EventHub`] bridge (#900) |
 //! | [`mcp_http`] | MCP Streamable HTTP adapter over the frozen catalog (#915) |
 //! | [`origin`] | The **one** origin decision every route calls — `/rpc`, `/mcp`, `/events` (#1650) |
+//! | [`route_policy`] | Every mounted route's declared policy; the router is built from it (#1659) |
 
 pub mod anchor;
 pub mod app;
@@ -32,6 +33,7 @@ pub mod event_bridge;
 pub mod events;
 pub mod mcp_http;
 pub mod origin;
+pub mod route_policy;
 pub mod rpc;
 pub mod state;
 pub mod version;
