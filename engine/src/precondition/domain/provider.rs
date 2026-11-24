@@ -77,6 +77,7 @@ pub enum ProviderMethod {
 /// ADR-013 R5). `credential_ref` names a credential the operator holds; the
 /// credential **value** is never read by the domain and is never logged.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProviderSpec {
     /// Stable provider id, recorded in the evidence (never the credential).
     pub id: String,

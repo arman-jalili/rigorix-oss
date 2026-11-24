@@ -128,6 +128,83 @@ impl PermissionEnforcerImpl {
         None
     }
 
+    /// The R5 decision for a **shell** command (#1652).
+    ///
+    /// `check_file_write` refuses `.rigorix/**` and `check_bash` had no such rule, so one target had
+    /// two policies: `file_write` on `.rigorix/preconditions.toml` was denied, and `cp` on the same
+    /// file through `run_command` was allowed — the control was held by the type (a write is a write)
+    /// and lost at the seam (a shell is not a write).
+    ///
+    /// The decision is the **same** rule as the write route, applied to the operands a shell command
+    /// names:
+    ///
+    /// 1. a read-only command is not a write, and reading the config is not refused — the two routes
+    ///    must agree, and `file_read` of `.rigorix/**` is allowed today;
+    /// 2. every whitespace-delimited word (after stripping quotes and a leading redirection operator)
+    ///    is tested with the same segment rule, so `cp x .rigorix/preconditions.toml`,
+    ///    `cp x ~/.rigorix/…` and `cp x ./.rigorix/…` are one case rather than three;
+    /// 3. each candidate is also **resolved** the way a write resolves it, so `ln -s .rigorix tmp`
+    ///    followed by `cp x tmp/hooks.toml` is refused — the alias of the protected directory is the
+    ///    protected directory (#1493).
+    ///
+    /// What this does **not** do, and the refusal says so: the words are the words the caller wrote.
+    /// `sh -c` expands `$CFG` and globs *after* this decision (#1654), so a command that computes the
+    /// path at run time is refused only if the literal words name it — the declared deployment
+    /// isolation is the boundary for that, exactly as the sink register records
+    /// (`engine:exec-run-command`).
+    fn protected_shell_refusal(command: &str, workspace_root: &str) -> Option<String> {
+        use crate::permission::domain::BashClassifier;
+
+        if command.trim().is_empty() {
+            return None;
+        }
+        // A read is not a write. `cat .rigorix/preconditions.toml`, `grep -r .rigorix` and
+        // `ls -la .rigorix` all stay allowed, which is what the file route does.
+        if BashClassifier::classify(command).is_read_only() {
+            return None;
+        }
+
+        for word in command.split_whitespace() {
+            // `>`, `>>`, `2>`, `<`, `|`, `&&` may be glued to the operand; the operand is what
+            // matters, and a shell operator is not part of the path.
+            let candidate = word.trim_matches(|c: char| {
+                matches!(
+                    c,
+                    '"' | '\'' | '>' | '<' | '|' | '&' | '(' | ')' | ';' | '`'
+                )
+            });
+            if candidate.is_empty() {
+                continue;
+            }
+            if Self::is_protected_config_path(candidate) {
+                return Some(format!(
+                    "the command writes to '{}', which is under .rigorix/** — operator-controlled \
+                     config, agent writes denied by default permission config (R5). The refusal is \
+                     the same one `file_write` gives for this path (#1652); the shell is not a \
+                     second policy. The words are the caller's words: `$VAR` and globs expand \
+                     after this decision (#1654), so the declared deployment isolation is the \
+                     boundary for a path computed at run time",
+                    candidate
+                ));
+            }
+            // The alias case, decided on where the write would land.
+            if candidate.contains('/')
+                && let Some(effective) = Self::effective_write_path(candidate, workspace_root)
+                && Self::is_protected_config_path(&effective.to_string_lossy())
+            {
+                return Some(format!(
+                    "the command writes to '{}', which resolves to '{}', under .rigorix/** — \
+                     operator-controlled config; an alias of the protected directory is the \
+                     protected directory (R5, #1493), and the shell route applies the same \
+                     decision as `file_write` (#1652)",
+                    candidate,
+                    effective.display()
+                ));
+            }
+        }
+        None
+    }
+
     fn is_within_workspace(path: &str, workspace_root: &str) -> bool {
         // #1493: a relative path is relative to the workspace root, because that is
         // what the writer joins it to. Canonicalizing it as given made it relative to
@@ -294,6 +371,24 @@ impl PermissionEnforcer for PermissionEnforcerImpl {
 
         if context.map(|c| c.temporary_bypass).unwrap_or(false) {
             return PermissionOutcome::Allowed;
+        }
+
+        // #1652: the R5 decision, on the same modes as `check_file_write` — a differential test
+        // asserts the two routes answer the same question the same way for one target.
+        if effective_mode == PermissionMode::WorkspaceWrite {
+            let workspace_root = self
+                .workspace_root
+                .read()
+                .map(|root| root.clone())
+                .unwrap_or_default();
+            if let Some(reason) = Self::protected_shell_refusal(command, &workspace_root) {
+                return PermissionOutcome::Denied {
+                    tool: "bash".to_string(),
+                    active_mode: effective_mode.as_str().to_string(),
+                    required_mode: PermissionMode::DangerousFullAccess.as_str().to_string(),
+                    reason,
+                };
+            }
         }
 
         match effective_mode {
@@ -514,6 +609,144 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
+    // -----------------------------------------------------------------------------
+    // #1652 — one protected-path decision, two routes
+    // -----------------------------------------------------------------------------
+
+    /// The defect as a differential: one target, two routes, one answer.
+    ///
+    /// The audit's executed proof was `by_file False` / `by_shell True` for the same file. A pair of
+    /// unit tests would not have caught it — each route was self-consistent; what was missing is that
+    /// the two agreed.
+    #[tokio::test]
+    async fn a_write_to_the_operator_config_is_refused_on_both_routes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join(".rigorix")).expect("config dir");
+        let root = dir.path().to_str().expect("utf-8 path");
+
+        for mode_root in [root.to_string()] {
+            let enforcer = test_enforcer(&mode_root);
+            let target = format!("{mode_root}/.rigorix/preconditions.toml");
+
+            let by_file = enforcer.check_file_write(&target, &mode_root, None).await;
+            let by_shell = enforcer
+                .check_bash(&format!("cp /tmp/payload.toml {target}"), None)
+                .await;
+
+            assert!(
+                matches!(by_file, PermissionOutcome::Denied { .. }),
+                "file_write must refuse .rigorix/** — got {by_file:?}"
+            );
+            match by_shell {
+                PermissionOutcome::Denied { reason, .. } => assert!(
+                    reason.contains(".rigorix"),
+                    "the shell refusal must name the same rule: {reason}"
+                ),
+                other => panic!(
+                    "run_command must refuse a write to .rigorix/** — the same target answered \
+                     {other:?} through the shell after {by_file:?} through file_write (#1652)"
+                ),
+            }
+        }
+    }
+
+    /// The other direction of the same differential: a read of the config is not a write, so the
+    /// shell route keeps allowing what the file route allows.
+    #[tokio::test]
+    async fn reading_the_operator_config_through_the_shell_stays_allowed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join(".rigorix")).expect("config dir");
+        let root = dir.path().to_str().expect("utf-8 path").to_string();
+        let enforcer = test_enforcer(&root);
+
+        for command in [
+            "cat .rigorix/preconditions.toml",
+            "ls -la .rigorix",
+            "grep -n preconditions .rigorix/preconditions.toml",
+        ] {
+            let outcome = enforcer.check_bash(command, None).await;
+            assert!(
+                outcome.is_allowed(),
+                "{command:?} is a read and must stay allowed: {outcome:?}"
+            );
+        }
+    }
+
+    /// The alias case, through the shell: `ln -s .rigorix tmp` and then `cp x tmp/hooks.toml`
+    /// is a write into the protected directory, and the refusal names the resolved path (#1493).
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_shell_write_through_an_alias_of_the_config_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join(".rigorix")).expect("config dir");
+        std::os::unix::fs::symlink(dir.path().join(".rigorix"), dir.path().join("tmp"))
+            .expect("symlink");
+        let root = dir.path().to_str().expect("utf-8 path").to_string();
+        let enforcer = test_enforcer(&root);
+
+        let outcome = enforcer
+            .check_bash("cp payload.toml tmp/hooks.toml", None)
+            .await;
+        match outcome {
+            PermissionOutcome::Denied { reason, .. } => {
+                assert!(
+                    reason.contains("resolves to") && reason.contains(".rigorix"),
+                    "the refusal must name the resolved path: {reason}"
+                );
+            }
+            other => panic!("an alias of .rigorix is .rigorix — got {other:?}"),
+        }
+    }
+
+    /// The control: a command that touches nothing protected is unchanged, so the guard is not a
+    /// blanket refusal of `run_command`.
+    #[tokio::test]
+    async fn an_ordinary_shell_write_is_still_allowed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().to_str().expect("utf-8 path").to_string();
+        let enforcer = test_enforcer(&root);
+        for command in ["cp a.txt b.txt", "mkdir -p build", "echo hi > notes.txt"] {
+            let outcome = enforcer.check_bash(command, None).await;
+            assert!(
+                outcome.is_allowed(),
+                "{command:?} must stay allowed: {outcome:?}"
+            );
+        }
+    }
+
+    /// Mode parity: the shell rule follows the write rule in *every* mode, not only in the one the
+    /// test above happens to use.
+    #[tokio::test]
+    async fn the_shell_and_file_routes_agree_in_every_mode() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join(".rigorix")).expect("config dir");
+        let root = dir.path().to_str().expect("utf-8 path").to_string();
+        let target = format!("{root}/.rigorix/preconditions.toml");
+
+        let cases: Vec<(&str, PermissionEnforcerImpl)> = vec![
+            ("read_only", read_only_enforcer(&root)),
+            ("workspace_write", test_enforcer(&root)),
+            ("dangerous", dangerous_enforcer(&root)),
+        ];
+        for (name, enforcer) in cases {
+            let by_file = matches!(
+                enforcer.check_file_write(&target, &root, None).await,
+                PermissionOutcome::Denied { .. }
+            );
+            let by_shell = matches!(
+                enforcer
+                    .check_bash(&format!("cp payload {target}"), None)
+                    .await,
+                PermissionOutcome::Denied { .. }
+            );
+            assert_eq!(
+                by_file, by_shell,
+                "in {name} mode the two routes disagree on the same target: file_write denied = \
+                 {by_file}, run_command denied = {by_shell}"
+            );
+        }
+    }
+
     // check_bash() tests
     // -----------------------------------------------------------------------
 

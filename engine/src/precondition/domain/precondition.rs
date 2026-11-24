@@ -87,6 +87,7 @@ pub enum FailureAction {
 
 /// One operator-authored dispatch-time precondition.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Precondition {
     /// Stable identifier, e.g. `"beneficiary-eligible"`.
     pub id: String,
@@ -208,6 +209,7 @@ impl Default for SafetyCaps {
 /// Additive: a missing file is `Ok(None)` at the repository boundary; an
 /// empty `[[preconditions]]` list means no gating (fail-open-absent).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PreconditionConfig {
     /// Fail closed on config errors. Defaults `true` — a corrupt precondition
     /// file must refuse a matching step rather than silently degrade.

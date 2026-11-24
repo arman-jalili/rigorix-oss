@@ -238,10 +238,29 @@ pub async fn probe(repo_root: &Path) -> DoctorReport {
     let preconditions_path = repo_root.join(".rigorix").join("preconditions.toml");
     seams.push(
         match rigorix_engine::precondition::PreconditionSetup::from_env(repo_root) {
-            Ok(Some(_)) => SeamReport::armed(
+            // #1652: **presence is not arming.** A file that parses and holds zero `[[preconditions]]`
+            // was reported `armed` with a tick — "the gate runs" — while it gated nothing. The count
+            // comes from the same parse that armed the gate, so the two cannot disagree.
+            Ok(Some(setup)) if setup.precondition_count() == 0 => SeamReport::misconfigured(
                 "precondition gate",
                 "re-reads authoritative state before dispatch; refuses on mismatch",
-                format!("{}", preconditions_path.display()),
+                format!(
+                    "{} (holds zero [[preconditions]])",
+                    preconditions_path.display()
+                ),
+                "the file parses and declares no rules: the gate is present and gates nothing, so \
+                 every step it would judge is dispatched unjudged. Add [[preconditions]] or remove \
+                 the file — an armed-in-name gate is not a control (#1652)"
+                    .to_string(),
+            ),
+            Ok(Some(setup)) => SeamReport::armed(
+                "precondition gate",
+                "re-reads authoritative state before dispatch; refuses on mismatch",
+                format!(
+                    "{} ({} precondition(s))",
+                    preconditions_path.display(),
+                    setup.precondition_count()
+                ),
             ),
             Ok(None) => SeamReport::unarmed(
                 "precondition gate",
