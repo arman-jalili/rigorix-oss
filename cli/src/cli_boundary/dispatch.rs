@@ -647,7 +647,7 @@ async fn handle_run(
 
 /// Detect git repository in "owner/repo" format from the origin remote.
 fn detect_git_repository() -> Option<String> {
-    let output = std::process::Command::new("git")
+    let output = rigorix_engine::common::process_env::git_std_command()
         .args(["remote", "get-url", "origin"])
         .output()
         .ok()?;
@@ -661,7 +661,7 @@ fn detect_git_repository() -> Option<String> {
 
 /// Detect git author email from local config.
 fn detect_git_author() -> Option<String> {
-    let output = std::process::Command::new("git")
+    let output = rigorix_engine::common::process_env::git_std_command()
         .args(["config", "user.email"])
         .output()
         .ok()?;

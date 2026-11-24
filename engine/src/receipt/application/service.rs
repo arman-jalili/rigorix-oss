@@ -236,7 +236,7 @@ pub fn workspace_identity(repo_root: &str) -> Result<String, ReceiptRefusal> {
     // object id. The residual is `git` reading repository configuration, and the register says so.
     #[allow(clippy::disallowed_types)]
     // sink: receipt:workspace-tree
-    let output = std::process::Command::new("git")
+    let output = crate::common::process_env::git_std_command()
         .args(["rev-parse", "HEAD^{tree}"])
         .current_dir(repo_root)
         .output()

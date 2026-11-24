@@ -157,7 +157,7 @@ fn task_results_to_steps(
 
 /// Derive "owner/repo" from `git remote get-url origin` in the given repo root.
 fn derive_repository(repo_root: &str) -> Option<String> {
-    let output = std::process::Command::new("git")
+    let output = rigorix_engine::common::process_env::git_std_command()
         .args(["-C", repo_root, "remote", "get-url", "origin"])
         .output()
         .ok()?;
@@ -171,7 +171,7 @@ fn derive_repository(repo_root: &str) -> Option<String> {
 
 /// Derive author email from `git config user.email` in the given repo root.
 fn derive_author(repo_root: &str) -> Option<String> {
-    let output = std::process::Command::new("git")
+    let output = rigorix_engine::common::process_env::git_std_command()
         .args(["-C", repo_root, "config", "user.email"])
         .output()
         .ok()?;

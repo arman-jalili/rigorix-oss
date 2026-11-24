@@ -243,7 +243,7 @@ impl ActionRouterImpl {
         };
 
         // 2. Raw diff: git diff {base}...HEAD
-        let diff_output = tokio::process::Command::new("git")
+        let diff_output = rigorix_engine::common::process_env::git_tokio_command()
             .args(["diff", &format!("{base_branch}...HEAD")])
             .current_dir(&ctx.workspace_root)
             .output()
@@ -1064,7 +1064,7 @@ mod tests {
         let git = |args: Vec<&'static str>| {
             let root = root.clone();
             async move {
-                let out = tokio::process::Command::new("git")
+                let out = rigorix_engine::common::process_env::git_tokio_command()
                     .args(&args)
                     .current_dir(&root)
                     .output()
@@ -1213,7 +1213,7 @@ mod tests {
         // Add a violating file on a HEAD branch so `git diff main...HEAD`
         // sees it (the policy file itself stays unchanged from base).
         let root = std::path::PathBuf::from(&workspace);
-        let out = tokio::process::Command::new("git")
+        let out = rigorix_engine::common::process_env::git_tokio_command()
             .args(["checkout", "-q", "-b", "feature"])
             .current_dir(&root)
             .output()
@@ -1221,14 +1221,14 @@ mod tests {
             .unwrap();
         assert!(out.status.success());
         std::fs::write(root.join("secret.sql"), "SELECT * FROM users;").unwrap();
-        let out = tokio::process::Command::new("git")
+        let out = rigorix_engine::common::process_env::git_tokio_command()
             .args(["add", "secret.sql"])
             .current_dir(&root)
             .output()
             .await
             .unwrap();
         assert!(out.status.success());
-        let out = tokio::process::Command::new("git")
+        let out = rigorix_engine::common::process_env::git_tokio_command()
             .args(["commit", "-qm", "add sql"])
             .current_dir(&root)
             .output()

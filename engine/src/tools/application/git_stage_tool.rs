@@ -53,9 +53,12 @@ impl Tool for GitStageTool {
         let start = Instant::now();
 
         // sink: tools:git-stage-fixed-argv
-        let output = tokio::process::Command::new("git")
-            .args(["add", &path])
-            .current_dir(&self.repo_root)
+        // #1661: the child environment is declared, not inherited. `git add` runs no hook, but the
+        // declaration is the same at every git spawn so that "a git child cannot read the signing key"
+        // is a property of the tree rather than of remembering which subcommand runs hooks.
+        let mut command = crate::common::process_env::git_tokio_command();
+        command.args(["add", &path]).current_dir(&self.repo_root);
+        let output = command
             .output()
             .await
             .map_err(|e| ToolError::ExecutionFailed(format!("Failed to stage files: {}", e)))?;
@@ -94,29 +97,29 @@ mod tests {
     use tempfile::TempDir;
 
     fn init_git_repo(dir: &TempDir) {
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["init"])
             .current_dir(dir.path())
             .output()
             .unwrap();
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["config", "user.email", "test@test.com"])
             .current_dir(dir.path())
             .output()
             .unwrap();
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["config", "user.name", "Test"])
             .current_dir(dir.path())
             .output()
             .unwrap();
         // Create an initial commit
         std::fs::write(dir.path().join("README.md"), "# Test").unwrap();
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["add", "."])
             .current_dir(dir.path())
             .output()
             .unwrap();
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["commit", "-m", "Initial commit"])
             .current_dir(dir.path())
             .output()
@@ -144,7 +147,7 @@ mod tests {
         assert!(result.has_side_effects());
 
         // Verify file is staged
-        let status = std::process::Command::new("git")
+        let status = crate::common::process_env::git_std_command()
             .args(["status", "--porcelain"])
             .current_dir(dir.path())
             .output()

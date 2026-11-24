@@ -1,0 +1,11 @@
+# Spawn sites that may run without a declared child environment (#1661).
+#
+# One row per **file**, with the reason. This file is a decision register, not a list of names: the
+# guard refuses a row with an empty reason and a row that matches no site. Keep it short — a file that
+# can declare its environment should, and a row here says why it cannot or must not.
+#
+# Subject: `Command::new(` in `engine/src`, `mcp/src`, `actions/src`, `cli/src`, `server/src`, outside
+# the test modules. Rule: within 15 lines there must be `apply_child_env(`, `apply_git_child_env(`,
+# `apply_git_child_env_with(`, `.env_clear()`, `git_std_command(` or `git_tokio_command(`.
+engine/src/scored_evaluation/infrastructure/backends/local_backend.rs	the scoring script is supplied by the deployment and must receive the deployment's own environment (`RIGORIX_ARTIFACT`, `RIGORIX_RUBRIC`, and the interpreter's `PATH`); it is not a git spawn and has no repository-supplied hooks, so the residual is the script itself, which the register records
+cli/src/tui/mod.rs	an operator-requested `$PAGER`/editor launch on the interactive path: refusing the operator's own environment here breaks the editor rather than protecting anything, and nothing the engine holds is signing material at that point

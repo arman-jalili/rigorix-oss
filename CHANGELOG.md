@@ -27,6 +27,18 @@
   retargeted at another tool, a step deleted — and the refusal names the step, the field and both values. An added step or
   approval, a description edit and a parameter change are applied and reported as before. The remedy for a refusal is the
   operator's edit on disk, deliberately: a request field that permits a downgrade is a field the agent can set.
+- **Every child process is spawned with a declared environment, and the declaration is a constructor rather than a
+  reminder** (#1661). Measured: 68 `Command::new` sites across the five crates and two policies among them — `run_command`
+  cleared the environment, the precondition runner inherited everything until #1653, and every fixed-argv `git` spawn inherited
+  the whole parent environment. That last one is not cosmetic: `git commit` runs the repository's hooks, and a hook is a
+  program the repository supplies, so `RIGORIX_HMAC_KEY` — the key an audit envelope is signed with — reached it.
+  `process_env` now declares git's own plumbing (`GIT_AUTHOR_*`, `GIT_DIR`, `GIT_INDEX_FILE`, …) and refuses the names that
+  name *programs* (`GIT_SSH_COMMAND`, `GIT_EXTERNAL_DIFF`, `GIT_ASKPASS`, `GIT_CONFIG_COUNT`); `git_std_command()` and
+  `git_tokio_command()` return a command whose environment is already declared, so the "inherited" state is not reachable.
+  The guard is `.pi/scripts/validate-spawn-sites.sh`: a production `Command::new(` must declare its environment within 15
+  lines, or hold a row in `.pi/spawn-sites.tsv` **with a reason** — a reasonless row and a stale row are both refused. The
+  runtime proof is a `pre-commit` hook that dumps its own environment: the dump has no `RIGORIX_HMAC_KEY`, no `GITHUB_TOKEN`,
+  no `ANTHROPIC_API_KEY` and no `SSH_AUTH_SOCK`, and does have `GIT_AUTHOR_NAME` and `PATH`.
 - **Every guarded route enforces *its own* row, and a preflight is answered from the row too** (#1659, last mile).
   The table made a route without a policy inexpressible; it did not stop a mounted handler from taking the decision from
   `crate::origin` directly — which is what `/events` did, so its `Guarded` row was a declaration nothing read, on the route
