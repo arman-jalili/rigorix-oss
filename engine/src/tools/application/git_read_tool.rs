@@ -140,7 +140,7 @@ impl Tool for GitReadTool {
         // The child inherits only the explicit allowlist, so a git command
         // cannot read `RIGORIX_HMAC_KEY` or anchor credentials (#1068).
         // sink: tools:git-read-fixed-argv
-        let mut cmd = tokio::process::Command::new("git");
+        let mut cmd = crate::common::process_env::git_tokio_command();
         cmd.args(&args).current_dir(&self.repo_root);
         apply_child_env(&mut cmd, &[]);
         let output = cmd.output().await.map_err(|e| {
@@ -187,29 +187,29 @@ mod tests {
     }
 
     fn init_git_repo(dir: &TempDir) {
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["init"])
             .current_dir(dir.path())
             .output()
             .unwrap();
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["config", "user.email", "test@test.com"])
             .current_dir(dir.path())
             .output()
             .unwrap();
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["config", "user.name", "Test"])
             .current_dir(dir.path())
             .output()
             .unwrap();
         // Create an initial commit
         std::fs::write(dir.path().join("README.md"), "# Test").unwrap();
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["add", "."])
             .current_dir(dir.path())
             .output()
             .unwrap();
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["commit", "-m", "Initial commit"])
             .current_dir(dir.path())
             .output()

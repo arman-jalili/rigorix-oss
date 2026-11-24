@@ -56,7 +56,6 @@
 #![allow(clippy::disallowed_types)]
 
 use std::path::Path;
-use std::process::Command;
 
 use crate::approval::domain::ApprovalError;
 
@@ -126,7 +125,7 @@ impl GitDiffEffectOracle {
 
 fn run_git(repo: &Path, args: &[&str]) -> Result<Vec<String>, ApprovalError> {
     // sink: approval:effect-scope-git
-    let output = Command::new("git")
+    let output = crate::common::process_env::git_std_command()
         .arg("-C")
         .arg(repo)
         .args(args)
@@ -155,17 +154,16 @@ fn run_git(repo: &Path, args: &[&str]) -> Result<Vec<String>, ApprovalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
 
     fn temp_repo() -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("tempdir");
-        let init = Command::new("git")
+        let init = crate::common::process_env::git_std_command()
             .args(["init", "-q", "-b", "main"])
             .arg(dir.path().to_str().unwrap())
             .output()
             .expect("git init");
         assert!(init.status.success());
-        Command::new("git")
+        crate::common::process_env::git_std_command()
             .args([
                 "-C",
                 dir.path().to_str().unwrap(),
@@ -175,7 +173,7 @@ mod tests {
             ])
             .status()
             .expect("config");
-        Command::new("git")
+        crate::common::process_env::git_std_command()
             .args([
                 "-C",
                 dir.path().to_str().unwrap(),
@@ -190,11 +188,11 @@ mod tests {
 
     fn commit_all(repo: &Path) {
         let repo = repo.to_str().unwrap();
-        Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["-C", repo, "add", "-A"])
             .status()
             .unwrap();
-        Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["-C", repo, "commit", "-q", "-m", "snapshot"])
             .status()
             .unwrap();
@@ -248,7 +246,7 @@ mod tests {
         // Modify and stage, but do not commit: the working tree is now clean
         // relative to HEAD, so `git diff` alone sees nothing.
         std::fs::write(repo.path().join("tracked.txt"), "staged tamper").unwrap();
-        let status = Command::new("git")
+        let status = crate::common::process_env::git_std_command()
             .args(["-C", repo.path().to_str().unwrap(), "add", "tracked.txt"])
             .status()
             .expect("git add");

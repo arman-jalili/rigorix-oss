@@ -1539,17 +1539,17 @@ mod tests {
     /// A throwaway repository for the git steps.
     fn git_repo(tag: &str) -> tempfile::TempDir {
         let dir = tempfile::TempDir::new().expect("temp repo");
-        let ok = std::process::Command::new("git")
+        let ok = crate::common::process_env::git_std_command()
             .args(["init", "-q", "."])
             .current_dir(dir.path())
             .status()
             .expect("git init");
         assert!(ok.success());
-        let _ = std::process::Command::new("git")
+        let _ = crate::common::process_env::git_std_command()
             .args(["config", "user.email", "t@example.com"])
             .current_dir(dir.path())
             .status();
-        let _ = std::process::Command::new("git")
+        let _ = crate::common::process_env::git_std_command()
             .args(["config", "user.name", tag])
             .current_dir(dir.path())
             .status();
@@ -1708,7 +1708,7 @@ mod tests {
             std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
                 .expect("chmod");
         }
-        let configured = std::process::Command::new("git")
+        let configured = crate::common::process_env::git_std_command()
             .args(["config", "core.fsmonitor", &script.display().to_string()])
             .current_dir(repo.path())
             .status()

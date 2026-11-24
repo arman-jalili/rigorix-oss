@@ -272,6 +272,10 @@ impl Tool for RunCommandTool {
         // sink: tools:run-command-spawn
         let mut cmd = tokio::process::Command::new(&resolved);
         cmd.args(arguments);
+        // #1661: the declaration sits beside the construction, not forty lines below it. The guard that
+        // enforces "every production spawn declares its child environment" reads a window around the
+        // spawn, and a declaration it cannot see is one a reader cannot see either.
+        apply_child_env(&mut cmd, &env_overrides);
         // #1488: the child enters the validated inode, not a re-resolved path.
         // `current_dir(path)` would re-resolve in the child, so the directory is
         // applied by descriptor before `execve`.
@@ -299,7 +303,6 @@ impl Tool for RunCommandTool {
              would re-resolve (#1488)"
                 .to_string(),
         ));
-        apply_child_env(&mut cmd, &env_overrides);
 
         let output = tokio::time::timeout(timeout_duration, cmd.output())
             .await

@@ -69,14 +69,13 @@ impl Tool for GitCommitTool {
         // Optionally stage all tracked files
         if auto_stage {
             // sink: tools:git-commit-fixed-argv
-            let add_output = tokio::process::Command::new("git")
-                .args(["add", "-u"])
-                .current_dir(&self.repo_root)
-                .output()
-                .await
-                .map_err(|e| {
-                    ToolError::ExecutionFailed(format!("Failed to auto-stage files: {}", e))
-                })?;
+            // #1661: `git add` before a commit is where an `pre-commit` hook's *predecessor* runs, and a
+            // hook is a program the repository supplies — it must not see `RIGORIX_HMAC_KEY`.
+            let mut add_command = crate::common::process_env::git_tokio_command();
+            add_command.args(["add", "-u"]).current_dir(&self.repo_root);
+            let add_output = add_command.output().await.map_err(|e| {
+                ToolError::ExecutionFailed(format!("Failed to auto-stage files: {}", e))
+            })?;
 
             if !add_output.status.success() {
                 let stderr = String::from_utf8_lossy(&add_output.stderr);
@@ -89,9 +88,13 @@ impl Tool for GitCommitTool {
 
         // Create the commit
         // sink: tools:git-commit-fixed-argv
-        let output = tokio::process::Command::new("git")
+        // #1661: **this** is the spawn that runs the repository's hooks. The declaration is what keeps
+        // the signing key out of a program the repository wrote.
+        let mut commit_command = crate::common::process_env::git_tokio_command();
+        commit_command
             .args(["commit", "-m", &message])
-            .current_dir(&self.repo_root)
+            .current_dir(&self.repo_root);
+        let output = commit_command
             .output()
             .await
             .map_err(|e| ToolError::ExecutionFailed(format!("Failed to create commit: {}", e)))?;
@@ -150,17 +153,17 @@ mod tests {
     use tempfile::TempDir;
 
     fn init_git_repo(dir: &TempDir) {
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["init"])
             .current_dir(dir.path())
             .output()
             .unwrap();
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["config", "user.email", "test@test.com"])
             .current_dir(dir.path())
             .output()
             .unwrap();
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["config", "user.name", "Test"])
             .current_dir(dir.path())
             .output()
@@ -196,7 +199,7 @@ mod tests {
 
         // Create and stage a file
         std::fs::write(dir.path().join("test.txt"), "content").unwrap();
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["add", "test.txt"])
             .current_dir(dir.path())
             .output()
@@ -212,7 +215,7 @@ mod tests {
         assert!(result.has_side_effects());
 
         // Verify commit exists
-        let log = std::process::Command::new("git")
+        let log = crate::common::process_env::git_std_command()
             .args(["log", "--oneline"])
             .current_dir(dir.path())
             .output()
@@ -230,12 +233,12 @@ mod tests {
         std::fs::write(dir.path().join("auto.txt"), "auto content").unwrap();
         // Need an initial commit first for auto-stage to work properly
         std::fs::write(dir.path().join("base.txt"), "base").unwrap();
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["add", "base.txt"])
             .current_dir(dir.path())
             .output()
             .unwrap();
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["commit", "-m", "Initial commit"])
             .current_dir(dir.path())
             .output()
@@ -244,7 +247,7 @@ mod tests {
         // Now auto.txt is untracked - auto_stage only stages tracked files
         std::fs::write(dir.path().join("auto.txt"), "auto content").unwrap();
         // Stage it manually for this test
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["add", "auto.txt"])
             .current_dir(dir.path())
             .output()
@@ -293,7 +296,7 @@ mod tests {
         init_git_repo(&dir);
 
         std::fs::write(dir.path().join("track.txt"), "tracked").unwrap();
-        std::process::Command::new("git")
+        crate::common::process_env::git_std_command()
             .args(["add", "track.txt"])
             .current_dir(dir.path())
             .output()
