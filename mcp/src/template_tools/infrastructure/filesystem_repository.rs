@@ -29,7 +29,7 @@ use tokio::sync::Mutex;
 use crate::template_tools::domain::entity::TemplateRepository;
 use crate::template_tools::domain::error::TemplateError;
 use crate::template_tools::domain::value::{
-    PlanTemplate, StepDefinition, TemplateFilter, TemplateSummary,
+    GovernanceChange, PlanTemplate, ReplaceReport, StepDefinition, TemplateFilter, TemplateSummary,
 };
 use rigorix_engine::templates::domain::{
     Template as EngineTemplate, TemplateAction, ValidationRule,
@@ -184,6 +184,67 @@ fn action_to_step(action: &TemplateAction) -> Result<(String, serde_json::Value)
     Ok(step)
 }
 
+/// The governance-relevant difference between two plan documents (#1655).
+///
+/// Only the three fields that decide what a run does with a step: the tool it calls, the parameters it
+/// passes, and whether a human must approve it. A description edit is not a boundary change and is
+/// deliberately not reported — a report that lists everything is a report nobody reads.
+fn governance_diff(previous: &PlanTemplate, next: &PlanTemplate) -> Vec<GovernanceChange> {
+    let mut changes = Vec::new();
+    let previous_by_name: std::collections::HashMap<&str, &StepDefinition> = previous
+        .steps()
+        .iter()
+        .map(|step| (step.name(), step))
+        .collect();
+    for step in next.steps() {
+        let Some(before) = previous_by_name.get(step.name()) else {
+            changes.push(GovernanceChange {
+                step: step.name().to_string(),
+                field: "step".to_string(),
+                from: "(absent)".to_string(),
+                to: format!("{} step", step.tool()),
+            });
+            continue;
+        };
+        if before.tool() != step.tool() {
+            changes.push(GovernanceChange {
+                step: step.name().to_string(),
+                field: "tool".to_string(),
+                from: before.tool().to_string(),
+                to: step.tool().to_string(),
+            });
+        }
+        if before.parameters() != step.parameters() {
+            changes.push(GovernanceChange {
+                step: step.name().to_string(),
+                field: "parameters".to_string(),
+                from: before.parameters().to_string(),
+                to: step.parameters().to_string(),
+            });
+        }
+        if before.requires_approval() != step.requires_approval() {
+            changes.push(GovernanceChange {
+                step: step.name().to_string(),
+                field: "requires_approval".to_string(),
+                from: before.requires_approval().to_string(),
+                to: step.requires_approval().to_string(),
+            });
+        }
+    }
+    // A step that disappeared took its gate with it.
+    for step in previous.steps() {
+        if !next.steps().iter().any(|s| s.name() == step.name()) {
+            changes.push(GovernanceChange {
+                step: step.name().to_string(),
+                field: "step".to_string(),
+                from: format!("{} step", step.tool()),
+                to: "(removed)".to_string(),
+            });
+        }
+    }
+    changes
+}
+
 /// Convert an engine Template ([[nodes]] format) to an MCP PlanTemplate ([[steps]] format).
 ///
 /// `created_at` / `updated_at` are the document's own values where it has them —
@@ -288,6 +349,48 @@ impl FilesystemTemplateRepository {
                     e
                 ))
             })
+    }
+
+    /// Keep the current definition under `.versions/<name>/`, and return the path it was kept at
+    /// (#1655).
+    ///
+    /// The copy is content-addressed by a digest of the bytes plus a timestamp, so two overwrites in
+    /// the same second cannot collide, and the same content kept twice is two files — a history, not a
+    /// set. It is a **copy**, not a rename: the live file must stay where readers look.
+    async fn keep_previous(&self, name: &str) -> Result<String, TemplateError> {
+        let live = self.template_path(name);
+        let bytes = tokio::fs::read(&live).await.map_err(|e| {
+            TemplateError::RepositoryError(format!(
+                "Failed to read '{}' before overwriting it: {}",
+                live.display(),
+                e
+            ))
+        })?;
+        let digest = {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(&bytes);
+            hasher
+                .finalize()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()[..8]
+                .to_string()
+        };
+        let epoch = chrono::Utc::now().timestamp();
+        let directory = self.base_path.join(".versions").join(name);
+        tokio::fs::create_dir_all(&directory).await.map_err(|e| {
+            TemplateError::RepositoryError(format!(
+                "Failed to create '{}': {}",
+                directory.display(),
+                e
+            ))
+        })?;
+        let kept = directory.join(format!("{epoch}-{digest}.toml"));
+        tokio::fs::write(&kept, &bytes).await.map_err(|e| {
+            TemplateError::RepositoryError(format!("Failed to keep '{}': {}", kept.display(), e))
+        })?;
+        Ok(kept.display().to_string())
     }
 
     /// Perform an atomic write: temp file → fsync → rename.
@@ -471,6 +574,51 @@ impl TemplateRepository for FilesystemTemplateRepository {
                 );
             }
         }
+    }
+
+    /// Write, keeping the previous definition and reporting what governance-relevant fields moved
+    /// (#1655).
+    ///
+    /// The audit's case: an operator template with `requires_approval = true` paused a run; the agent
+    /// then called `rigorix_create_template` with `overwrite: true` and a plan whose step was
+    /// `file_write` with `requires_approval: false`; the same run completed with no human in the loop,
+    /// and nothing in the record said a gate had been removed.
+    ///
+    /// Two properties are added, and neither refuses a legitimate edit:
+    ///
+    /// - the previous bytes are kept under `.versions/<name>/<epoch>-<digest8>.toml`, so "the previous
+    ///   definition is recoverable" is a fact about the store and not a promise about the operator's
+    ///   backups;
+    /// - the per-step diff of `tool`, `parameters` and `requires_approval` is returned, so an
+    ///   overwrite that drops an approval requirement cannot be silent.
+    async fn create_reporting(
+        &self,
+        template: PlanTemplate,
+        overwrite: bool,
+    ) -> Result<ReplaceReport, TemplateError> {
+        let name = template.name().to_string();
+        // Read the previous definition **before** the write, from the same door a reader uses, so the
+        // diff describes the document rather than the file's bytes in a private shape.
+        let previous = match self.get(&name).await {
+            Ok(previous) => Some(previous),
+            Err(TemplateError::NotFound(_)) => None,
+            Err(error) => return Err(error),
+        };
+
+        let mut report = ReplaceReport::default();
+        if let Some(previous) = previous {
+            if !overwrite {
+                return Err(TemplateError::AlreadyExists(format!(
+                    "Template '{name}' already exists. Use overwrite: true to replace."
+                )));
+            }
+            report.replaced_existing = true;
+            report.changes = governance_diff(&previous, &template);
+            report.previous_definition = Some(self.keep_previous(&name).await?);
+        }
+
+        self.create(template, overwrite).await?;
+        Ok(report)
     }
 
     async fn create(&self, template: PlanTemplate, overwrite: bool) -> Result<(), TemplateError> {

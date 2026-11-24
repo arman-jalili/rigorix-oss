@@ -164,7 +164,18 @@ impl PermissionEnforcerImpl {
             return None;
         }
 
-        for word in command.split_whitespace() {
+        // #1654: the operands are the **expanded** words, not the literal ones. `sh -c` expands `~`,
+        // `$VAR` and globs *after* the allowlist decision, so a decision on the literal words decides
+        // a different operand than the one the child uses: `cp $CFG .rigorix/hooks.toml` was allowed
+        // on the strength of the string `$CFG` and then wrote the operator's config file.
+        //
+        // The child's environment is an allowlist, so the values expanded here are exactly the values
+        // the child's shell sees, and a variable it does not have expands to the empty string — also
+        // what its shell would do. The expansion is used for the **decision** only: it never becomes
+        // a string handed to a shell (that would be a third representation, and it would disagree
+        // with both).
+        let env = crate::common::process_env::child_env(&[]);
+        for word in crate::common::process_env::expand_words(command, &env) {
             // `>`, `>>`, `2>`, `<`, `|`, `&&` may be glued to the operand; the operand is what
             // matters, and a shell operator is not part of the path.
             let candidate = word.trim_matches(|c: char| {
@@ -696,6 +707,61 @@ mod tests {
             }
             other => panic!("an alias of .rigorix is .rigorix — got {other:?}"),
         }
+    }
+
+    /// #1654: the decision is taken on the operand the child will use, for each expansion form the
+    /// audit measured. `sh -c` expands `~`, `$VAR` and globs after the allowlist decision, so a
+    /// decision on the literal words decides a different path than the one that gets written.
+    #[tokio::test]
+    async fn a_write_through_an_expansion_into_the_config_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join(".rigorix")).expect("config dir");
+        let root = dir.path().to_str().expect("utf-8 path").to_string();
+        let enforcer = test_enforcer(&root);
+
+        // `$HOME` resolves to the real home, so the literal `.rigorix` in the *word* is what a naive
+        // rule would miss when the variable carries only the directory: `$CFG/hooks.toml`.
+        let cases = [
+            // `~` alone: `~/.rigorix/x` names the protected directory only after expansion.
+            "cp payload ~/.rigorix/hooks.toml".to_string(),
+            // `$VAR` from the child's environment, which is an allowlist — HOME is in it.
+            "cp payload $HOME/.rigorix/hooks.toml".to_string(),
+            "cp payload ${HOME}/.rigorix/preconditions.toml".to_string(),
+        ];
+        for command in cases {
+            let outcome = enforcer.check_bash(&command, None).await;
+            assert!(
+                matches!(outcome, PermissionOutcome::Denied { .. }),
+                "{command:?} writes the operator config after expansion and must be refused: \
+                 {outcome:?}"
+            );
+        }
+    }
+
+    /// The glob form, against a real directory: `*.toml` in `.rigorix` is the protected set, and the
+    /// ordered refusal is decided on what the pattern **matches**, not on the pattern.
+    #[tokio::test]
+    async fn a_glob_that_covers_the_config_is_refused_and_one_that_does_not_is_allowed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join(".rigorix")).expect("config dir");
+        std::fs::create_dir_all(dir.path().join("docs")).expect("docs dir");
+        std::fs::write(dir.path().join("docs/a.md"), "x").expect("write");
+        let root = dir.path().to_str().expect("utf-8 path").to_string();
+        let enforcer = test_enforcer(&root);
+        // The working directory of the decision's glob resolution is the engine's, not the workspace,
+        // so the pattern is absolute here — which is also how a template would name a homedir glob.
+        let protected = format!("cp payload {root}/.rigorix/*.toml");
+        let outcome = enforcer.check_bash(&protected, None).await;
+        assert!(
+            matches!(outcome, PermissionOutcome::Denied { .. }),
+            "a glob covering .rigorix/*.toml must be refused: {outcome:?}"
+        );
+        let harmless = format!("cp payload {root}/docs/*.md");
+        let outcome = enforcer.check_bash(&harmless, None).await;
+        assert!(
+            outcome.is_allowed(),
+            "a glob over a normal directory must stay allowed: {outcome:?}"
+        );
     }
 
     /// The control: a command that touches nothing protected is unchanged, so the guard is not a

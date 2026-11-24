@@ -728,6 +728,41 @@ impl AppState {
                     }
                 }
 
+                // #1656: **the message is generated from what the store now holds**, and a call
+                // that recorded nothing is an error — never `isError: false` with a sentence saying
+                // it was recorded. The audit's case: without an `approver_id` in binding mode
+                // `approvals.json` stayed empty, the run stayed `PendingApproval`, and the message
+                // read "Approval recorded — more steps still pending". The engine already refuses
+                // that; the MCP layer is where the refusal was lost.
+                //
+                // A step name the run does not have is the same shape: the request asked for
+                // something that was not there, and reporting success would attest a decision about
+                // a step nobody approved.
+                if !approval.not_found().is_empty() {
+                    return Err(HostError::invalid_params(format!(
+                        "no step named {} is pending approval in execution {}. Approved: {:?}. An \
+                         approval of a step that does not exist records nothing, so this call did \
+                         not succeed — read the execution's pending steps and retry (#1656)",
+                        approval
+                            .not_found()
+                            .iter()
+                            .map(|name| format!("`{name}`"))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        approval.execution_id(),
+                        approval.approved_steps(),
+                    )));
+                }
+                if approval.approved_steps().is_empty() && !approval.resumed() {
+                    return Err(HostError::invalid_params(format!(
+                        "the approval recorded nothing: no step of execution {} was approved and the \
+                         run did not resume (still pending: {:?}). In binding mode this means the \
+                         approver identity was refused, or the store is not armed — the store is the \
+                         authority and it is empty, so there is no success to report (#1656)",
+                        approval.execution_id(),
+                        approval.still_pending(),
+                    )));
+                }
                 Ok(serde_json::json!({
                     "execution_id": approval.execution_id().to_string(),
                     "approved_steps": approval.approved_steps(),
@@ -736,11 +771,14 @@ impl AppState {
                     "denied": approval.denied(),
                     "resumed": approval.resumed(),
                     "message": if approval.resumed() {
-                        "Approved — execution resumed"
-                    } else if approval.still_pending().is_empty() {
-                        "Approved — execution paused"
+                        "Approved — execution resumed".to_string()
                     } else {
-                        "Approval recorded — more steps still pending"
+                        format!(
+                            "Approval recorded for {} step(s) — execution paused with {} still \
+                             pending",
+                            approval.approved_steps().len(),
+                            approval.still_pending().len()
+                        )
                     },
                     "final_state": final_state.map(|s| serde_json::json!({
                         "is_complete": s.is_complete,

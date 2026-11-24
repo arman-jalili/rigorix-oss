@@ -648,3 +648,62 @@ pub struct ValidateTemplateInput {
     /// The template plan to validate against schema and enforcement policies.
     pub plan: PlanTemplate,
 }
+
+// ---------------------------------------------------------------------------
+// ReplaceReport — what an overwrite changed (#1655)
+// ---------------------------------------------------------------------------
+
+/// What a `create` with `overwrite: true` changed in the fields that govern a run.
+///
+/// A template is the operator's authored intent: a step's tool, its parameters and its
+/// `requires_approval` flag are what the run will be judged by. An overwrite that changes any of them
+/// is a change to the boundary, and the record has to carry it — "the file was replaced" is not a
+/// report a reader can check.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ReplaceReport {
+    /// Whether a previous definition existed at all.
+    pub replaced_existing: bool,
+    /// The path the previous definition was kept at, when the store keeps one.
+    pub previous_definition: Option<String>,
+    /// Governance-relevant changes, one line per field, in the order they were found.
+    pub changes: Vec<GovernanceChange>,
+}
+
+impl ReplaceReport {
+    /// Whether the overwrite removed an approval requirement — the change the issue measured.
+    pub fn approval_was_removed(&self) -> bool {
+        self.changes
+            .iter()
+            .any(|change| change.field == "requires_approval" && change.to == "false")
+    }
+
+    /// A one-line summary for the tool result; empty when nothing governance-relevant moved.
+    pub fn summary(&self) -> String {
+        if self.changes.is_empty() {
+            return String::new();
+        }
+        self.changes
+            .iter()
+            .map(|change| {
+                format!(
+                    "step `{}`: `{}` {} -> {}",
+                    change.step, change.field, change.from, change.to
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
+}
+
+/// One governance-relevant field that an overwrite changed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GovernanceChange {
+    /// The step whose field changed.
+    pub step: String,
+    /// `tool`, `parameters` or `requires_approval`.
+    pub field: String,
+    /// The previous value, rendered for a reader.
+    pub from: String,
+    /// The new value, rendered for a reader.
+    pub to: String,
+}

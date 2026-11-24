@@ -24,7 +24,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use super::error::TemplateError;
-use super::value::{PlanTemplate, TemplateFilter, TemplateSummary};
+use super::value::{PlanTemplate, ReplaceReport, TemplateFilter, TemplateSummary};
 
 // ---------------------------------------------------------------------------
 // TemplateRepository — Aggregate Root
@@ -75,6 +75,25 @@ pub trait TemplateRepository: Send + Sync {
     /// - `TemplateError::SerializationFailed` if TOML serialization fails
     /// - `TemplateError::RepositoryError` if filesystem write fails
     async fn create(&self, template: PlanTemplate, overwrite: bool) -> Result<(), TemplateError>;
+
+    /// Write a template and report what the write **changed** in governance-relevant fields (#1655).
+    ///
+    /// `create` replaces a file and says nothing; an agent could take an operator template that
+    /// required approval, call `rigorix_create_template` with `overwrite: true`, drop
+    /// `requires_approval`, and the same run would complete with no human in the loop — with nothing
+    /// in the record saying a gate had been removed.
+    ///
+    /// The default is `create` plus an empty report, so an implementation that has no history to
+    /// give says so instead of inventing one. The filesystem repository keeps the previous definition
+    /// and returns the per-step diff.
+    async fn create_reporting(
+        &self,
+        template: PlanTemplate,
+        overwrite: bool,
+    ) -> Result<ReplaceReport, TemplateError> {
+        self.create(template, overwrite).await?;
+        Ok(ReplaceReport::default())
+    }
 
     /// Delete an existing template.
     ///

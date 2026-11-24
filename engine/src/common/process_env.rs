@@ -53,6 +53,163 @@ pub fn apply_child_env(cmd: &mut tokio::process::Command, overrides: &[(String, 
     }
 }
 
+/// Expand the words of a shell command the way the **child's** shell will, for a decision (#1654).
+///
+/// `run_command` executes `sh -c <string>`: `~`, `$VAR` and globs are expanded by the shell *after*
+/// the allowlist decision, so a decision taken on the literal words decides a different operand than
+/// the one that gets used — `cp $CFG .rigorix/hooks.toml` was allowed on the strength of `$CFG` and
+/// then wrote the operator's config file.
+///
+/// Two properties make this exact rather than approximate:
+///
+/// 1. the child's environment is an **allowlist** ([`INHERITED_ENV_ALLOWLIST`] plus the caller's
+///    overrides), so the values a `$VAR` resolves to are the same values the decision uses;
+/// 2. only the three forms the audit measured are expanded — `~`, `$VAR`/`${VAR}`, and a shell glob
+///    against the directory the pattern names. Command substitution (`$(…)`, backticks) is refused
+///    before this runs by the control-operator check, so it cannot assemble a path here.
+///
+/// The result is the operand set, not a command to execute: this function never builds a string that
+/// is handed to a shell. A word that names no variable the child has stays literal — that is what the
+/// child's shell would do too, and a variable the child cannot see cannot be the vector.
+pub fn expand_words(command: &str, env: &[(String, String)]) -> Vec<String> {
+    fn lookup<'a>(env: &'a [(String, String)], name: &str) -> Option<&'a str> {
+        env.iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.as_str())
+    }
+    let home = lookup(env, "HOME").unwrap_or("");
+    let mut words = Vec::new();
+    for raw in command.split_whitespace() {
+        let word = raw.trim_matches(|c: char| matches!(c, '"' | '\''));
+        if word.is_empty() {
+            continue;
+        }
+        let expanded = expand_one(word, home, env);
+        // A glob that matches nothing stays literal (the shell's own rule), and a pattern with no
+        // metacharacter is one path.
+        if expanded.contains('*') || expanded.contains('?') || expanded.contains('[') {
+            words.extend(glob_paths(&expanded));
+        } else {
+            words.push(expanded);
+        }
+    }
+    words
+}
+
+fn expand_one(word: &str, home: &str, env: &[(String, String)]) -> String {
+    // `~` and `~/x` — only as the first character, which is where the shell expands it.
+    let mut out = if word == "~" {
+        home.to_string()
+    } else if let Some(rest) = word.strip_prefix("~/") {
+        format!("{home}/{rest}")
+    } else {
+        word.to_string()
+    };
+
+    // `$NAME` and `${NAME}`.
+    let mut result = String::with_capacity(out.len());
+    let bytes: Vec<char> = out.chars().collect();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != '$' {
+            result.push(bytes[index]);
+            index += 1;
+            continue;
+        }
+        let braced = bytes.get(index + 1) == Some(&'{');
+        let start = if braced { index + 2 } else { index + 1 };
+        let mut end = start;
+        while end < bytes.len()
+            && (bytes[end].is_ascii_alphanumeric() || bytes[end] == '_')
+            && !(end == start && bytes[end].is_ascii_digit())
+        {
+            end += 1;
+        }
+        if end == start || (braced && bytes.get(end) != Some(&'}')) {
+            result.push('$');
+            index += 1;
+            continue;
+        }
+        let name: String = bytes[start..end].iter().collect();
+        // Not in the child's environment: the child's shell expands it to the empty string. Keeping
+        // the literal would make the decision *more* permissive than the execution, which is the
+        // wrong direction; expanding to "" is exact.
+        if let Some(value) = env
+            .iter()
+            .find(|(key, _)| *key == name)
+            .map(|(_, value)| value.as_str())
+        {
+            result.push_str(value);
+        }
+        index = end + if braced { 1 } else { 0 };
+    }
+    out = result;
+    out
+}
+
+/// The paths a shell glob names, restricted to the directory the pattern starts in.
+///
+/// A missing directory yields the pattern itself, which is what an unmatched glob is; the caller
+/// applies a *refusal* rule to it, so a conservative non-expansion cannot admit anything.
+fn glob_paths(pattern: &str) -> Vec<String> {
+    let (dir, file_pattern) = match pattern.rsplit_once('/') {
+        Some((dir, rest)) => (if dir.is_empty() { "/" } else { dir }, rest),
+        None => (".", pattern),
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return vec![pattern.to_string()];
+    };
+    let mut matches: Vec<String> = entries
+        .flatten()
+        .filter_map(|entry| entry.file_name().to_str().map(str::to_string))
+        .filter(|name| glob_match(file_pattern, name))
+        .map(|name| {
+            if dir == "." {
+                name
+            } else {
+                format!("{dir}/{name}")
+            }
+        })
+        .collect();
+    if matches.is_empty() {
+        return vec![pattern.to_string()];
+    }
+    matches.sort();
+    matches
+}
+
+/// `*`, `?` and a single character class — the subset a path operand uses.
+fn glob_match(pattern: &str, name: &str) -> bool {
+    fn walk(pattern: &[char], name: &[char]) -> bool {
+        match (pattern.first(), name.first()) {
+            (None, None) => true,
+            (Some('*'), _) => {
+                walk(&pattern[1..], name) || (!name.is_empty() && walk(pattern, &name[1..]))
+            }
+            (Some('?'), Some(_)) => walk(&pattern[1..], &name[1..]),
+            (Some('['), _) => {
+                let Some(close) = pattern.iter().position(|c| *c == ']') else {
+                    return name.first() == Some(&'[') && walk(&pattern[1..], &name[1..]);
+                };
+                let Some(first) = name.first() else {
+                    return false;
+                };
+                let set = &pattern[1..close];
+                let matched = set.chunks(3).any(|chunk| match chunk {
+                    [lo, '-', hi] => *first >= *lo && *first <= *hi,
+                    _ => set.contains(first),
+                });
+                matched && walk(&pattern[close + 1..], &name[1..])
+            }
+            (Some(expected), Some(actual)) if expected == actual => walk(&pattern[1..], &name[1..]),
+            _ => false,
+        }
+    }
+    let pattern: Vec<char> = pattern.chars().collect();
+    let name: Vec<char> = name.chars().collect();
+    walk(&pattern, &name)
+}
+
 /// Environment names a caller may never hand a child through [`apply_child_env`] (#1489, #1653).
 pub const CALLER_MAY_NOT_SET: &[&str] = &[
     "RIGORIX_HMAC_KEY",

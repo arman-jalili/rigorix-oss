@@ -145,16 +145,44 @@ impl CreateTemplateHandler for CreateTemplateHandlerImpl {
             }
         }
 
-        // Create the template
-        self.repository
-            .create(input.plan.clone(), input.overwrite)
+        // Create the template, **reporting what the write changed** (#1655).
+        //
+        // `create` replaces the file and says nothing. An overwrite that drops a step's
+        // `requires_approval`, or points it at another tool, is a change to the boundary the run will
+        // be judged by — so it travels back to the caller and into the record, with the previous
+        // definition kept at a path the reply names.
+        let report = self
+            .repository
+            .create_reporting(input.plan.clone(), input.overwrite)
             .await?;
 
-        let result = serde_json::json!({
+        let mut result = serde_json::json!({
             "name": input.name,
             "path": format!(".rigorix/templates/{}.toml", input.name),
-            "status": "created"
+            "status": if report.replaced_existing { "replaced" } else { "created" },
+            "previous_definition": report.previous_definition,
+            "governance_changes": report
+                .changes
+                .iter()
+                .map(|change| serde_json::json!({
+                    "step": change.step,
+                    "field": change.field,
+                    "from": change.from,
+                    "to": change.to,
+                }))
+                .collect::<Vec<_>>(),
         });
+        if report.approval_was_removed() {
+            // Not a refusal — refusing would break the agent's legitimate loop. It is a sentence in
+            // the reply that no reader can mistake for a no-op, and the same fact is in
+            // `governance_changes`.
+            result["governance_warning"] = serde_json::Value::String(format!(
+                "this overwrite REMOVED an approval requirement ({}) — the steps it governs now run \
+                 without a human in the loop, and the previous definition is kept at {} (#1655)",
+                report.summary(),
+                report.previous_definition.clone().unwrap_or_default()
+            ));
+        }
 
         Ok(ToolCallResult::success(result))
     }
