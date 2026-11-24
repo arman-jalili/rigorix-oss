@@ -209,11 +209,12 @@ async fn events_refuses_a_cross_origin_subscriber() {
     assert_eq!(sent.body["error"], "origin_refused");
 }
 
-/// Every mounted route is enumerated **from the router's own source**, so a route added later
-/// without a decision fails this test rather than joining the table unguarded. This is the shape the
-/// issue asks for; #1659 turns it into a table with declared policies.
+/// The table is the router's input, so this asserts the two cannot diverge — and prints the row when
+/// they do (#1659).
 #[test]
-fn every_mounted_route_is_covered_by_this_suite() {
+fn every_mounted_route_has_a_declared_policy_and_every_row_is_mounted() {
+    use rigorix_server::route_policy::ROUTES;
+
     let source = include_str!("../src/app.rs");
     let table = source
         .split("pub fn router(")
@@ -222,29 +223,113 @@ fn every_mounted_route_is_covered_by_this_suite() {
         .split(".with_state(")
         .next()
         .expect("the table body");
-    // `.route(` may span lines — a line-based scan silently missed `/mcp`, which is the shape of a
-    // test that reports "every route" while reading three of them. The first string literal after
-    // each `.route(` is the path, wherever the newline falls.
-    let mut routes: Vec<String> = Vec::new();
-    let mut rest = table;
-    while let Some(index) = rest.find(".route(") {
-        rest = &rest[index + ".route(".len()..];
-        let Some(quote) = rest.find('"') else { break };
-        let after = &rest[quote + 1..];
-        let Some(end) = after.find('"') else { break };
-        routes.push(after[..end].to_string());
+
+    // The router mounts by matching on `route.path`, so its mounts are the `"/path" =>` arms.
+    let mut mounted: Vec<String> = Vec::new();
+    for line in table.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix('"')
+            && let Some(path) = rest.split('"').next()
+            && trimmed.contains("=>")
+        {
+            mounted.push(path.to_string());
+        }
     }
-    routes.sort();
-    routes.dedup();
+    mounted.sort();
+    mounted.dedup();
+
+    let mut declared: Vec<String> = ROUTES.iter().map(|r| r.path.to_string()).collect();
+    declared.sort();
+    declared.dedup();
+
     assert_eq!(
-        routes,
-        vec![
-            "/events".to_string(),
-            "/health".to_string(),
-            "/mcp".to_string(),
-            "/rpc".to_string()
-        ],
-        "the route table changed — every new route needs the origin decision and a test here \
-         (this suite covers: /rpc, /mcp, /events; /health is a constant with nothing to drive)"
+        mounted, declared,
+        "the router and the policy table disagree — a route was mounted without a policy row, or a \
+         row declares a route nothing mounts"
     );
+
+    // And the other direction: no handler is mounted by a literal path any more, so a route cannot
+    // bypass the table. A `.route("/x", …)` left behind would be exactly that.
+    let literal_mounts = source.matches(".route(\"").count();
+    assert_eq!(
+        literal_mounts, 0,
+        "app::router must mount from route_policy::ROUTES, not from string literals — a literal \
+         mount is a route with no declared policy (#1659)"
+    );
+}
+
+/// Each declared policy is **enforced**, asserted per row — the half that a table alone cannot give.
+#[tokio::test]
+async fn each_declared_origin_policy_is_enforced() {
+    use rigorix_server::route_policy::{OriginPolicy, ROUTES};
+
+    for route in ROUTES.iter().filter(|r| r.methods.contains(&"GET")) {
+        let request = Request::builder()
+            .method("GET")
+            .uri(route.path)
+            .header(header::HOST, "127.0.0.1:3001")
+            .header(header::ORIGIN, "http://example.invalid")
+            .body(Body::empty())
+            .expect("request");
+        let sent = send(request).await;
+        match route.origin {
+            OriginPolicy::Exempt(reason) => assert_ne!(
+                sent.status,
+                StatusCode::FORBIDDEN,
+                "{} is declared exempt ({reason}) but refused a cross-origin GET",
+                route.path
+            ),
+            OriginPolicy::Guarded => assert_eq!(
+                sent.status,
+                StatusCode::FORBIDDEN,
+                "{} declares a guarded origin and answered a cross-origin GET: {:?} ({})",
+                route.path,
+                sent.body,
+                route.rationale
+            ),
+        }
+    }
+}
+
+/// The body-carrying rows declare JSON, and a browser sending anything else is refused — asserted by
+/// walking the table, so a new body route inherits the assertion instead of needing a new test.
+#[tokio::test]
+async fn every_body_route_refuses_a_preflight_free_content_type() {
+    use rigorix_server::route_policy::ROUTES;
+
+    for route in ROUTES.iter().filter(|r| r.body_carrying()) {
+        assert!(
+            route.content_types.contains(&"application/json"),
+            "{} declares content types {:?}; this suite knows how to assert JSON only",
+            route.path,
+            route.content_types
+        );
+        let sent = send(post(
+            route.path,
+            Some("http://localhost:5173"),
+            Some("text/plain"),
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} }),
+        ))
+        .await;
+        assert_eq!(
+            sent.status,
+            StatusCode::FORBIDDEN,
+            "{} accepts a body and must refuse the preflight-free shape: {:?}",
+            route.path,
+            sent.body
+        );
+    }
+}
+
+/// The compile-time half has a runtime witness: no row may be missing from the table either.
+#[test]
+fn the_table_covers_the_four_routes_this_server_mounts() {
+    use rigorix_server::route_policy::ROUTES;
+    let paths: Vec<&str> = ROUTES.iter().map(|r| r.path).collect();
+    for expected in ["/health", "/events", "/rpc", "/mcp"] {
+        assert!(
+            paths.contains(&expected),
+            "the table has no row for {expected}"
+        );
+    }
 }

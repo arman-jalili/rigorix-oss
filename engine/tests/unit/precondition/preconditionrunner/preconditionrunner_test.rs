@@ -176,3 +176,91 @@ async fn spawn_failure_refuses_never_passes() {
     assert!(matches!(spawn, PreconditionError::Spawn { .. }));
     assert!(!spawn.is_retriable());
 }
+
+// ---------------------------------------------------------------------------
+// #1653 — the check's environment is an allowlist, and the two sets are by name
+// ---------------------------------------------------------------------------
+
+/// The audit's executed proof, turned into a test: a check that dumps its environment.
+///
+/// It held `RIGORIX_HMAC_KEY` — so a check script, or any library it loads, could **sign
+/// envelopes**, the key that makes evidence verifiable — plus the operator's registry and
+/// model-provider tokens, `SSH_AUTH_SOCK` (the agent that reaches their repositories), and the full
+/// parent environment.
+///
+/// The assertions are by **name**, not by looking for a pattern: a rename of `RIGORIX_HMAC_KEY`
+/// would silently pass a "no secrets" scan, and the whole point is that the four names the runner
+/// sets are the only `RIGORIX_*` a check may see.
+#[tokio::test]
+async fn the_check_sees_an_allowlist_and_never_the_signing_key() {
+    // Planted in *this* process, so the test proves the child did not inherit them rather than
+    // proving the parent happened not to have them.
+    // SAFETY: the test process is a dedicated harness; the variables are set before any check runs.
+    unsafe {
+        std::env::set_var("RIGORIX_HMAC_KEY", "planted-signing-key");
+        std::env::set_var("GITHUB_TOKEN", "planted-registry-token");
+        std::env::set_var("ANTHROPIC_API_KEY", "planted-model-token");
+        std::env::set_var("SSH_AUTH_SOCK", "/tmp/planted-agent.sock");
+    }
+
+    // `capture_output` is opt-in (SpanPrivacy), and this test is the reason it exists: without it
+    // stdout is discarded and the dump proves nothing.
+    let mut dump = precondition("p1", vec!["/usr/bin/env"]);
+    dump.capture_output = true;
+    let run = runner()
+        .run(&dump, &input())
+        .await
+        .expect("run /usr/bin/env");
+
+    let env = run.stdout.clone().unwrap_or_default();
+    let names: Vec<&str> = env
+        .lines()
+        .filter_map(|line| line.split_once('=').map(|(name, _)| name))
+        .collect();
+
+    // Present: the four facts the runner sets, and the PATH a check needs to find a program.
+    for required in [
+        "RIGORIX_PRECONDITION_ID",
+        "RIGORIX_EXECUTION_ID",
+        "RIGORIX_STEP_NAME",
+        "RIGORIX_TOOL",
+        "PATH",
+    ] {
+        assert!(
+            names.contains(&required),
+            "the check must see `{required}`; it saw: {names:?}"
+        );
+    }
+
+    // Absent: the key that signs evidence, the operator's credentials, and the agent.
+    for forbidden in [
+        "RIGORIX_HMAC_KEY",
+        "GITHUB_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "SSH_AUTH_SOCK",
+    ] {
+        assert!(
+            !names.contains(&forbidden),
+            "the check inherited `{forbidden}` — a precondition that can sign or ride the operator's \
+             credentials is the finding, not a convenience: {names:?}"
+        );
+    }
+
+    // Exhaustive on the RIGORIX_ namespace: the four facts, and nothing else.
+    let mut rigorix_names: Vec<&str> = names
+        .iter()
+        .copied()
+        .filter(|name| name.starts_with("RIGORIX_"))
+        .collect();
+    rigorix_names.sort_unstable();
+    assert_eq!(
+        rigorix_names,
+        vec![
+            "RIGORIX_EXECUTION_ID",
+            "RIGORIX_PRECONDITION_ID",
+            "RIGORIX_STEP_NAME",
+            "RIGORIX_TOOL",
+        ],
+        "the RIGORIX_ namespace a check sees is a list, and this is the list"
+    );
+}

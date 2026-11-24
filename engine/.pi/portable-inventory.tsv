@@ -66,6 +66,7 @@ item	audit::application::envelope_factory_impl	with_anchor + the anchor match	na
 item	audit::application::audit_service_impl	default_test	names AuditSenderImpl	—	1
 item	identity::infrastructure::verifier	JwksVerifier (struct + both impls)	ring + reqwest	NullVerifier	3
 item	identity::infrastructure::repository	identity_repository_impl	names the fs store	IdentityRepository trait stays	0
+item	common::process_env	the spawn-env helper (one gated function: apply_child_env)	tokio::process (absent in the slice)	the **allowlist data** stays in every build (INHERITED_ENV_ALLOWLIST, CALLER_MAY_NOT_SET, child_env, is_permitted) and so do its tests; only the `Command` adapter is gated, so the precondition runner's child environment is described by one declaration in both builds (#1653)	0
 item	precondition::infrastructure::runner	ProcessPreconditionRunner + 11 helpers	tokio::process + libc + std::os::unix	PreconditionRunner trait stays	19
 item	precondition::infrastructure::provider_client	HttpProviderClient	reqwest	UnavailableProviderClient (refuses)	8
 item	precondition::infrastructure::repository	toml_repository	tokio::fs	PreconditionRepository trait stays	0
@@ -103,7 +104,7 @@ item	error	14 of the root enum's variants + their `use`/match arms	names exclude
 # submodule goes, the logging does not). They are item rows now; `--gates` compares the
 # manifest with `cfg(not(feature = "portable"))` in both directions, so a row cannot claim an
 # exclusion the code does not perform.
-# 30 items gated inside the 19 modules that remain (gate::infrastructure is #1406; gate::domain::governed
+# 31 items gated inside the 19 modules that remain (gate::infrastructure is #1406; gate::domain::governed
 # is ADR-025 D2's witness, which follows the orchestrator out of the slice)
 # `cargo check -p rigorix-engine --features portable --target wasm32-unknown-unknown` → exit 0
 # normal+build tree: 74 crates, none of tree-sitter/reqwest/ring/libc/prometheus/tracing-appender

@@ -1,3 +1,19 @@
+- **Every mounted route declares its policy, and the router is built from the table** (#1659). The audit's most expensive
+  finding on both repositories is one shape — a control on one of several routes: `/mcp` had an origin guard and `/rpc` had
+  none. `server/src/route_policy.rs` is now the declaration (path, methods, auth, origin, content types, and a rationale per
+  row) and `app::router` **iterates it**, so mounting a route without a policy is not expressible: there is no second place to
+  add one, and a literal `.route("/x", …)` fails a test. Handlers take their decision from their own row (`policy_for(path)
+  .enforce_origin(&headers)`), so a route cannot declare one thing and enforce another. The table test prints the row it is
+  about. Writing it found a hole of exactly the class it exists for: `GET /mcp` and `DELETE /mcp` answered before consulting
+  the guard — the table said `Guarded` and two of the three handlers were not.
+- **A precondition check no longer inherits the signing key, the operator's tokens or the SSH agent** (#1653). The runner
+  spawned its check with the full parent environment — no `env_clear`, no allowlist — so a check script, or any library it
+  loaded, held `RIGORIX_HMAC_KEY` (the key that makes evidence verifiable, i.e. the ability to *sign envelopes*), the
+  operator's registry and model-provider tokens, and `SSH_AUTH_SOCK`. The register row `precondition:operator-argv` claimed
+  "an explicit environment", which was true of `run_command` and false of this spawn. It now uses the **same** allowlist
+  (`apply_child_env`: PATH/HOME/LANG/LC_ALL/TMPDIR/SHELL/TERM) plus only the four `RIGORIX_*` step facts the runner sets, and
+  the register row states what the child still is not. The test plants the four forbidden variables in the parent and asserts
+  their **absence by name**, and asserts the `RIGORIX_` namespace is exactly those four — a rename cannot pass silently.
 - **The HTTP front door has one origin decision, and `/rpc` is no longer reachable from any page on the internet** (#1650).
   The guard existed once, in `mcp_http.rs`, and was wired to `/mcp` only: `/rpc` had none, so in free mode — the shipped
   default — a page served from any origin could drive `rigorix.execute`/`rigorix.approve` on `127.0.0.1:3001`, and `/rpc` did

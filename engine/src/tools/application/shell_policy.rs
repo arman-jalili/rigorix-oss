@@ -57,8 +57,12 @@ use std::borrow::Cow;
 /// configuration; the locale and temp-dir names only affect output formatting.
 /// Anything else — notably `RIGORIX_HMAC_KEY` and any anchor or cloud
 /// credentials — is withheld.
-pub const INHERITED_ENV_ALLOWLIST: &[&str] =
-    &["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "SHELL", "TERM"];
+/// The child environment allowlist, re-exported from the one declaration every build has (#1653).
+///
+/// It used to be declared here, which is why the precondition runner — compiled in the portable
+/// slice, where `tools` is not — could not use it and inherited everything instead. One list, one
+/// function, two spawn sites.
+pub use crate::common::process_env::INHERITED_ENV_ALLOWLIST;
 
 /// Environment keys a caller may never set on a child (#1489).
 ///
@@ -1059,18 +1063,7 @@ pub fn argv_from_simple(command: &str) -> Result<Vec<String>, SimpleCommandError
 /// Clears everything inherited, re-adds the allowlist from the engine's own
 /// environment when present, then applies the per-call overrides last so a plan
 /// can set a variable the command needs.
-pub fn apply_child_env(cmd: &mut tokio::process::Command, overrides: &[(String, String)]) {
-    cmd.env_clear();
-    for key in INHERITED_ENV_ALLOWLIST {
-        // sink: tools:shell-policy-env
-        if let Ok(value) = std::env::var(key) {
-            cmd.env(key, value);
-        }
-    }
-    for (key, value) in overrides {
-        cmd.env(key, value);
-    }
-}
+pub use crate::common::process_env::apply_child_env;
 
 #[cfg(test)]
 mod tests {

@@ -52,6 +52,8 @@ use tokio::io::AsyncWriteExt;
 #[cfg(not(feature = "portable"))]
 use tokio::process::Command;
 
+#[cfg(not(feature = "portable"))]
+use crate::common::process_env::apply_child_env;
 use crate::precondition::application::PreconditionCheckInput;
 use crate::precondition::domain::{Precondition, PreconditionError, PreconditionOutcome};
 #[cfg(not(feature = "portable"))]
@@ -553,30 +555,55 @@ impl PreconditionRunner for ProcessPreconditionRunner {
             "precondition: spawning check (argv-only, no shell)"
         );
 
+        // The check's environment is the **same allowlist** `run_command` gives a child (#1653).
+        //
+        // This spawn used to inherit the whole parent environment: a check script — or a library it
+        // loads — held `RIGORIX_HMAC_KEY` (so it could *sign envelopes*, the key that makes evidence
+        // verifiable), the operator's registry and model-provider tokens, and `SSH_AUTH_SOCK` (so it
+        // could ride the agent into their repositories). The register row `precondition:operator-argv`
+        // claimed "an explicit environment", and the register was right about what the code owed and
+        // wrong about what it did.
+        //
+        // The `RIGORIX_*` step facts are set here rather than inherited, because they are the only
+        // RIGORIX_ variables a check may see. They are agent-influenced (a step name comes from an
+        // agent-authored template), so a check that branches on them can be steered — which is a
+        // reason to keep the list short, not a reason to widen it.
+        //
         // sink: precondition:operator-argv
-        let mut child = Command::new(&resolved)
+        let mut child = Command::new(&resolved);
+        apply_child_env(
+            &mut child,
+            &[
+                (
+                    "RIGORIX_PRECONDITION_ID".to_string(),
+                    precondition.id.clone(),
+                ),
+                (
+                    "RIGORIX_EXECUTION_ID".to_string(),
+                    input.execution_id.to_string(),
+                ),
+                ("RIGORIX_STEP_NAME".to_string(), input.step.clone()),
+                ("RIGORIX_TOOL".to_string(), input.tool.clone()),
+            ],
+        );
+        child
             .args(&precondition.command[1..])
-            .env("RIGORIX_PRECONDITION_ID", &precondition.id)
-            .env("RIGORIX_EXECUTION_ID", input.execution_id.to_string())
-            .env("RIGORIX_STEP_NAME", &input.step)
-            .env("RIGORIX_TOOL", &input.tool)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|error| {
-                tracing::warn!(
-                    precondition = %precondition.id,
-                    path = %resolved.display(),
-                    %error,
-                    "precondition: check failed to spawn"
-                );
-                PreconditionError::Spawn {
-                    precondition_id: precondition.id.clone(),
-                    detail: format!("failed to spawn '{}': {error}", redacted_path(&resolved)),
-                }
-            })?;
+            .kill_on_drop(true);
+        let mut child = child.spawn().map_err(|error| {
+            tracing::warn!(
+                precondition = %precondition.id,
+                path = %resolved.display(),
+                %error,
+                "precondition: check failed to spawn"
+            );
+            PreconditionError::Spawn {
+                precondition_id: precondition.id.clone(),
+                detail: format!("failed to spawn '{}': {error}", redacted_path(&resolved)),
+            }
+        })?;
 
         let stdin = child.stdin.take();
         let timeout = std::time::Duration::from_millis(precondition.timeout_ms);
