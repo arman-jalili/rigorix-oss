@@ -10,6 +10,14 @@ mod anchor {
     #[path = "anchor_trust_test.rs"]
     mod anchor_trust_test;
 }
+#[cfg(not(feature = "portable"))]
+#[path = "audit_retention_check.rs"]
+mod audit_retention_check;
+
+#[cfg(not(feature = "portable"))]
+#[path = "hardening_sweep_test.rs"]
+mod hardening_sweep_test;
+
 #[path = "operator_config_strictness_test.rs"]
 mod operator_config_strictness_test;
 

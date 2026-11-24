@@ -1,3 +1,15 @@
+- **The audit trail is bounded by a count, a step's `cwd` is refused rather than dropped, and a provider endpoint must be
+  verifiable** (#1658, three of the seven bullets). `.rigorix/audit/` grew one file per run, forever: `prune` existed and its
+  only call sites were inside the test module, so a request loop grew the host's disk without bound. The store now enforces a
+  **count** (`RIGORIX_AUDIT_MAX_ENVELOPES`, default 5 000) on every save, removes the oldest past it, and records that it did
+  — a count rather than an age, because retention by age empties the trail after a quiet month while the finding was disk
+  growth. A step that declares `cwd` used to run in the engine's directory with the declaration silently dropped (measured:
+  zero `.cwd(` call sites in `engine/src`); it is now refused with `cwd_unsupported` and a message saying the step was not
+  run, because a step that silently runs somewhere else is the defect. And a precondition provider endpoint must be `https://`
+  unless `RIGORIX_PRECONDITION_ALLOW_PLAINTEXT` names the host — the provider's answer gates a step, so an on-path attacker
+  would decide it. The runner image is **pinned by digest** in `action.yml` (`@sha256:c581eefa…`,
+  the multi-arch index of 2026-11-24) instead of following the mutable `:latest` tag, with the command to update it written
+  beside it — a tag under a registry credential is a place where what every consumer executes can change without a commit.
 - **The advertised MCP schema is the contract, `validate_plan` sees an unknown tool, and the caller gets the output**
   (#1657). A schema-conformant client hit four sequential `missing field` errors, one per round trip: the deserializer
   demanded `step.description`, `step.requires_approval`, `constraints.blocked_tools` and `constraints.extensions` while the

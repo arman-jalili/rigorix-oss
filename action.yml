@@ -151,4 +151,13 @@ outputs:
 
 runs:
   using: 'docker'
-  image: 'docker://ghcr.io/arman-jalili/rigorix-oss/actions:latest'
+  # #1658: pinned by digest, not by `:latest`. `:latest` is a mutable tag, so whatever is pushed to it
+  # runs under the operator's token — a compromised registry credential, or an accidental push from a
+  # branch, silently changes what every consumer executes. The digest below is the multi-arch index
+  # for ghcr.io/arman-jalili/rigorix-oss/actions as of 2026-11-24.
+  #
+  # TO UPDATE: after a release, run
+  #   docker buildx imagetools inspect ghcr.io/arman-jalili/rigorix-oss/actions:latest | grep Digest
+  # and replace both the digest and the version comment below. A workflow that bumps this must also
+  # record the version it came from, so a reader can tell *what* the digest is.
+  image: 'docker://ghcr.io/arman-jalili/rigorix-oss/actions@sha256:c581eefa7e1204119c44a8800647347c7163d542b568511b99741b1eb4e8e552'  # 1.16.x index, 2026-11-24
