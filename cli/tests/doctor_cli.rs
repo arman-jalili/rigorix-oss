@@ -763,3 +763,74 @@ async fn doctor_marks_an_all_unattributed_ledger_verified_with_gaps() {
         "the gap must have its own line and a count: {report}"
     );
 }
+
+/// #1652 — **presence is not arming.** A `preconditions.toml` that parses and declares zero rules
+/// leaves the gate "present" and gating nothing, and `doctor` used to print a tick for it
+/// ("✓ precondition gate armed … re-reads authoritative state before dispatch") while every step it
+/// would have judged was dispatched unjudged. The state now comes from the parsed rule count, and it
+/// is a failure — asserted on the **exit status**, not on the wording.
+#[test]
+fn doctor_fails_on_a_precondition_file_that_declares_zero_rules() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let rigorix = dir.path().join(".rigorix");
+    std::fs::create_dir_all(&rigorix).expect("create .rigorix");
+    std::fs::write(
+        rigorix.join("preconditions.toml"),
+        "fail_closed = true\n[gating]\nrelease_dependents_on_failure = false\n",
+    )
+    .expect("write a zero-rule config");
+
+    let mut cmd = bin();
+    cmd.current_dir(dir.path()).args(["doctor"]);
+    isolated(&mut cmd);
+    let out = cmd.output().expect("run rigorix doctor");
+    // A failing report is written to stderr (`format_and_exit`), which is where the other
+    // misconfigured-seam test reads it; the exit status is the assertion that matters.
+    let report = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(
+        !out.status.success(),
+        "a gate that is present and gates nothing must not exit 0: {report}"
+    );
+    assert!(
+        report.contains("precondition gate"),
+        "the report must still name the seam: {report}"
+    );
+    assert!(
+        report.contains("zero [[preconditions]]") || report.contains("gates nothing"),
+        "the report must say why it is a failure, not only that it failed: {report}"
+    );
+}
+
+/// The control for the test above: the same file with one rule is armed, and doctor says so with the
+/// count it read. Without this, "make it fail" would be satisfied by failing on every config.
+#[test]
+fn doctor_reports_an_armed_precondition_file_with_its_rule_count() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let rigorix = dir.path().join(".rigorix");
+    std::fs::create_dir_all(&rigorix).expect("create .rigorix");
+    std::fs::write(
+        rigorix.join("preconditions.toml"),
+        "[[preconditions]]\nid = \"one\"\nmatch = { tool = \"run_command\" }\ncommand = [\"/bin/true\"]\n",
+    )
+    .expect("write an armed config");
+
+    let mut cmd = bin();
+    cmd.current_dir(dir.path()).args(["doctor"]);
+    isolated(&mut cmd);
+    let out = cmd.output().expect("run rigorix doctor");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    assert!(
+        out.status.success(),
+        "an armed config is not a failure: {stdout}"
+    );
+    assert!(
+        stdout.contains("1 precondition(s)"),
+        "doctor must report the count it read, so `armed` is a claim about content: {stdout}"
+    );
+}

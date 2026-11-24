@@ -38,6 +38,13 @@ pub struct PreconditionSetup {
     pub gate: Arc<dyn DispatchGate>,
     /// R2 step-outcome gating (`[gating].release_dependents_on_failure`).
     pub gating_mode: GatingMode,
+    /// How many `[[preconditions]]` the operator file held when it was armed (#1652).
+    ///
+    /// **Presence is not arming.** A file that parses and holds zero rules leaves the gate "armed"
+    /// while it gates nothing, and `doctor` used to print a tick for exactly that file. The count is
+    /// carried from the parse so a caller can tell the two apart without re-reading the file — the
+    /// two answers must come from one read, or they can disagree.
+    pub precondition_count: usize,
     /// The service behind the gate.
     ///
     /// The gate is one consumer of the service; the gate *composition*
@@ -45,6 +52,17 @@ pub struct PreconditionSetup {
     /// findings as well as the verdict. Both share this one instance, so both read
     /// the operator file at the same per-dispatch moment (ADR-017 forbids caching).
     service: Arc<dyn crate::precondition::application::service::PreconditionService>,
+}
+
+impl PreconditionSetup {
+    /// The number of `[[preconditions]]` the operator file held (#1652).
+    ///
+    /// `0` on a setup read from a file means **armed in name and gating nothing**; `0` on an
+    /// [`Self::unarmed`] setup means the gate refuses everything, which is a different state with a
+    /// different remedy. `doctor` is the caller that must not confuse them.
+    pub fn precondition_count(&self) -> usize {
+        self.precondition_count
+    }
 }
 
 /// A `PreconditionService` view over a shared instance.
@@ -121,6 +139,7 @@ impl PreconditionSetup {
             return Ok(None);
         };
         let gating_mode = config.gating;
+        let precondition_count = config.preconditions.len();
         let runner = ProcessPreconditionRunner::new(repo_root);
         let service: Arc<dyn crate::precondition::application::service::PreconditionService> =
             Arc::new(PreconditionServiceImpl::new(
@@ -133,11 +152,20 @@ impl PreconditionSetup {
         tracing::info!(
             path = %config_path.display(),
             release_dependents_on_failure = gating_mode.release_dependents_on_failure,
+            preconditions = precondition_count,
             "precondition: dispatch gate ARMED from operator config (ADR-017)"
         );
+        if precondition_count == 0 {
+            tracing::warn!(
+                path = %config_path.display(),
+                "precondition: the operator config parsed and holds ZERO [[preconditions]] — the \
+                 gate is present and gates nothing (#1652)"
+            );
+        }
         Ok(Some(Self {
             gate,
             gating_mode,
+            precondition_count,
             service,
         }))
     }
@@ -163,6 +191,7 @@ impl PreconditionSetup {
         Self {
             gate,
             gating_mode: GatingMode::default(),
+            precondition_count: 0,
             service,
         }
     }
@@ -238,6 +267,68 @@ release_dependents_on_failure = false
                 .assess_with_findings(uuid::Uuid::new_v4(), &step("other_tool"))
                 .await
                 .is_ok()
+        );
+    }
+
+    /// #1652: a file that parses and holds no rules is **not** the same state as an armed gate, and
+    /// the count is what tells them apart. `doctor` reported the zero-rule file as `armed`.
+    #[tokio::test]
+    async fn a_config_with_zero_rules_is_armed_in_name_only() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // Parses, holds nothing. The audit's case: a file an operator replaced with one that has
+        // settings and no rules — the gate is "configured" and judges nothing.
+        write_config(
+            dir.path(),
+            "fail_closed = true\n[gating]\nrelease_dependents_on_failure = false\n",
+        );
+
+        let setup = PreconditionSetup::from_env(dir.path())
+            .expect("an empty rule list is not a parse failure")
+            .expect("the file exists, so the gate is present");
+        assert_eq!(
+            setup.precondition_count(),
+            0,
+            "the count must come from the parse, not from the file's existence — this is the state \
+             `doctor` has to report as a failure rather than a tick"
+        );
+    }
+
+    /// The other side of the same sentence: with rules, the count is the number of rules.
+    #[tokio::test]
+    async fn an_armed_config_reports_the_number_of_rules_it_declares() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_config(
+            dir.path(),
+            &format!(
+                "{VALID}\n[[preconditions]]\nid = \"second\"\nmatch = {{ tool = \"other\" }}\ncommand = [\"/bin/true\"]\n"
+            ),
+        );
+        let setup = PreconditionSetup::from_env(dir.path())
+            .expect("valid")
+            .expect("armed");
+        assert_eq!(setup.precondition_count(), 2);
+    }
+
+    /// An unknown key is a typo in a control, not metadata: it must be a parse error naming the key,
+    /// not a silently empty rule set (#1652).
+    #[tokio::test]
+    async fn an_unknown_key_in_the_operator_toml_is_a_parse_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // The audit's typo: the singular array name and a version key the schema never had.
+        write_config(
+            dir.path(),
+            "version = 1\n[[precondition]]\nid = \"x\"\nmatch = { tool = \"t\" }\ncommand = [\"/bin/true\"]\n",
+        );
+        let error = match PreconditionSetup::from_env(dir.path()) {
+            Ok(_) => {
+                panic!("`[[precondition]]` is not a key this schema has, so it must not parse")
+            }
+            Err(error) => error,
+        };
+        let message = error.to_string();
+        assert!(
+            message.contains("precondition") || message.contains("version"),
+            "the parse error must name the key it did not recognise: {message}"
         );
     }
 

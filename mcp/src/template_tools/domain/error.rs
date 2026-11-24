@@ -61,6 +61,14 @@ pub enum TemplateError {
     /// Internal error (unexpected state, should not happen).
     #[error("Internal error: {0}")]
     Internal(String),
+
+    /// A template action that the plan dialect cannot represent faithfully (#1651).
+    ///
+    /// Distinct from `DeserializationFailed`: the document parsed, and the action is well-formed —
+    /// what is missing is a step the dispatcher can execute. The conversion **refuses** rather than
+    /// emitting a step that would report success and do nothing, which is the defect #1651 records.
+    #[error("Unsupported action: {0}")]
+    UnsupportedAction(String),
 }
 
 // ---------------------------------------------------------------------------

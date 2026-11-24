@@ -52,6 +52,29 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   per-stage conditioning working by passing on the cold column; the run-level row now answers the same way. No ceiling moved —
   the `total` row's cold sample is still the 2409s one — so a 23-minute run that built crates passes and a 23-minute run that
   built nothing still fails.
+- **The template conversion is total, and an action it cannot represent is refused instead of becoming `run_command ""`**
+  (#1651, critical). `mcp/src/template_tools/infrastructure/filesystem_repository.rs` mapped every action except four into
+  `{"command": ""}`, which `sh -c ""` exits 0 from: a `git_stage`/`git_commit`/`file_patch` node reported success while the
+  index, the log and the file were untouched, and a `requires_approval` step paused, took a human signature and then committed
+  nothing. The catch-all is gone — the match is exhaustive over all ten `TemplateAction` variants, so a new variant is now a
+  build error — and each action maps to the tool the engine's dispatcher actually executes, carrying the fields its extractor
+  reads (`declared_scope` included, for the effect-naming tools). `ToolCall` is the tool it names; `lsp_query` has no dispatch
+  arm and is therefore **refused** with `TemplateError::UnsupportedAction`, naming the action, the file and the nine tools that
+  do exist, rather than producing a step that can only fail. A test asserts the conversion suite's length equals the enum's
+  variant count, read from the enum's own source.
+- **One `.rigorix/**` decision for the shell and the write route, and `doctor` stops calling an empty config armed** (#1652).
+  `check_file_write` refused `.rigorix/**` and `check_bash` had no such rule, so `file_write` on
+  `.rigorix/preconditions.toml` was denied while `cp` on the same file through `run_command` was allowed — the control was
+  held by the type and lost at the seam (the audit's `by_file False` / `by_shell True`). `check_bash` now applies the same R5
+  rule to the words a command names, in the same modes, and resolves each path-shaped word so an alias of the protected
+  directory is the protected directory; a read (`cat`, `ls`, `grep`) is still allowed, because the file route allows it too.
+  A differential test pins the two routes to one answer per mode, and a *control* test keeps an ordinary shell write allowed.
+  Separately, **presence is not arming**: a `preconditions.toml` that parses and declares zero `[[preconditions]]` was reported
+  by `doctor` as `✓ precondition gate armed`, so every step it would have judged was dispatched unjudged. `PreconditionSetup`
+  now carries the rule count from the same parse that armed the gate, `doctor` reports `armed (N precondition(s))`, and the
+  zero-rule file is a **failure** that names the file and says the gate "is present and gates nothing". The operator TOML is
+  strict: `PreconditionConfig`, `Precondition` and `ProviderSpec` carry `deny_unknown_fields`, so the audit's typo
+  (`[[precondition]]` singular, `version = 1`) is a parse error naming the key instead of a silent zero-rule config.
 - **The executable resolution requires an executable, and its refusal names what it rejected** (#1646). `resolve_program`
   returned the first `PATH` entry whose **name existed** (`is_file()`), so a non-executable `~/.local/bin/env` — a shell script with
   mode `-rw-r--r--` — shadowed `/usr/bin/env` and every `run-command` of an allowlisted `env` failed with `EACCES`, reported as

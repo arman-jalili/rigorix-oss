@@ -63,6 +63,127 @@ fn document_timestamps(
     )
 }
 
+/// The one conversion from a template **action** to the `(tool, parameters)` a plan step carries.
+///
+/// #1651: this was a `match` with a `_` arm producing `("run_command", {"command": ""})`, so every
+/// action the adapter had not been taught — `git_stage`, `git_commit`, `file_patch`, `ToolCall`,
+/// `GitRead`, `LspQuery` — became `sh -c ""`, which **exits 0**. The step reported success, the run
+/// reported `Completed`, and nothing had happened: `git_stage` returned `True` with an unchanged
+/// index, `git_commit` returned `True` with no commit, `file_patch` returned `True` with the file
+/// untouched. A `requires_approval` step paused, a human signed, and the resumed step committed
+/// nothing — a governance record attesting a consequence that did not occur.
+///
+/// The catch-all existed so the conversion kept compiling while the dialect grew. That is exactly
+/// what an exhaustive match is for: it should have failed to compile. There is **no `_` arm** now, so
+/// a new action variant is a build error (E0004) until it is given a mapping here.
+///
+/// The mapping is not invented: the engine's own dispatcher is the authority
+/// (`engine/src/planning/application/pipeline_impl.rs:307` maps an action to the `(tool, intent)` pair
+/// a node executes), and `engine/src/execution_engine/application/service_impl/tools.rs` is the list
+/// of tool names it can dispatch. `declared_scope` is carried for the effect-naming tools because
+/// #1175 made the approval declare the files a step touches.
+///
+/// An action the dispatcher cannot execute is **refused**, not converted: a step that will fail at
+/// dispatch is not the same thing as a step whose effect is represented, and reporting the first as
+/// success is the defect this function exists to remove.
+fn action_to_step(action: &TemplateAction) -> Result<(String, serde_json::Value), TemplateError> {
+    use serde_json::json;
+    let step = match action {
+        TemplateAction::RunCommand { command, .. } => {
+            // Only `command` is read by the dispatcher (`command_from_intent`); `cwd`, `env` and
+            // `timeout_secs` are carried by the action but not honoured on this path, so a document
+            // that sets them would be converted into a plan that silently ignores them (#1658).
+            ("run_command".to_string(), json!({ "command": command }))
+        }
+        TemplateAction::FileRead { path } => ("file_read".to_string(), json!({ "path": path })),
+        TemplateAction::FileWrite { path, content } => (
+            "file_write".to_string(),
+            json!({ "path": path, "content": content, "declared_scope": [path] }),
+        ),
+        TemplateAction::FileAppend { path, content } => (
+            "file_append".to_string(),
+            json!({ "path": path, "content": content, "declared_scope": [path] }),
+        ),
+        TemplateAction::FilePatch {
+            path,
+            insert,
+            search,
+            before,
+            anchor_type,
+            anchor_name,
+            container,
+            position,
+        } => {
+            let mut params = serde_json::Map::new();
+            params.insert("path".to_string(), json!(path));
+            params.insert("insert".to_string(), json!(insert));
+            if let Some(search) = search {
+                params.insert("search".to_string(), json!(search));
+                params.insert("before".to_string(), json!(before));
+            }
+            if let Some(anchor_type) = anchor_type {
+                params.insert("anchor_type".to_string(), json!(anchor_type));
+            }
+            if let Some(anchor_name) = anchor_name {
+                params.insert("anchor_name".to_string(), json!(anchor_name));
+            }
+            if let Some(container) = container {
+                params.insert("container".to_string(), json!(container));
+            }
+            if let Some(position) = position {
+                params.insert("position".to_string(), json!(position));
+            }
+            params.insert("declared_scope".to_string(), json!([path]));
+            ("file_patch".to_string(), serde_json::Value::Object(params))
+        }
+        // The demo form (#1529): the document already names the tool and its arguments, so the step
+        // *is* that tool call. This arm is what keeps `tool = "test_tool"` a real call rather than a
+        // translated one.
+        TemplateAction::ToolCall { tool, parameters } => (tool.clone(), parameters.clone()),
+        TemplateAction::GitRead {
+            command,
+            path,
+            max_results,
+        } => {
+            let mut params = serde_json::Map::new();
+            params.insert("command".to_string(), json!(command));
+            if let Some(path) = path {
+                params.insert("path".to_string(), json!(path));
+            }
+            params.insert("max_results".to_string(), json!(max_results));
+            ("git_read".to_string(), serde_json::Value::Object(params))
+        }
+        TemplateAction::GitStage { path } => (
+            "git_stage".to_string(),
+            json!({ "path": path, "declared_scope": [path] }),
+        ),
+        TemplateAction::GitCommit {
+            message,
+            auto_stage,
+        } => (
+            "git_commit".to_string(),
+            json!({ "message": message, "auto_stage": auto_stage }),
+        ),
+        // No arm of the dispatcher executes an LSP query: `lsp_query` is not in its tool list, so a
+        // step converted from this action could only fail at dispatch. Refusing here is the honest
+        // conversion — the document is representable as a plan only by dropping the step, which is
+        // the no-op this issue removed.
+        TemplateAction::LspQuery {
+            query_type, file, ..
+        } => {
+            return Err(TemplateError::UnsupportedAction(format!(
+                "an `lsp_query` node (query_type {query_type:?} on {file:?}) has no plan-step \
+                 equivalent: the dispatcher executes run_command, file_read, file_write, \
+                 file_append, file_patch, git_read, git_stage, git_commit and edit_file, and an \
+                 LSP query is not one of them. The template was not converted, and no step of it \
+                 was dropped — a plan that reports success for work it cannot do is the defect \
+                 this refusal replaces (#1651)"
+            )));
+        }
+    };
+    Ok(step)
+}
+
 /// Convert an engine Template ([[nodes]] format) to an MCP PlanTemplate ([[steps]] format).
 ///
 /// `created_at` / `updated_at` are the document's own values where it has them —
@@ -75,24 +196,8 @@ fn engine_template_to_plan_template(
     let steps: Vec<StepDefinition> = tmpl
         .nodes
         .iter()
-        .map(|node| {
-            let (tool, params) = match &node.action {
-                TemplateAction::RunCommand { command, .. } => {
-                    ("run_command", serde_json::json!({"command": command}))
-                }
-                TemplateAction::FileRead { path } => {
-                    ("file_read", serde_json::json!({"path": path}))
-                }
-                TemplateAction::FileWrite { path, content } => (
-                    "file_write",
-                    serde_json::json!({"path": path, "content": content}),
-                ),
-                TemplateAction::FileAppend { path, content } => (
-                    "file_append",
-                    serde_json::json!({"path": path, "content": content}),
-                ),
-                _ => ("run_command", serde_json::json!({"command": ""})),
-            };
+        .map(|node| -> Result<StepDefinition, TemplateError> {
+            let (tool, params) = action_to_step(&node.action)?;
             let mut sd = StepDefinition::new(
                 node.name.clone(),
                 tool.to_string(),
@@ -110,9 +215,9 @@ fn engine_template_to_plan_template(
             // require_identity flag so rigorix_run refuses the step for
             // unauthenticated callers (conference-demo seat mutations).
             sd = sd.with_require_identity(node.require_identity);
-            sd
+            Ok(sd)
         })
-        .collect();
+        .collect::<Result<Vec<_>, TemplateError>>()?;
 
     // GAP-L-08: PlanTemplate::new returns a typed error on empty steps —
     // propagate it instead of panicking on the conversion path.
@@ -870,5 +975,454 @@ path = "/tmp/thing"
             steps[1].requires_approval(),
             "migrate step must require approval after conversion"
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// #1651 — the read direction is not lossy, and an unrepresentable document is refused
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod round_trip_tests {
+    use super::*;
+    use crate::template_tools::domain::entity::TemplateRepository;
+
+    fn plan() -> PlanTemplate {
+        let steps = vec![
+            StepDefinition::new(
+                "stage".to_string(),
+                "git_stage".to_string(),
+                serde_json::json!({"path": "a.txt"}),
+                false,
+                "step one".to_string(),
+                None,
+            ),
+            StepDefinition::new(
+                "commit".to_string(),
+                "git_commit".to_string(),
+                serde_json::json!({"message": "m"}),
+                true,
+                "step two".to_string(),
+                None,
+            ),
+        ];
+        PlanTemplate::new(
+            "round-trip".to_string(),
+            "a plan".to_string(),
+            "1.0.0".to_string(),
+            vec!["tag".to_string()],
+            steps,
+            None,
+            HashMap::new(),
+            chrono::Utc::now(),
+            chrono::Utc::now(),
+        )
+        .expect("a plan with steps")
+    }
+
+    /// What `create` writes, `get` returns — compared as parsed values, because the claim is about
+    /// the document and not about the order TOML happened to serialize.
+    #[tokio::test]
+    async fn create_then_get_returns_the_same_document() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo = FilesystemTemplateRepository::new(dir.path());
+        let written = plan();
+        repo.create(written.clone(), false).await.expect("create");
+
+        let read = repo.get("round-trip").await.expect("get");
+        let written_json = serde_json::to_value(&written).expect("serialize");
+        let read_json = serde_json::to_value(&read).expect("serialize");
+        assert_eq!(
+            written_json, read_json,
+            "the template changed by being stored and read back"
+        );
+    }
+
+    /// A legacy `[[nodes]]` document whose action has no plan-step equivalent is refused with the
+    /// typed error, not silently converted into a plan that cannot do the work (#1651).
+    #[tokio::test]
+    async fn a_legacy_document_with_an_unconvertible_action_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo = FilesystemTemplateRepository::new(dir.path());
+        let legacy = r#"schema_version = 1
+id = "lsp-plan"
+name = "lsp-plan"
+description = "a legacy document"
+version = "1.0.0"
+
+[[nodes]]
+id = "n1"
+name = "query"
+[nodes.action]
+type = "lsp_query"
+query_type = "goto-definition"
+file = "src/lib.rs"
+line = 1
+column = 2
+"#;
+        std::fs::create_dir_all(dir.path()).expect("dir");
+        std::fs::write(dir.path().join("lsp-plan.toml"), legacy).expect("write");
+
+        let error = repo
+            .get("lsp-plan")
+            .await
+            .expect_err("an LSP query has no step equivalent");
+        match error {
+            TemplateError::UnsupportedAction(message) => {
+                assert!(message.contains("lsp_query"), "{message}");
+            }
+            other => panic!("expected UnsupportedAction, got {other:?}"),
+        }
+    }
+
+    /// Every action the dispatcher *can* run survives the legacy → plan conversion with its tool and
+    /// its fields intact — the defect was that six of them became `run_command ""`.
+    #[tokio::test]
+    async fn a_legacy_document_of_git_and_patch_actions_converts_to_those_tools() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo = FilesystemTemplateRepository::new(dir.path());
+        let legacy = r#"schema_version = 1
+id = "git-plan"
+name = "git-plan"
+description = "a legacy document"
+version = "1.0.0"
+
+[[nodes]]
+id = "n1"
+name = "stage"
+[nodes.action]
+type = "git_stage"
+path = "a.txt"
+
+[[nodes]]
+id = "n2"
+name = "commit"
+[nodes.action]
+type = "git_commit"
+message = "the message"
+"#;
+        std::fs::create_dir_all(dir.path()).expect("dir");
+        std::fs::write(dir.path().join("git-plan.toml"), legacy).expect("write");
+
+        let plan = repo.get("git-plan").await.expect("converts");
+        let tools: Vec<String> = plan
+            .steps()
+            .iter()
+            .map(|step| step.tool().to_string())
+            .collect();
+        assert_eq!(
+            tools,
+            vec!["git_stage".to_string(), "git_commit".to_string()],
+            "each node must keep its own tool"
+        );
+        assert_eq!(
+            plan.steps()[0]
+                .parameters()
+                .get("path")
+                .and_then(|p| p.as_str()),
+            Some("a.txt")
+        );
+        assert_eq!(
+            plan.steps()[1]
+                .parameters()
+                .get("message")
+                .and_then(|m| m.as_str()),
+            Some("the message")
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// #1651 — the conversion is total, and the step it produces is the one the dispatcher reads
+// ---------------------------------------------------------------------------
+
+/// One instance of **every** `TemplateAction` variant.
+///
+/// A literal list, not a loop over the source: the test that uses it asserts this list's length
+/// equals the enum's variant count, so a variant added to the enum without an instance here fails a
+/// test instead of being quietly uncovered — "the actions we thought of" is how the original defect
+/// read.
+#[cfg(test)]
+fn every_action() -> Vec<TemplateAction> {
+    use std::collections::HashMap;
+    vec![
+        TemplateAction::RunCommand {
+            command: "echo hi".to_string(),
+            cwd: None,
+            timeout_secs: 60,
+            env: HashMap::new(),
+        },
+        TemplateAction::FileRead {
+            path: "read.txt".to_string(),
+        },
+        TemplateAction::FileWrite {
+            path: "write.txt".to_string(),
+            content: "W".to_string(),
+        },
+        TemplateAction::FileAppend {
+            path: "append.txt".to_string(),
+            content: "A".to_string(),
+        },
+        TemplateAction::FilePatch {
+            path: "patched.txt".to_string(),
+            insert: "inserted".to_string(),
+            search: Some("search".to_string()),
+            before: false,
+            anchor_type: None,
+            anchor_name: None,
+            container: None,
+            position: None,
+        },
+        TemplateAction::ToolCall {
+            tool: "test_tool".to_string(),
+            parameters: serde_json::json!({"k": "v"}),
+        },
+        TemplateAction::LspQuery {
+            query_type: "goto-definition".to_string(),
+            file: "src/lib.rs".to_string(),
+            line: 1,
+            column: 2,
+        },
+        TemplateAction::GitRead {
+            command: "status".to_string(),
+            path: None,
+            max_results: 50,
+        },
+        TemplateAction::GitStage {
+            path: "staged.txt".to_string(),
+        },
+        TemplateAction::GitCommit {
+            message: "a commit".to_string(),
+            auto_stage: false,
+        },
+    ]
+}
+
+#[cfg(test)]
+mod conversion_tests {
+    use super::*;
+
+    /// The engine's own dispatcher is the authority for "which tools exist" and "which field the
+    /// step reads". Both are read from the engine's source rather than restated here, because a copy
+    /// of the list is the drift this conversion is supposed to remove.
+    const DISPATCH_SOURCE: &str =
+        include_str!("../../../../engine/src/execution_engine/application/service_impl/tools.rs");
+    const TEMPLATE_SOURCE: &str =
+        include_str!("../../../../engine/src/templates/domain/template.rs");
+
+    /// The tool names the dispatcher matches, read from its `match tool_name` block.
+    fn dispatchable_tools() -> Vec<String> {
+        let block = DISPATCH_SOURCE
+            .split("let result = match tool_name {")
+            .nth(1)
+            .expect("the dispatcher's match block")
+            .split("_ => {")
+            .next()
+            .expect("the arm list");
+        let mut names: Vec<String> = Vec::new();
+        for line in block.lines() {
+            let trimmed = line.trim_start();
+            if let Some(rest) = trimmed.strip_prefix('"')
+                && let Some(name) = rest.split('"').next()
+                && (trimmed.contains("=>"))
+            {
+                names.push(name.to_string());
+            }
+        }
+        names
+    }
+
+    /// The enum's own variant count, so this suite cannot cover "the actions we thought of".
+    fn action_variant_count() -> usize {
+        let body = TEMPLATE_SOURCE
+            .split("pub enum TemplateAction {")
+            .nth(1)
+            .expect("the action enum")
+            .split("\n}")
+            .next()
+            .expect("the enum body");
+        body.lines()
+            .filter(|line| {
+                let t = line.trim_end();
+                t.starts_with("    ")
+                    && !t.trim_start().starts_with("//")
+                    && !t.trim_start().starts_with('#')
+                    && t.ends_with('{')
+                    && t.trim_start()
+                        .chars()
+                        .next()
+                        .is_some_and(|c| c.is_ascii_uppercase())
+            })
+            .count()
+    }
+
+    #[test]
+    fn the_suite_covers_every_variant_of_the_action_enum() {
+        let counted = action_variant_count();
+        assert_eq!(
+            every_action().len(),
+            counted,
+            "the conversion suite must carry one instance per TemplateAction variant; the enum has \
+             {counted} and `every_action()` has {}",
+            every_action().len()
+        );
+        assert!(counted >= 10, "the enum parse found {counted} variants");
+    }
+
+    #[test]
+    fn every_convertible_action_names_a_tool_the_dispatcher_can_execute() {
+        let dispatchable = dispatchable_tools();
+        assert!(
+            dispatchable.contains(&"file_patch".to_string()),
+            "the dispatcher parse found {dispatchable:?}"
+        );
+        for action in every_action() {
+            match action_to_step(&action) {
+                Ok((tool, _)) => {
+                    if matches!(action, TemplateAction::ToolCall { .. }) {
+                        // A demo-form node names its own tool (#1529); the registry, not this list,
+                        // decides whether it exists.
+                        continue;
+                    }
+                    assert!(
+                        dispatchable.contains(&tool),
+                        "{action:?} converted to tool {tool:?}, which no dispatcher arm executes                          — the conversion would produce a step that fails at dispatch: {dispatchable:?}"
+                    );
+                }
+                Err(error) => {
+                    // The only allowed refusal is an action the dispatcher genuinely cannot run.
+                    assert!(
+                        matches!(action, TemplateAction::LspQuery { .. }),
+                        "{action:?} was refused but is dispatchable: {error}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The step must carry what the **engine's** extractor reads, asserted with that extractor —
+    /// not with a second reading of the same field names here.
+    #[test]
+    fn the_step_carries_the_field_the_engine_reads_for_each_action() {
+        use rigorix_engine::tools::application::shell_policy::field_from_intent;
+
+        let cases: Vec<(TemplateAction, &str, &str)> = vec![
+            (
+                TemplateAction::RunCommand {
+                    command: "echo hi".to_string(),
+                    cwd: None,
+                    timeout_secs: 60,
+                    env: std::collections::HashMap::new(),
+                },
+                "command",
+                "echo hi",
+            ),
+            (
+                TemplateAction::FileRead {
+                    path: "read.txt".to_string(),
+                },
+                "path",
+                "read.txt",
+            ),
+            (
+                TemplateAction::FileWrite {
+                    path: "write.txt".to_string(),
+                    content: "W".to_string(),
+                },
+                "path",
+                "write.txt",
+            ),
+            (
+                TemplateAction::FileAppend {
+                    path: "append.txt".to_string(),
+                    content: "A".to_string(),
+                },
+                "path",
+                "append.txt",
+            ),
+            (
+                TemplateAction::FilePatch {
+                    path: "patched.txt".to_string(),
+                    insert: "i".to_string(),
+                    search: None,
+                    before: false,
+                    anchor_type: None,
+                    anchor_name: None,
+                    container: None,
+                    position: None,
+                },
+                "path",
+                "patched.txt",
+            ),
+            (
+                TemplateAction::GitRead {
+                    command: "log --oneline".to_string(),
+                    path: None,
+                    max_results: 50,
+                },
+                "command",
+                "log --oneline",
+            ),
+            (
+                TemplateAction::GitStage {
+                    path: "staged.txt".to_string(),
+                },
+                "path",
+                "staged.txt",
+            ),
+            (
+                TemplateAction::GitCommit {
+                    message: "a commit".to_string(),
+                    auto_stage: false,
+                },
+                "message",
+                "a commit",
+            ),
+        ];
+
+        for (action, field, expected) in cases {
+            let (_, params) = action_to_step(&action).expect("convertible");
+            let intent = params.to_string();
+            assert_eq!(
+                field_from_intent(&intent, field),
+                expected,
+                "{action:?} produced {intent} — the engine reads {field:?} from this intent"
+            );
+        }
+    }
+
+    /// The refusal is typed and explains itself, and it is not a plan with a step withdrawn from it.
+    #[test]
+    fn an_action_the_dispatcher_cannot_run_is_refused_by_name() {
+        let error = action_to_step(&TemplateAction::LspQuery {
+            query_type: "find-references".to_string(),
+            file: "src/lib.rs".to_string(),
+            line: 3,
+            column: 4,
+        })
+        .expect_err("no dispatch arm executes an LSP query");
+        let message = error.to_string();
+        assert!(message.contains("lsp_query"), "{message}");
+        assert!(message.contains("find-references"), "{message}");
+        assert!(
+            message.contains("not converted"),
+            "the refusal must say the document was not converted: {message}"
+        );
+    }
+
+    /// The defect itself, as a regression test: no action may become the empty shell command.
+    #[test]
+    fn no_action_converts_to_an_empty_run_command() {
+        for action in every_action() {
+            if let Ok((tool, params)) = action_to_step(&action) {
+                let empty_shell = tool == "run_command"
+                    && params.get("command").and_then(|c| c.as_str()) == Some("");
+                assert!(
+                    !empty_shell,
+                    "{action:?} converted to `run_command \"\"`, which exits 0 and reports success \
+                     for work that did not happen (#1651)"
+                );
+            }
+        }
     }
 }
