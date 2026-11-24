@@ -1,3 +1,29 @@
+- **The advertised MCP schema is the contract, `validate_plan` sees an unknown tool, and the caller gets the output**
+  (#1657). A schema-conformant client hit four sequential `missing field` errors, one per round trip: the deserializer
+  demanded `step.description`, `step.requires_approval`, `constraints.blocked_tools` and `constraints.extensions` while the
+  advertised schema called them optional. They are optional now (`#[serde(default)]`), so the document a client builds from
+  the schema is the document we accept — and the schema's own `required` sets are pinned by a test so the fix cannot be
+  "move the schema to match the deserializer". `rigorix_validate_plan` returned `valid: true` for
+  `tool: "definitely_not_a_tool"`; the dispatcher's tool set is now published once
+  (`DISPATCHABLE_TOOL_NAMES`, with a test that it equals the dispatcher's own arms) and every unknown tool is reported at
+  once with the three closest known names. And `output` — serialized into the DTO and then dropped at the response — is
+  returned per step with a 32 KiB cap and an explicit `output_truncated`, so `file_read` no longer reports `Completed` with
+  nothing in it.
+- **The anchor requires a verifiable channel, refuses the published seed, and states what it trusts** (#1663).
+  `RIGORIX_ANCHOR_URL` was required to be nothing in particular, so an on-path attacker could answer the anchor without
+  knowing any key — and that answer gates a step. It must now be `https://`, or name its host in
+  `RIGORIX_ANCHOR_ALLOW_PLAINTEXT` (a local mock is an explicit decision); a slice whose configured key is the published
+  development seed (`07…07`) is refused **by name and fingerprint** rather than verifying; and startup prints the configured
+  anchor's key fingerprint once, so an operator can see what they trust instead of inferring it from an old environment
+  variable.
+- **Every operator TOML refuses unknown keys, and the documentation's config examples are parsed as fixtures** (#1662).
+  The operator surface was the *least* strict parser in the tree: `deny_unknown_fields` on the precondition document only, a
+  documented key the schema rejects (`action` where the field is `failure` — the README taught it), a typo that parsed to
+  zero rules, and `doctor` printing "armed" for that file. Eight operator documents now refuse an unknown key
+  (`sequence-policy`, `permissions`, `hooks`, `quality-gates`, `policy`, `capacity`, `effect-commitment`, `preconditions`),
+  and a test asserts it per document — naming the type the TOML is **parsed into**, which is the private `Raw*` layer where
+  a validated type is not `Deserialize`. The README example is fixed, and a doc-fixture test parses the documented
+  `.rigorix/preconditions.toml` blocks so prose and schema cannot drift again.
 - **The shell decision is taken on the operand the child will use, and a migrated template cannot drop an approval
   requirement silently** (#1654, #1655, #1656). `run_command` is `sh -c`, so `~`, `$VAR` and globs expand **after** the
   allowlist decision: `cp $CFG .rigorix/hooks.toml` was allowed on the strength of the string `$CFG` and then wrote the

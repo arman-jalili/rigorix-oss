@@ -40,6 +40,7 @@ fn default_quality_level() -> QualityLevel {
 /// required_level = "merge_ready"
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct QualityGateConfig {
     /// Default required quality level for all tasks.
     /// Used when no per-template override exists.

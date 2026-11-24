@@ -3,6 +3,16 @@
 //! Each is preserved with its Guardian TDD structure and corrected to
 //! exercise the real implementation. Runs under `cargo test --test unit`.
 
+// The anchor client is a host-side HTTP boundary (#1663); it is not part of the portable slice.
+#[cfg(not(feature = "portable"))]
+#[path = "anchor"]
+mod anchor {
+    #[path = "anchor_trust_test.rs"]
+    mod anchor_trust_test;
+}
+#[path = "operator_config_strictness_test.rs"]
+mod operator_config_strictness_test;
+
 // The DAG executor is excluded from the portable slice: `dag_engine` and `execution_engine` are not public
 // modules of the portable inventory, so these tests carry the same gate as the orchestrator's (#1537).
 #[cfg(not(feature = "portable"))]

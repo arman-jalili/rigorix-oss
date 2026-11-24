@@ -77,6 +77,66 @@ pub trait AnchorSliceSource: Send + Sync {
     ) -> Result<HistorySlice, AnchorError>;
 }
 
+/// The public key the published development seed signs with (#1663).
+///
+/// The enterprise anchor signs with this when its environment is unset (reported as `07…07`). The OSS
+/// side cannot fix that, but it can refuse a slice signed by it: a verifier that accepts the shipped
+/// default verifies nothing at all.
+pub const PUBLISHED_DEV_SEED_PUBLIC_KEY: &str =
+    "0707070707070707070707070707070707070707070707070707070707070707";
+
+/// The environment variable that names the host(s) allowed to be plaintext (#1663).
+pub const ANCHOR_ALLOW_PLAINTEXT_ENV: &str = "RIGORIX_ANCHOR_ALLOW_PLAINTEXT";
+
+/// Why a plaintext anchor URL is refused, or `None` (#1663).
+///
+/// `RIGORIX_ANCHOR_ALLOW_PLAINTEXT` names the host that may be plaintext (`host` or `host:port`), so a
+/// local mock is an explicit decision rather than an accident.
+pub fn plaintext_anchor_refusal(url: &str) -> Option<String> {
+    if url.starts_with("https://") {
+        return None;
+    }
+    if !url.starts_with("http://") {
+        return Some(format!(
+            "the anchor URL `{url}` does not start with https:// — a scheme this client cannot \
+             verify is refused, because the anchor's verdict gates a step and an unverifiable channel \
+             decides it (#1663)"
+        ));
+    }
+    let host = url
+        .trim_start_matches("http://")
+        .split('/')
+        .next()
+        .unwrap_or_default();
+    // sink: audit:anchor-credentials
+    let allowed = std::env::var(ANCHOR_ALLOW_PLAINTEXT_ENV).unwrap_or_default();
+    let permitted = allowed.split(',').map(str::trim).any(|entry| {
+        !entry.is_empty() && (entry == host || host.starts_with(&format!("{entry}:")))
+    });
+    if permitted {
+        return None;
+    }
+    Some(format!(
+        "the anchor URL `{url}` is plaintext (http://) and no opt-in names `{host}`. Set \
+         {ANCHOR_ALLOW_PLAINTEXT_ENV}={host} to accept a local mock, or use https:// — an on-path \
+         attacker can otherwise answer the anchor without knowing any key at all, and the answer \
+         gates a step (#1663)"
+    ))
+}
+
+/// A short, stable fingerprint of an anchor public key, for the startup line (#1663).
+pub fn key_fingerprint(public_key_hex: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(public_key_hex.trim().as_bytes());
+    hasher
+        .finalize()
+        .iter()
+        .take(8)
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>()
+}
+
 /// Verify a slice's Ed25519 signature over its canonical (`sig`-nulled) bytes.
 ///
 /// # Errors
@@ -84,6 +144,20 @@ pub trait AnchorSliceSource: Send + Sync {
 ///   verify.
 /// - [`AnchorError::InvalidSlice`] when the hex/signature bytes are malformed.
 pub fn verify_slice(slice: &HistorySlice, public_key_hex: &str) -> Result<(), AnchorError> {
+    // #1663: refusing by fingerprint is a known-bad list, and that is a stop-gap with a real cost. It
+    // stays because the alternative is worse: the published development seed is the shipped default
+    // on the anchor side, so a verifier configured with it proves nothing while reporting "verified".
+    if public_key_hex
+        .trim()
+        .eq_ignore_ascii_case(PUBLISHED_DEV_SEED_PUBLIC_KEY)
+    {
+        return Err(AnchorError::SignatureInvalid(format!(
+            "the configured anchor key is the **published development seed** (fingerprint {}): any \
+             slice it signs can be signed by anyone who has read this repository, so accepting it \
+             would verify nothing. Configure the operator's own anchor key (#1663)",
+            key_fingerprint(public_key_hex)
+        )));
+    }
     let sig_hex = slice
         .sig
         .as_deref()
@@ -172,6 +246,16 @@ impl AnchorRuntime {
         let url = std::env::var(ANCHOR_URL_ENV)
             .ok()
             .filter(|v| !v.trim().is_empty());
+        // #1663: a plaintext anchor URL means the verdict that gates a step is decided by whoever is
+        // on the path, and the client was careful about redirects and body size while trusting the
+        // *channel*. Refused unless the operator names that host explicitly — a warning on a cleartext
+        // verdict is the "control reports success while not holding" shape this repo removes.
+        if let Some(url) = url.as_deref()
+            && let Some(reason) = plaintext_anchor_refusal(url)
+        {
+            tracing::error!("anchor: {reason}");
+            return Self::disabled();
+        }
         // sink: audit:anchor-credentials
         let key = std::env::var(ANCHOR_PUBLIC_KEY_ENV)
             .ok()
@@ -188,6 +272,13 @@ impl AnchorRuntime {
         let token = std::env::var(ANCHOR_TOKEN_ENV)
             .ok()
             .filter(|v| !v.trim().is_empty());
+        // #1663: state the trust once, at startup, so an operator can see what they trust instead of
+        // inferring it from an environment variable they set months ago.
+        tracing::info!(
+            "anchor: verifying against key fingerprint {} (url {})",
+            key_fingerprint(&key),
+            url
+        );
         Self::anchored(
             Arc::new(HttpAnchorClient::new_with_token(url.clone(), token)),
             key,

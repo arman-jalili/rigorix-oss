@@ -73,12 +73,26 @@ impl ExecuteHandler for ExecuteHandlerImpl {
             "receipt_digest": result.receipt_digest(),
             "attestation_digest": result.attestation_digest(),
             "receipt_state": result.receipt_state(),
+            // #1657: the step's **output** is returned, bounded. It was serialized into the DTO
+            // and then dropped here, so `file_read` reported `Completed` with no content over both
+            // MCP and HTTP — a success the caller could not use and could not tell from an empty
+            // file.
             "steps": result.steps().iter().map(|s| {
+                let rendered = match s.output() {
+                    serde_json::Value::Null => None,
+                    serde_json::Value::String(text) => Some(text.clone()),
+                    other => Some(other.to_string()),
+                };
+                let (output, truncated) = bounded_output(rendered.as_deref());
                 serde_json::json!({
                     "step_name": s.step_name(),
                     "success": s.is_success(),
                     "error": s.error(),
                     "duration_ms": s.duration_ms(),
+                    "output": output,
+                    // A truncated output is not a complete one, and the caller must be able to see
+                    // which it has without measuring the string.
+                    "output_truncated": truncated,
                 })
             }).collect::<Vec<_>>(),
         });
@@ -115,17 +129,55 @@ impl ValidatePlanHandler for ValidatePlanHandlerImpl {
         let result = self
             .engine
             .validate_plan(
-                input.plan,
+                input.plan.clone(),
                 input.identity.clone(),
                 input.identity_verification_failure.clone(),
             )
             .await
             .map_err(HandlerError::EngineError)?;
 
+        // #1657: the one call whose **name is "validate"** could not see the failure a reader most
+        // needs — `tool: "definitely_not_a_tool"` returned `valid: true, errors: []`, because tool
+        // names and parameters were checked only at dispatch. The tool set now has one home
+        // (`rigorix_engine::...tools::DISPATCHABLE_TOOL_NAMES`), and every unknown name is reported
+        // **at once** with the closest known ones, instead of one per round trip.
+        let mut unknown_tools: Vec<serde_json::Value> = Vec::new();
+        for step in input.plan.steps() {
+            if step.tool().is_empty() || claim_is_dispatchable(step.tool()) {
+                continue;
+            }
+            unknown_tools.push(serde_json::json!({
+                "step": step.name(),
+                "tool": step.tool(),
+                "closest_known": closest_tool_names(step.tool()),
+            }));
+        }
+        let mut errors: Vec<String> = result.errors().iter().map(|e| e.to_string()).collect();
+        for unknown in &unknown_tools {
+            errors.push(format!(
+                "unknown tool `{}` in step `{}` — the dispatcher knows {} (closest: {})",
+                unknown["tool"].as_str().unwrap_or_default(),
+                unknown["step"].as_str().unwrap_or_default(),
+                rigorix_engine::execution_engine::application::service_impl::DISPATCHABLE_TOOL_NAMES
+                    .len(),
+                unknown["closest_known"]
+                    .as_array()
+                    .map(|names| names
+                        .iter()
+                        .filter_map(|n| n.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", "))
+                    .unwrap_or_default(),
+            ));
+        }
+
         let mut content = serde_json::json!({
-            "valid": result.is_valid(),
+            // The verdict includes the tool check: a caller that reads only `valid` must not be told
+            // a plan is fine when one of its steps names nothing the dispatcher can run.
+            "valid": result.is_valid() && unknown_tools.is_empty(),
+            "unknown_tools": unknown_tools,
             "warnings": result.warnings(),
-            "errors": result.errors(),
+            "errors": errors,
             "estimated_cost": result.estimated_cost().map(|c| {
                 serde_json::json!({
                     "estimated_tokens": c.estimated_tokens,
@@ -331,4 +383,81 @@ pub struct HandlerInstanceSet {
     pub check_enforcement: Arc<dyn CheckEnforcementHandler>,
     /// Plan handler.
     pub plan: Arc<dyn PlanHandler>,
+}
+
+/// The cap on a step's output in a tool result (#1657).
+///
+/// 32 KiB: enough for a file read, a diff or a test log tail, small enough that ten steps cannot blow
+/// a context window. The truncation is **stated** in the response (`output_truncated`) because a
+/// silently shortened output is a result the caller cannot distinguish from a short one.
+pub const MAX_STEP_OUTPUT_BYTES: usize = 32 * 1024;
+
+/// Bound one step's output, returning the text and whether it was cut.
+fn bounded_output(output: Option<&str>) -> (Option<String>, bool) {
+    match output {
+        None => (None, false),
+        Some(text) if text.len() <= MAX_STEP_OUTPUT_BYTES => (Some(text.to_string()), false),
+        Some(text) => {
+            let mut end = MAX_STEP_OUTPUT_BYTES;
+            // Never split a UTF-8 sequence: walking back to a char boundary is cheaper than handing a
+            // client an invalid string that its JSON parser will reject for an unrelated reason.
+            while end > 0 && !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            (
+                Some(format!(
+                    "{}\n\n[truncated: {} of {} bytes shown — this is not the complete output]",
+                    &text[..end],
+                    end,
+                    text.len()
+                )),
+                true,
+            )
+        }
+    }
+}
+
+/// Whether a step's tool names something the dispatcher can run (#1657).
+///
+/// A `ToolCall` node names a **registry** tool, and the registry is a runtime composition, so a name
+/// this crate cannot see is not automatically wrong. The dispatcher's own list covers the nine step
+/// kinds; anything else is reported as unknown, which is the direction a validator must err in.
+fn claim_is_dispatchable(tool: &str) -> bool {
+    rigorix_engine::execution_engine::application::service_impl::DISPATCHABLE_TOOL_NAMES
+        .contains(&tool)
+}
+
+/// The known tool names closest to `tool`, so the refusal helps (#1657).
+fn closest_tool_names(tool: &str) -> Vec<String> {
+    let lowercase = tool.to_ascii_lowercase();
+    let mut scored: Vec<(usize, &str)> =
+        rigorix_engine::execution_engine::application::service_impl::DISPATCHABLE_TOOL_NAMES
+            .iter()
+            .map(|known| (edit_distance(&lowercase, known), *known))
+            .collect();
+    scored.sort_by_key(|(distance, name)| (*distance, *name));
+    scored
+        .into_iter()
+        .take(3)
+        .map(|(_, name)| name.to_string())
+        .collect()
+}
+
+/// Levenshtein distance, for "did you mean" (#1657). Two rows of memory, no dependency.
+fn edit_distance(left: &str, right: &str) -> usize {
+    let left: Vec<char> = left.chars().collect();
+    let right: Vec<char> = right.chars().collect();
+    let mut previous: Vec<usize> = (0..=right.len()).collect();
+    let mut current = vec![0usize; right.len() + 1];
+    for (i, a) in left.iter().enumerate() {
+        current[0] = i + 1;
+        for (j, b) in right.iter().enumerate() {
+            let cost = usize::from(a != b);
+            current[j + 1] = (previous[j + 1] + 1)
+                .min(current[j] + 1)
+                .min(previous[j] + cost);
+        }
+        std::mem::swap(&mut previous, &mut current);
+    }
+    previous[right.len()]
 }

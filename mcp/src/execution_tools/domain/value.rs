@@ -167,6 +167,12 @@ pub struct StepDefinition {
     parameters: serde_json::Value,
 
     /// Whether human approval is required before execution.
+    ///
+    /// #1657: the advertised schema lists this as optional, and the deserializer required it — a
+    /// schema-conformant client got `missing field` errors one per round trip. The default is `false`
+    /// because that is what the schema says; a caller that wants approval asks for it, and an
+    /// operator template that declares it is unaffected.
+    #[serde(default)]
     requires_approval: bool,
 
     /// L1 identity gate (F-20260907-05): step refuses to run without an
@@ -176,6 +182,10 @@ pub struct StepDefinition {
     require_identity: bool,
 
     /// Human-readable description of the step's purpose.
+    ///
+    /// #1657: optional in the advertised schema, required by the deserializer. Optional here, so the
+    /// document a client builds from the schema is the document this accepts.
+    #[serde(default)]
     description: String,
 
     /// Optional timeout in seconds for this step.
@@ -281,9 +291,15 @@ pub struct Constraints {
     pub max_duration_secs: Option<u64>,
 
     /// List of disallowed tools.
+    ///
+    /// #1657: the advertised schema does not list this as required, and the deserializer did — the
+    /// second and third `missing field` a schema-conformant client hit. Defaulting to empty is also
+    /// the honest reading: a constraint document that says nothing blocks nothing.
+    #[serde(default)]
     pub blocked_tools: Vec<String>,
 
     /// Additional constraint key-value pairs.
+    #[serde(default)]
     pub extensions: HashMap<String, String>,
 }
 
