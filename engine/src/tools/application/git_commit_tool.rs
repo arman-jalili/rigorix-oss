@@ -54,10 +54,9 @@ impl Tool for GitCommitTool {
 
     async fn execute(&self, input: &ToolInput) -> Result<ToolResult, ToolError> {
         let message = input.require_string("message")?;
-        let auto_stage = input
-            .get_string("auto_stage")
-            .map(|s| s == "true")
-            .unwrap_or(false);
+        // #1660: a boolean, read as one — see `ToolInput::get_bool`. The unit tests below build the
+        // string shape, which is why the drop was invisible to them.
+        let auto_stage = input.get_bool("auto_stage").unwrap_or(false);
 
         if message.trim().is_empty() {
             return Err(ToolError::InvalidInput(
@@ -102,10 +101,22 @@ impl Tool for GitCommitTool {
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
 
         if !output.status.success() {
+            // #1660: git writes "nothing added to commit" to **stdout**, so a failure reported from
+            // stderr alone said `Git commit failed: ` and nothing else — a refusal that names no
+            // reason. Whichever stream carries it, the message carries it.
             let stderr = String::from_utf8_lossy(&output.stderr);
+            let detail = if stderr.trim().is_empty() {
+                String::from_utf8_lossy(&output.stdout).trim().to_string()
+            } else {
+                stderr.trim().to_string()
+            };
             return Err(ToolError::ExecutionFailed(format!(
                 "Git commit failed: {}",
-                stderr
+                if detail.is_empty() {
+                    "git exited non-zero and said nothing on either stream".to_string()
+                } else {
+                    detail
+                }
             )));
         }
 
@@ -297,5 +308,66 @@ mod tests {
         assert!(result.has_side_effects());
         assert_eq!(result.side_effects[0].effect_type, "git_commit");
         assert_eq!(result.side_effects[0].path, "HEAD");
+    }
+
+    /// #1660: `auto_stage` as a JSON boolean, which is what a plan step carries.
+    #[tokio::test]
+    async fn test_auto_stage_accepts_a_json_boolean() {
+        let temp = TempDir::new().unwrap();
+        init_git_repo(&temp);
+        let dir = temp;
+        // The file must be *tracked* first: `auto_stage` is `git add -u`, which stages modifications to
+        // tracked paths and deliberately not new ones.
+        std::fs::write(dir.path().join("tracked.txt"), "seed\n").unwrap();
+        for args in [
+            vec!["add", "tracked.txt"],
+            vec!["commit", "-q", "-m", "seed"],
+        ] {
+            assert!(
+                std::process::Command::new("git")
+                    .args(&args)
+                    .current_dir(dir.path())
+                    .output()
+                    .unwrap()
+                    .status
+                    .success(),
+                "git {args:?} seeds the fixture"
+            );
+        }
+        std::fs::write(dir.path().join("tracked.txt"), "changed\n").unwrap();
+        let tool = GitCommitTool::new(dir.path().to_str().unwrap());
+        let mut params = HashMap::new();
+        params.insert("message".to_string(), serde_json::json!("a commit"));
+        params.insert("auto_stage".to_string(), serde_json::json!(true));
+        tool.execute(&ToolInput::new(params))
+            .await
+            .expect("a boolean auto_stage stages and commits");
+        let subject = std::process::Command::new("git")
+            .args(["log", "-1", "--format=%s"])
+            .current_dir(dir.path())
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&subject.stdout).trim(), "a commit");
+    }
+
+    /// A refusal names a reason. `git` reports "nothing added to commit" on **stdout**, so a message
+    /// built from stderr alone said `Git commit failed: ` and nothing else.
+    #[tokio::test]
+    async fn test_a_commit_with_nothing_staged_names_the_reason() {
+        let temp = TempDir::new().unwrap();
+        init_git_repo(&temp);
+        let dir = temp;
+        let tool = GitCommitTool::new(dir.path().to_str().unwrap());
+        let mut params = HashMap::new();
+        params.insert("message".to_string(), serde_json::json!("nothing"));
+        let error = tool
+            .execute(&ToolInput::new(params))
+            .await
+            .expect_err("nothing is staged");
+        let message = format!("{error}");
+        assert!(
+            message.to_lowercase().contains("nothing"),
+            "the refusal must carry git's own reason: {message}"
+        );
     }
 }

@@ -77,6 +77,26 @@ impl ToolInput {
             .and_then(|v| v.as_str().map(String::from))
     }
 
+    /// Extract a boolean parameter by key.
+    ///
+    /// Accepts a JSON boolean **and** the strings `"true"`/`"false"`, because both shapes exist in the
+    /// tree: a plan step carries what the dialect document wrote (`before = true` is a TOML boolean), and
+    /// older callers wrote `"true"`. Reading only the string shape is how `file_patch`'s `before` and
+    /// `git_commit`'s `auto_stage` came to be silently `false` for every real caller while their unit
+    /// tests — which built the string — passed (#1660). A tool that reads a parameter nobody sends is a
+    /// parameter the schema accepts and the effect drops.
+    pub fn get_bool(&self, key: &str) -> Option<bool> {
+        match self.params.get(key) {
+            Some(serde_json::Value::Bool(value)) => Some(*value),
+            Some(serde_json::Value::String(value)) => match value.as_str() {
+                "true" => Some(true),
+                "false" => Some(false),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     /// Extract a u64 parameter by key.
     pub fn get_u64(&self, key: &str) -> Option<u64> {
         self.params.get(key).and_then(|v| v.as_u64())
