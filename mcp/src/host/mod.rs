@@ -153,6 +153,15 @@ impl McpToolExecutor for AppStateExecutor {
 }
 
 impl AppState {
+    /// Whether an IdP is configured — i.e. whether this host is in **free mode** (#1650).
+    ///
+    /// Asked of the field the composition root filled, so the answer cannot drift from the handler
+    /// that enforces it. Free mode is a supported choice (the documented quickstart); a caller that
+    /// warns about it needs the fact, not a second reading of `RIGORIX_IDP_*`.
+    pub fn auth_configured_now(&self) -> bool {
+        self.auth_handler.is_some()
+    }
+
     /// Try to initialize the enterprise proxy from environment variables.
     fn try_init_enterprise_proxy() -> Option<SharedEnterpriseProxy> {
         let api_url = std::env::var("ENTERPRISE_API_URL").ok()?;
@@ -1912,6 +1921,12 @@ pub async fn init_host(repo_root: &str) -> Result<(), Box<dyn std::error::Error 
     Ok(())
 }
 
+/// Whether an IdP is configured — the question "is this free mode?", asked of the composition that
+/// would answer it, not re-derived from environment variables at the call site (#1650).
+///
+/// A second derivation of "is auth armed" is the failing shape this repo keeps removing: the same
+/// predicate written twice, drifting once. `build_auth_handler` decides by building the handler, and
+/// that decision is what this reports.
 pub fn app_state() -> &'static AppState {
     APP_STATE
         .get()

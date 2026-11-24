@@ -21,6 +21,7 @@
 //! | [`events`] | `GET /events` SSE push hub (ADR-0001 D8) |
 //! | [`event_bridge`] | engine `EventBusService` → [`events::EventHub`] bridge (#900) |
 //! | [`mcp_http`] | MCP Streamable HTTP adapter over the frozen catalog (#915) |
+//! | [`origin`] | The **one** origin decision every route calls — `/rpc`, `/mcp`, `/events` (#1650) |
 
 pub mod anchor;
 pub mod app;
@@ -30,6 +31,7 @@ pub mod cli;
 pub mod event_bridge;
 pub mod events;
 pub mod mcp_http;
+pub mod origin;
 pub mod rpc;
 pub mod state;
 pub mod version;

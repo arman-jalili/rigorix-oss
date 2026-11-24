@@ -72,6 +72,17 @@ async fn main() {
          Streamable HTTP at /mcp)"
     );
 
+    // #1650: free mode is a supported choice, not a defect — but binding it beyond loopback changes
+    // what is reachable, and the operator is the only one who can decide that. One loud line, never a
+    // refusal: the quickstart must keep working, and a warning that stops the server is a config
+    // change disguised as a check.
+    if let Some(warning) = rigorix_server::origin::free_mode_warning(
+        &bind,
+        rigorix_mcp::host::app_state().auth_configured_now(),
+    ) {
+        tracing::warn!("{warning}");
+    }
+
     if let Err(e) = axum::serve(listener, app).await {
         tracing::error!("server error: {e}");
     }

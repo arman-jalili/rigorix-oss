@@ -1,3 +1,16 @@
+- **The HTTP front door has one origin decision, and `/rpc` is no longer reachable from any page on the internet** (#1650).
+  The guard existed once, in `mcp_http.rs`, and was wired to `/mcp` only: `/rpc` had none, so in free mode — the shipped
+  default — a page served from any origin could drive `rigorix.execute`/`rigorix.approve` on `127.0.0.1:3001`, and `/rpc` did
+  not require a JSON content type either, so a browser could send it as a **simple request** that never preflights. `/events`
+  had no check at all. `server/src/origin.rs` is now the single decision, called by all three routes: no `Origin` is allowed
+  (a non-browser client is not the attacker), `Origin: null` is **refused** (a sandboxed iframe or a redirect is not the
+  absence of an origin — the old `/mcp` guard allowed it), loopback or same-origin is allowed, anything else is refused naming
+  the page's origin, and a body-carrying route refuses a browser request whose content type is not `application/json`.
+  `OPTIONS` on `/rpc` and `/mcp` answers an explicit 403 with no CORS grant instead of the 405 that left the preflight-free
+  path open. Free mode stays a supported choice and is documented as a **non-claim** in `docs/deployment.md`; a non-loopback
+  bind prints one loud line naming what becomes reachable (`rigorix.execute`, `rigorix.approve`, `/events`) and never refuses
+  to start. The suite drives the **production** route table and enumerates it from `app.rs`, so a route added later without a
+  decision fails a test instead of joining the table unguarded.
 # Changelog
 
 All notable changes to Rigorix are documented here. The format follows
@@ -62,6 +75,18 @@ adapts. It was outside the train until 1.11.0, which is why its numbers jump fro
   arm and is therefore **refused** with `TemplateError::UnsupportedAction`, naming the action, the file and the nine tools that
   do exist, rather than producing a step that can only fail. A test asserts the conversion suite's length equals the enum's
   variant count, read from the enum's own source.
+- **A gate verdict names the tree it was taken on** (owner's rule, 2026-11-24). A `cargo update` ran while a gate was
+  mid-flight: `Cargo.lock` changed under it, and the numbers that came out described neither the old tree nor the new one — a
+  green whose subject moved is the same class as a skip counted as a pass. `local-ci.sh` now prints
+  `tree <sha>, <n> uncommitted path(s)` with every verdict and, under `--json`, emits one line
+  `{"verdict":…,"tree":"…","dirty":N,…}` so a quoted number is always checkable against its tree. The functions are tested
+  for both states, including **outside a git tree**, where the sha is `unknown` and the count is `0` — an empty answer and a
+  zero are different facts.
+- **A lock directory is runtime bookkeeping, and the hygiene rule says so instead of listing junk names** (owner's rule,
+  2026-11-24). `.pi/.local-ci.lock/{pid,tree}` reached `main` because the guard enumerated what junk *looks like*.
+  `validate-repo-hygiene.sh` now refuses **any tracked path with a directory component ending in `.lock`** and **any tracked
+  path whose final segment is `pid` or `tree`**, so renaming the parent cannot evade it; the `.gitignore` line added for
+  `.pi/.local-ci.lock/` is convenience, not the control. Self-test: two findings planted, both refused.
 - **One `.rigorix/**` decision for the shell and the write route, and `doctor` stops calling an empty config armed** (#1652).
   `check_file_write` refused `.rigorix/**` and `check_bash` had no such rule, so `file_write` on
   `.rigorix/preconditions.toml` was denied while `cp` on the same file through `run_command` was allowed — the control was

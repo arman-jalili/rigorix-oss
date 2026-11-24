@@ -194,6 +194,12 @@ pub async fn events_handler(
     headers: HeaderMap,
     Query(query): Query<EventsQuery>,
 ) -> Response {
+    // #1650: the same origin decision every other route takes. The unauthenticated *content* in free
+    // mode stays as designed — what changes is that a page on any origin can no longer subscribe.
+    if let Some(refusal) = crate::origin::refusal(crate::origin::decide(&headers, false), "/events")
+    {
+        return refusal;
+    }
     if state.backend.auth_configured().await && !state.backend.is_authenticated().await {
         return (
             StatusCode::UNAUTHORIZED,

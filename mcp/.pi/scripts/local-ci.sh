@@ -28,7 +28,12 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/languages/rust/cargo-count
 export -f cargo_compiled
 
 QUICK=false; RELEASE=false; STAGE=""; CRATE_FILTER=""; LIST_ONLY=false; SAVE_OUTPUT=false; AFFECTED=false
-SELF_TEST=false; PROBE_EXIT=""; LOCK_FILE=""; JOBS=""
+SELF_TEST=false
+JSON_VERDICT=false; PROBE_EXIT=""; LOCK_FILE=""; JOBS=""
+# Declared here, not beside the summary that fills them: `emit_verdict` counts them, and an array that
+# is not yet declared is an unbound variable under `set -u` — an empty array is fine, a missing one is
+# not (bash 3.2).
+BUDGET_UNMEASURED=(); BUDGET_WARNED=(); OVER_BUDGET=()
 START_TIME=$(date +%s)
 
 # The machine, as a fact rather than an excuse (#1622). A ceiling is a duration, and a duration is only
@@ -67,6 +72,24 @@ contended() {  # $1 load, $2 cores → 0 when contended
 LOAD_START="$(load_now)"
 CORES="$(cores_now)"
 
+# ── a verdict carries its tree ───────────────────────────────────────────────────────────────────
+# A green whose **subject moved** is not a result. On 2026-11-24 a `cargo update` ran while a gate was
+# mid-flight: Cargo.lock changed under it, and the numbers that came out described neither the old tree
+# nor the new one — the same class as a skip counted as a pass, one layer down. Every verdict therefore
+# names the commit and how many paths were uncommitted when it was taken, so any quoted number can be
+# checked against the tree it was measured on (owner's rule, 2026-11-24).
+tree_root() { git rev-parse --show-toplevel 2>/dev/null || echo "."; }
+tree_sha() {
+    local sha=""
+    sha="$(git rev-parse HEAD 2>/dev/null || true)"
+    if [[ -n "$sha" ]]; then echo "$sha"; else echo "unknown"; fi
+}
+tree_dirty() {
+    local n=""
+    n="$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ' || true)"
+    if [[ -n "$n" ]]; then echo "$n"; else echo "0"; fi
+}
+
 # ── the suite runs once (#1647, guardian-framework#105) ──────────────────────────────────────────
 # The `test` stage owns the suite; the validators that would run it again are told so by one flag,
 # exported once, and only when this run will actually execute that stage. A flag set unconditionally
@@ -83,6 +106,21 @@ gate_owns_the_suite() {  # reads SCHEDULED, so it is called after the schedule i
     done
     return 1
 }
+
+# The tree this verdict is about. Printed on every run, and carried in the `--json` object, because
+# "which tree was that green measured on" must be answerable from the record and not from memory.
+emit_verdict() {
+    local verdict="$1" code="$2" sha dirty
+    sha="$(tree_sha)"
+    dirty="$(tree_dirty)"
+    echo -e "  ${BLUE}ℹ${NC} tree ${sha}, ${dirty} uncommitted path(s) — this verdict describes that tree and no other"
+    if [[ "$JSON_VERDICT" == "true" ]]; then
+        printf '{"verdict":"%s","tree":"%s","dirty":%s,"passed":%s,"failed":%s,"not_judged":%s,"stage_seconds":%s,"wall_seconds":%s}\n' \
+            "$verdict" "$sha" "$dirty" "${PASSED:-0}" "${FAILED:-0}" "${#BUDGET_UNMEASURED[@]}" "${TABLE_TOTAL:-0}" "${DURATION:-0}"
+    fi
+    return "$code"
+}
+
 CRATES=("engine" "mcp" "cli" "actions" "server")
 REPORT_DIR="${REPORT_DIR:-.pi/output}"
 VALID_STAGES=" lint build packaged test security guards coverage docs integration "
@@ -104,6 +142,7 @@ usage() {
     echo "  refused, because both would build into the same target/ and target/llvm-cov-target/." >&2
     echo "  Budget: .pi/local-ci-budget.tsv holds a measured ceiling per stage; the run fails" >&2
     echo "  when a stage exceeds it." >&2
+    echo "  --json: also print the verdict object, which carries the tree it was taken on." >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -131,6 +170,7 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 ]] || { echo "local-ci: --lock-file requires a value" >&2; usage; exit 2; }
             LOCK_FILE="$2"; shift 2 ;;
         --self-test) SELF_TEST=true; shift ;;
+        --json) JSON_VERDICT=true; shift ;;
         --probe-exit=*) PROBE_EXIT="${1#*=}"; shift ;;
         --probe-exit)
             [[ $# -ge 2 ]] || { echo "local-ci: --probe-exit requires a value" >&2; usage; exit 2; }
@@ -600,6 +640,35 @@ if [[ "$SELF_TEST" == "true" ]]; then
     check "--stage lint alone does not claim the suite" "$(gate_owns_the_suite && echo yes || echo no)" "no"
     SCHEDULED=()
     check "an empty schedule claims nothing" "$(gate_owns_the_suite && echo yes || echo no)" "no"
+
+    # ── a verdict carries its tree (2026-11-24) ──
+    # A green whose subject moved is not a result: a `cargo update` mid-run changed Cargo.lock under a
+    # gate, and its numbers described neither the old tree nor the new one. The verdict names the
+    # commit and the number of uncommitted paths, so a quoted number is checkable against its tree.
+    sha="$(tree_sha)"
+    check "the verdict's tree is a commit id or 'unknown'" \
+        "$(printf '%s' "$sha" | grep -cE '^([0-9a-f]{40}|[0-9a-f]{64}|unknown)$')" "1"
+    check "a git tree reports a real commit, not 'unknown'" \
+        "$([[ "$sha" == "unknown" ]] && echo unknown || echo resolved)" "resolved"
+    check "the uncommitted count is a number" \
+        "$(printf '%s' "$(tree_dirty)" | grep -cE '^[0-9]+$')" "1"
+    # The control that makes the pair a decision rather than a decoration: outside a git tree the
+    # functions answer the two states they were built for, and they answer **differently**.
+    outside="$(mktemp -d)"
+    check "outside a git tree the sha is 'unknown'" \
+        "$(cd "$outside" && tree_sha)" "unknown"
+    check "outside a git tree the dirty count is 0, not empty" \
+        "$(cd "$outside" && tree_dirty)" "0"
+    find "$outside" -mindepth 1 -delete 2>/dev/null || true
+    rmdir "$outside" 2>/dev/null || true
+    # The object a reader parses: it must be one line of JSON carrying the same facts.
+    verdict_line="$(JSON_VERDICT=true emit_verdict passed 0)"
+    check "the --json verdict carries the tree" \
+        "$(printf '%s' "$verdict_line" | grep -c '"tree":"')" "1"
+    check "the --json verdict carries the uncommitted count" \
+        "$(printf '%s' "$verdict_line" | grep -c '"dirty":[0-9]')" "1"
+    check "the --json verdict carries its verdict" \
+        "$(printf '%s' "$verdict_line" | grep -c '"verdict":"passed"')" "1"
     # The counter reads what cargo reported, not a line format it happens to print: a transcript with
     # no `Compiling` line in it at all still counts the crates its cargo invocations built (#1599).
     mkdir -p "$tmp/compiled"
@@ -1482,10 +1551,10 @@ if [[ $FAILED -gt 0 ]]; then
     echo -e "${RED}❌ CI SIMULATION FAILED — ${FAILED} check(s) failed${NC}"
     echo "  Debug a single stage: bash .pi/scripts/local-ci.sh --stage=<stage>"
     echo "  Debug a single crate: bash .pi/scripts/local-ci.sh --crate=<crate>"
-    exit 1
+    emit_verdict "failed" 1
 else
     : > "$RESULTS_DIR/.complete" 2>/dev/null || true
     echo -e "${GREEN}✅ CI SIMULATION PASSED — all ${PASSED} checks passed${NC}"
     echo "  Warm-serial equivalent: --jobs 1. Per-stage transcript: $RESULTS_DIR/<stage>.log"
-    exit 0
+    emit_verdict "passed" 0
 fi
