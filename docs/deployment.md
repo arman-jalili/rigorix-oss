@@ -207,6 +207,44 @@ The engine computes it (#1480); since #1491 both surfaces show it:
 `not_requested` is always stated, never omitted: an absent field cannot be told apart from
 a client that does not know the field, which is how the original defect stayed invisible.
 
+## The HTTP front door: one origin decision, and free mode as a non-claim (#1650)
+
+`rigorix-server` mounts four routes — `/health`, `/rpc`, `/mcp`, `/events` — and **one** function
+decides whether a browser may reach any of them (`server/src/origin.rs`). It is one function on
+purpose: the origin guard used to exist only in `mcp_http.rs`, so `/rpc` had none and a page on any
+origin could drive a free-mode executor on `127.0.0.1:3001`, and `/events` had none either.
+
+What the decision refuses, and why each clause exists:
+
+| Request | Decision | Why |
+|---|---|---|
+| no `Origin` header | **allowed** | a non-browser client — curl, an SDK, the Action entrypoint. It is not the attacker this defends against |
+| `Origin: null` | **refused** | a sandboxed iframe, a `data:` document or a redirect. "null" is not the absence of an origin, and allowing it let a hostile page through |
+| origin host is loopback, or equals the request's `Host` | allowed | the shipping deployment and a same-origin page |
+| any other origin | **refused**, naming that origin | a page you merely have open must not execute anything here |
+| `Origin` present and content type is not `application/json` | **refused** | that is the "simple request" a browser sends **without a preflight**; the JSON shape is the only one a browser may use |
+| `OPTIONS` on `/rpc` or `/mcp` | **403, no `Access-Control-*` headers** | a preflight is refused explicitly. This route used to answer 405, which reads as "wrong shape" and leaves the preflight-free path open. Permissive CORS is what turns an absent preflight into a readable response, so there is none |
+
+**Free mode is a supported choice, and it is a non-claim, not a control.** With no IdP configured:
+
+- `AuthLevel::Session` methods (`rigorix.execute`, `rigorix.approve`, …) answer **any** caller that
+  reaches the port. Identity is the caller's claim; there is no principal.
+- `GET /events` streams every event **unauthenticated**. The origin decision applies to it, so a page
+  on another origin cannot subscribe — but a client that sends no `Origin` needs no credential.
+- The engine's own gates (preconditions, sequence policy, approvals, receipts) still run. They bind
+  the *consequence*; they do not authenticate the person asking for it.
+
+Because that is a non-claim rather than a control, the server prints one loud line when free mode is
+bound beyond loopback, naming what becomes reachable (`rigorix.execute`, `rigorix.approve`, `/events`)
+rather than saying "insecure". It never refuses to start: the quickstart must keep working, and a
+warning that stops the server is a configuration change disguised as a check. Put a token or an IdP in
+front of the port before it faces anything but a throwaway network.
+
+What this decision does **not** do: it does not authenticate anyone, and it does not stop a **local**
+attacker who can send a request with no `Origin` at all — that is a token/binding problem, a separate
+work item. It also does not stop DNS rebinding against a request whose `Host` the attacker controls;
+the loopback bind default is what keeps that unreachable, which is why the non-loopback warning exists.
+
 ## The boundary is enumerated, and the register says what each control is not (#1496)
 
 `engine/.pi/architecture/decisions/ADR-023-sink-boundary.md` is the rationale for every

@@ -1,3 +1,16 @@
+- **The HTTP front door has one origin decision, and `/rpc` is no longer reachable from any page on the internet** (#1650).
+  The guard existed once, in `mcp_http.rs`, and was wired to `/mcp` only: `/rpc` had none, so in free mode — the shipped
+  default — a page served from any origin could drive `rigorix.execute`/`rigorix.approve` on `127.0.0.1:3001`, and `/rpc` did
+  not require a JSON content type either, so a browser could send it as a **simple request** that never preflights. `/events`
+  had no check at all. `server/src/origin.rs` is now the single decision, called by all three routes: no `Origin` is allowed
+  (a non-browser client is not the attacker), `Origin: null` is **refused** (a sandboxed iframe or a redirect is not the
+  absence of an origin — the old `/mcp` guard allowed it), loopback or same-origin is allowed, anything else is refused naming
+  the page's origin, and a body-carrying route refuses a browser request whose content type is not `application/json`.
+  `OPTIONS` on `/rpc` and `/mcp` answers an explicit 403 with no CORS grant instead of the 405 that left the preflight-free
+  path open. Free mode stays a supported choice and is documented as a **non-claim** in `docs/deployment.md`; a non-loopback
+  bind prints one loud line naming what becomes reachable (`rigorix.execute`, `rigorix.approve`, `/events`) and never refuses
+  to start. The suite drives the **production** route table and enumerates it from `app.rs`, so a route added later without a
+  decision fails a test instead of joining the table unguarded.
 # Changelog
 
 All notable changes to Rigorix are documented here. The format follows

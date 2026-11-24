@@ -318,12 +318,10 @@ pub async fn post_handler(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    if !origin_allowed(&headers) {
-        return (
-            StatusCode::FORBIDDEN,
-            "Forbidden: cross-origin request rejected",
-        )
-            .into_response();
+    // #1650: one decision for every route — this handler used to own the only copy, and the copy is
+    // why `/rpc` and `/events` had none.
+    if let Some(refusal) = crate::origin::refusal(crate::origin::decide(&headers, true), "/mcp") {
+        return refusal;
     }
 
     let value: Value = match serde_json::from_slice(&body) {
@@ -454,42 +452,6 @@ fn prefers_sse(headers: &HeaderMap) -> bool {
         .and_then(|value| value.to_str().ok())
         .unwrap_or("");
     accept.contains("text/event-stream") && !accept.contains("application/json")
-}
-
-/// DNS-rebinding guard (MCP security best practice). A missing `Origin` or
-/// `null` is allowed (non-browser clients); otherwise the origin host must be
-/// loopback or match the request `Host`.
-fn origin_allowed(headers: &HeaderMap) -> bool {
-    let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) else {
-        return true;
-    };
-    if origin == "null" {
-        return true;
-    }
-    let origin_host = origin
-        .split("://")
-        .nth(1)
-        .and_then(|rest| rest.split('/').next())
-        .and_then(|authority| authority.rsplit('@').next())
-        .map(strip_port)
-        .unwrap_or("");
-    let host_header = headers
-        .get(header::HOST)
-        .and_then(|v| v.to_str().ok())
-        .map(strip_port);
-    is_loopback(origin_host) || host_header == Some(origin_host)
-}
-
-fn strip_port(value: &str) -> &str {
-    if let Some(rest) = value.strip_prefix('[') {
-        // IPv6 literal: [::1]:3001
-        return rest.split(']').next().unwrap_or(rest);
-    }
-    value.split(':').next().unwrap_or(value)
-}
-
-fn is_loopback(host: &str) -> bool {
-    matches!(host, "localhost" | "127.0.0.1" | "::1")
 }
 
 // ---------------------------------------------------------------------------
@@ -635,20 +597,26 @@ mod tests {
         );
     }
 
+    /// #1650: the guard moved to `crate::origin` so all three routes share it; this test asserts the
+    /// **call site** still takes the decision, because deleting a call is how the third route lost it.
     #[test]
-    fn origin_guard_allows_loopback_and_rejects_cross_origin() {
-        let mut headers = HeaderMap::new();
-        assert!(origin_allowed(&headers), "missing origin allowed");
-
-        headers.insert(header::ORIGIN, "http://localhost:5173".parse().unwrap());
-        assert!(origin_allowed(&headers));
-
-        headers.insert(header::HOST, "127.0.0.1:3001".parse().unwrap());
-        headers.insert(header::ORIGIN, "http://evil.example".parse().unwrap());
-        assert!(!origin_allowed(&headers));
-
-        headers.insert(header::ORIGIN, "http://127.0.0.1:3001".parse().unwrap());
-        assert!(origin_allowed(&headers));
+    fn the_post_handler_takes_the_shared_origin_decision() {
+        let source = include_str!("mcp_http.rs");
+        let handler = source
+            .split("pub async fn post_handler(")
+            .nth(1)
+            .expect("the handler")
+            .split("crate::rpc::")
+            .next()
+            .expect("the handler body");
+        assert!(
+            handler.contains("crate::origin::decide(&headers, true)"),
+            "post_handler must call the one origin decision (#1650)"
+        );
+        assert!(
+            !handler.contains("fn origin_allowed"),
+            "a local guard in this file is the copy that let /rpc have none"
+        );
     }
 
     #[test]
