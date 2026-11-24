@@ -1,3 +1,8 @@
+// This module *is* the spawn-environment declaration: a `Command` is handed to it, never constructed
+// here, so the disallowed-type lint (which keeps spawn sites in the audited modules) has nothing to
+// find. The allow is scoped to this file and covers only the parameter type.
+#![allow(clippy::disallowed_types)]
+
 //! The child environment a spawned program gets — **one** declaration, in a module every build has.
 //!
 //! #1653: `run_command` cleared the environment and re-added an allowlist; the precondition runner
@@ -70,7 +75,6 @@ pub fn is_permitted(name: &str) -> bool {
 ///
 /// Available in every build: the slice has no `tokio::process` (so [`apply_child_env`] is gated out
 /// of it), but the *list* is data and the tests that assert what a child may not see belong to both.
-
 pub fn child_env(overrides: &[(String, String)]) -> Vec<(String, String)> {
     let mut env: Vec<(String, String)> = INHERITED_ENV_ALLOWLIST
         .iter()
