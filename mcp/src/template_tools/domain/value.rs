@@ -670,6 +670,15 @@ pub struct ReplaceReport {
 }
 
 impl ReplaceReport {
+    /// The changes that reduce what is gated, as sentences a refusal can print (ADR-026).
+    ///
+    /// Empty means the overwrite is applied and reported; non-empty means it is refused and nothing is
+    /// written. The two sets are complements on purpose: a change is either one the store can classify
+    /// as a reduction, or one the record carries for a reader.
+    pub fn downgrades(&self) -> Vec<String> {
+        self.changes.iter().filter_map(downgrade_of).collect()
+    }
+
     /// Whether the overwrite removed an approval requirement — the change the issue measured.
     pub fn approval_was_removed(&self) -> bool {
         self.changes
@@ -692,6 +701,36 @@ impl ReplaceReport {
             })
             .collect::<Vec<_>>()
             .join("; ")
+    }
+}
+
+/// One change that **reduces** what is gated, and is therefore refused rather than reported (ADR-026).
+///
+/// The three cases are the ones the diff itself can classify: an approval removed, a step retargeted at
+/// a different tool, a step deleted. Everything else is applied and reported, because "this parameter
+/// widens the effect" is not readable from a string pair without a per-tool capability model, and a rule
+/// that guessed would be a table somebody maintains wrongly.
+pub fn downgrade_of(change: &GovernanceChange) -> Option<String> {
+    match (
+        change.field.as_str(),
+        change.from.as_str(),
+        change.to.as_str(),
+    ) {
+        ("requires_approval", "true", "false") => Some(format!(
+            "step `{}` drops `requires_approval` — the human leaves the loop for that step",
+            change.step
+        )),
+        ("tool", _, _) => Some(format!(
+            "step `{}` is retargeted from `{}` to `{}` — the approved action is replaced by a \
+             different action, and its parameters follow the tool, so this is a new step wearing the \
+             old name",
+            change.step, change.from, change.to
+        )),
+        ("step", _, "(removed)") => Some(format!(
+            "step `{}` is removed — the step takes its gate with it",
+            change.step
+        )),
+        _ => None,
     }
 }
 

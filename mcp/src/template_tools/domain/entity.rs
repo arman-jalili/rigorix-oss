@@ -86,6 +86,12 @@ pub trait TemplateRepository: Send + Sync {
     /// The default is `create` plus an empty report, so an implementation that has no history to
     /// give says so instead of inventing one. The filesystem repository keeps the previous definition
     /// and returns the per-step diff.
+    ///
+    /// **ADR-026: a change that reduces what is gated is refused, not reported.** An approval removed, a
+    /// step retargeted at a different tool, or a step deleted returns
+    /// [`TemplateError::GovernanceDowngrade`] and writes nothing — no template file, no version copy.
+    /// The default implementation below cannot enforce that (it has no history), which is why the
+    /// refusal lives in the implementation that does.
     async fn create_reporting(
         &self,
         template: PlanTemplate,

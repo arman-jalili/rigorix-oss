@@ -1,3 +1,20 @@
+## [2026-11-24] — ADR-026 Accepted: the template tool may not lower the bar it is judged by
+
+- **ADR-026 (Accepted).** #1655 made a self-modifying governance write *visible* (a per-step diff and the
+  previous definition kept). It did not make it *approved*, and a decision implied by a code path is not a
+  decision. Two measurements forced the rule: `.rigorix/templates` is already out of reach of the agent's
+  `file_write` (any `.rigorix` segment is protected), and the template store writes it anyway — so the
+  sanctioned writer performed a write the ordinary writer is forbidden to perform. A capability differs from
+  a bypass by having a rule about *what* it may do, not only about *how* it is invoked.
+- **The rule.** Three classifiable reductions are **refused** by the store, before anything is written: an
+  approval removed (`requires_approval true -> false`), a step retargeted at a different tool, a step
+  deleted. Everything else is applied and **reported** — an added step or approval, a description edit, a
+  parameter change. The remedy for a refusal is the operator's edit on disk; there is no `allow_downgrade`
+  field, because a control whose subject can satisfy it is not a control.
+- **Not decided, and said so:** parameters are reported rather than classified (no capability model per
+  tool), and `delete` — a strictly larger reduction — is named as the next decision rather than left for a
+  reader to assume it is covered.
+
 ## [2026-11-18] — ADR-025 Accepted: one governed assembly, and the builds that prove it is the only one
 
 ### Added
