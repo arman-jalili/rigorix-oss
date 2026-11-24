@@ -32,6 +32,7 @@ pub use entity::{TemplateConverter, TemplateRepository};
 pub use error::TemplateError;
 pub use event::TemplateToolsEvent;
 pub use value::{
-    Constraints, CreateTemplateInput, GetTemplateInput, PlanTemplate, StepDefinition,
-    TemplateFilter, TemplateName, TemplateSummary, ValidateTemplateInput,
+    Constraints, CreateTemplateInput, GetTemplateInput, GovernanceChange, PlanTemplate,
+    ReplaceReport, StepDefinition, TemplateFilter, TemplateName, TemplateSummary,
+    ValidateTemplateInput,
 };

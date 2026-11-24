@@ -88,6 +88,31 @@ impl PlanTemplate {
         if template.steps.is_empty() {
             return Err(PlanTemplateError::EmptySteps);
         }
+        // #1656: the constraints are enforced **here**, at the one door both routes parse a plan
+        // through, so `valid: true` from `rigorix_validate_plan` and a dispatch that ignores the
+        // constraints cannot both be true.
+        if let Some(constraints) = template.constraints.as_ref() {
+            if let Some(declared) = constraints.max_tool_calls
+                && declared < template.steps.len() as u64
+            {
+                return Err(PlanTemplateError::TooManyToolCalls {
+                    declared,
+                    calls: template.steps.len() as u64,
+                });
+            }
+            for step in &template.steps {
+                if constraints
+                    .blocked_tools
+                    .iter()
+                    .any(|tool| tool == step.tool())
+                {
+                    return Err(PlanTemplateError::BlockedTool {
+                        tool: step.tool().to_string(),
+                        step: step.name().to_string(),
+                    });
+                }
+            }
+        }
         Ok(template)
     }
 
@@ -1043,6 +1068,35 @@ pub enum PlanTemplateError {
     /// Failed to deserialize plan from JSON.
     #[error("Failed to deserialize plan: {0}")]
     DeserializationFailed(String),
+
+    /// The plan declares a constraint and then breaks it (#1656).
+    ///
+    /// `blocked_tools` and `max_tool_calls` appeared in the schema, were echoed back to the caller,
+    /// and were **not enforced anywhere**: `blocked_tools: ["run_command"]` ran `run_command` and both
+    /// steps succeeded. A constraint that is accepted and ignored is worse than an absent one — it is
+    /// a claim in the document the caller submitted.
+    #[error(
+        "the plan declares `blocked_tools` containing `{tool}`, and step `{step}` uses it: the \
+         constraint is enforced before dispatch, not recorded after it (#1656)"
+    )]
+    BlockedTool {
+        /// The tool the constraint names.
+        tool: String,
+        /// The step that uses it.
+        step: String,
+    },
+
+    /// `max_tool_calls` is below the number of steps the plan declares (#1656).
+    #[error(
+        "the plan declares `max_tool_calls: {declared}` and has {calls} step(s): a run that cannot \
+         fit its own budget is refused before dispatch, never started and then truncated (#1656)"
+    )]
+    TooManyToolCalls {
+        /// The declared maximum.
+        declared: u64,
+        /// The number of steps.
+        calls: u64,
+    },
 }
 
 // ---------------------------------------------------------------------------

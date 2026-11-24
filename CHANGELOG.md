@@ -1,3 +1,15 @@
+- **The shell decision is taken on the operand the child will use, and a migrated template cannot drop an approval
+  requirement silently** (#1654, #1655, #1656). `run_command` is `sh -c`, so `~`, `$VAR` and globs expand **after** the
+  allowlist decision: `cp $CFG .rigorix/hooks.toml` was allowed on the strength of the string `$CFG` and then wrote the
+  operator's config. The R5 decision now expands the words first — `~`, `$VAR`/`${VAR}`, and globs against the directory the
+  pattern names — using the child's own allowlisted environment, so the values are exactly the ones the shell will see; the
+  expansion is used for the decision only and never becomes a string handed to a shell. `rigorix_create_template` now
+  **reports what an overwrite changed** in the three fields that govern a run (`tool`, `parameters`, `requires_approval`),
+  keeps the previous definition under `.versions/<name>/<epoch>-<digest8>.toml`, and says so in a `governance_warning` when an
+  approval requirement was removed. Plan `constraints` are enforced at the one door a plan is parsed through, so
+  `blocked_tools` naming a tool the plan uses and `max_tool_calls` below the step count are refused before dispatch — and an
+  approval that records nothing (an unknown step name, or a store that stayed empty) is now an error rather than
+  `Approval recorded — more steps still pending`.
 - **Every mounted route declares its policy, and the router is built from the table** (#1659). The audit's most expensive
   finding on both repositories is one shape — a control on one of several routes: `/mcp` had an origin guard and `/rpc` had
   none. `server/src/route_policy.rs` is now the declaration (path, methods, auth, origin, content types, and a rationale per
