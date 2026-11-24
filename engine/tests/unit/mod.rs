@@ -14,6 +14,7 @@ mod anchor {
 #[path = "spawn_environment_dump_test.rs"]
 mod spawn_environment_dump_test;
 
+#[cfg(not(feature = "portable"))]
 #[path = "state_file_modes_test.rs"]
 mod state_file_modes_test;
 
