@@ -147,11 +147,12 @@ impl PermissionEnforcerImpl {
     ///    followed by `cp x tmp/hooks.toml` is refused — the alias of the protected directory is the
     ///    protected directory (#1493).
     ///
-    /// What this does **not** do, and the refusal says so: the words are the words the caller wrote.
-    /// `sh -c` expands `$CFG` and globs *after* this decision (#1654), so a command that computes the
-    /// path at run time is refused only if the literal words name it — the declared deployment
-    /// isolation is the boundary for that, exactly as the sink register records
-    /// (`engine:exec-run-command`).
+    /// What this does **not** do: a path produced by **command substitution** — `$(…)` or
+    /// backticks — is not seen, because seeing it means running the command. `~`, `$VAR` and glob
+    /// words *are* expanded here (#1654), with the child's own environment; a command that produces
+    /// the path by running another program is refused only if the program it runs is itself refused.
+    /// That residue is the declared deployment isolation, exactly as the sink register records it
+    /// (`engine:exec-run-command`, `does_not`).
     fn protected_shell_refusal(command: &str, workspace_root: &str) -> Option<String> {
         use crate::permission::domain::BashClassifier;
 
