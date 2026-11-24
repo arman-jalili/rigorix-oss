@@ -238,3 +238,61 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     }
     out
 }
+
+// ---------------------------------------------------------------------------
+// #1658 item 6 — the refusal reports a *line*, not a byte offset
+// ---------------------------------------------------------------------------
+
+/// Before the fix, `parse_document` put `toml::Span::start` — a **byte offset** — into the `line` field,
+/// so a document whose ninth line held a type error was refused "at line 62" and an author counting lines
+/// found nothing there. The measurement is kept as the test: each of the three shapes below reports the
+/// line a reader can go to.
+#[test]
+fn a_parse_error_reports_the_line_not_the_byte_offset() {
+    let cases: [(&str, &str, u32); 3] = [
+        (
+            "a scalar type error on the first line",
+            "schema_version = \"one\"\nname = \"x\"\n",
+            1,
+        ),
+        (
+            "a syntax error on the third line",
+            "schema_version = 1\nname = \"x\"\nname = = broken\n",
+            3,
+        ),
+        (
+            // `toml`'s span for a field inside a table starts at the table header, so this one names
+            // line 7 — the header — rather than 9, where the offending value is. That is the precision
+            // the library gives; the point of the test is that 7 is a line a reader can find and 62 (the
+            // offset) was not.
+            "a field type error inside a table",
+            "schema_version = 1\nname = \"x\"\n\n[[nodes]]\nid = \"n1\"\nname = \"a\"\n[nodes.action]\ntype = \"file_write\"\npath = 42\ncontent = \"c\"\n",
+            7,
+        ),
+    ];
+    for (label, document, expected) in cases {
+        let error = parse_document(document, Some("probe.toml")).expect_err(label);
+        match error {
+            TemplateError::Parse { line, .. } => assert_eq!(
+                line,
+                Some(expected),
+                "{label}: the refusal must name a line, not a byte offset"
+            ),
+            other => panic!("{label}: expected a parse refusal, got {other:?}"),
+        }
+    }
+}
+
+/// The count is over bytes, so a document with non-ASCII **before** the error still resolves — and the
+/// slice that counts cannot split a character, because it slices bytes.
+#[test]
+fn a_parse_error_after_non_ascii_still_lands_on_its_line() {
+    let document = "schema_version = 1\nname = \"días ✓\"\nname = = broken\n";
+    let error = parse_document(document, Some("probe.toml")).expect_err("a syntax error");
+    match error {
+        TemplateError::Parse { line, .. } => {
+            assert_eq!(line, Some(3), "the third line, counted in bytes")
+        }
+        other => panic!("expected a parse refusal, got {other:?}"),
+    }
+}

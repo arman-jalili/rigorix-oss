@@ -293,10 +293,10 @@ impl Tool for FilePatchTool {
                 .await
         } else {
             let search = input.require_string("search")?;
-            let before = input
-                .get_string("before")
-                .map(|s| s == "true")
-                .unwrap_or(false);
+            // #1660: a boolean, read as one. The dialect writes `before = true` (a TOML boolean) and
+            // `action_to_step` carries it as a JSON boolean; this read it as a string, so every real
+            // caller got `false` and an insert-before became an insert-after.
+            let before = input.get_bool("before").unwrap_or(false);
             self.execute_search(&path_str, &target, &search, &insert, before)
                 .await
         }
@@ -348,6 +348,27 @@ mod tests {
         assert!(result.has_side_effects());
         let content = std::fs::read_to_string(&file_path).unwrap();
         assert!(content.contains("println!(\"hi\")"));
+    }
+
+    /// #1660: the shape a plan step actually carries. The test below builds the *string* `"true"`, which
+    /// is what let the tool read only that shape while every caller sent a boolean.
+    #[tokio::test]
+    async fn test_search_insert_before_accepts_a_json_boolean() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("f.txt");
+        std::fs::write(&path, "anchorthis\n").unwrap();
+        let tool = FilePatchTool::new(dir.path().to_str().unwrap());
+        let mut params = HashMap::new();
+        params.insert("path".to_string(), serde_json::json!("f.txt"));
+        params.insert("insert".to_string(), serde_json::json!("INSERTED "));
+        params.insert("search".to_string(), serde_json::json!("anchor"));
+        params.insert("before".to_string(), serde_json::json!(true));
+        tool.execute(&ToolInput::new(params)).await.unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            contents.starts_with("INSERTED anchor"),
+            "a boolean `before` means before: {contents:?}"
+        );
     }
 
     #[tokio::test]

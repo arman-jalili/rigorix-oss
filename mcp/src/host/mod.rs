@@ -2092,6 +2092,41 @@ mod catalog_drift_tests {
     }
 }
 
+/// Percent-decode one URI path segment (#1658 item 7).
+///
+/// A URI carries its path percent-encoded, and this lookup used the segment **literally**, so a client that
+/// encoded a character the spec allows it to encode asked for a template named `echo%2Dtemplate` and was
+/// told "not found" — a lookup that fails for a reason that is not about the template.
+///
+/// Decoding happens **before** validation on purpose: `%2F` is a `/` that a raw-string check does not see,
+/// and a check written on the encoded text is a check on a different string than the one that is looked up.
+/// An invalid escape is refused rather than passed through, because `%zz` names a byte nobody can read.
+pub fn percent_decode(segment: &str) -> Result<String, String> {
+    let bytes = segment.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'%' {
+            decoded.push(bytes[index]);
+            index += 1;
+            continue;
+        }
+        let hex = bytes.get(index + 1..index + 3).ok_or_else(|| {
+            format!(
+                "invalid percent-escape at byte {index} of `{segment}`: the escape is truncated"
+            )
+        })?;
+        let text = std::str::from_utf8(hex)
+            .map_err(|_| format!("invalid percent-escape at byte {index} of `{segment}`"))?;
+        let byte = u8::from_str_radix(text, 16)
+            .map_err(|_| format!("invalid percent-escape `%{text}` in `{segment}`"))?;
+        decoded.push(byte);
+        index += 3;
+    }
+    String::from_utf8(decoded)
+        .map_err(|_| format!("`{segment}` percent-decodes to bytes that are not UTF-8"))
+}
+
 /// Resolve a rigorix:// resource URI to its text payload.
 pub async fn resolve_resource(uri: &str) -> Result<String, String> {
     let (scheme, rest) = uri
@@ -2101,8 +2136,11 @@ pub async fn resolve_resource(uri: &str) -> Result<String, String> {
         return Err(format!("unsupported URI scheme: {scheme}"));
     }
 
-    if let Some(exec_id) = rest.strip_prefix("audit/") {
-        if exec_id.is_empty() || exec_id.contains('/') {
+    if let Some(raw) = rest.strip_prefix("audit/") {
+        // #1658 item 7: decode, then validate the decoded text — see `percent_decode`.
+        let exec_id = percent_decode(raw)
+            .map_err(|error| format!("malformed audit resource URI: {uri}: {error}"))?;
+        if exec_id.is_empty() || exec_id.contains('/') || exec_id.contains('\\') {
             return Err(format!("malformed audit resource URI: {uri}"));
         }
         let input = rigorix_mcp::audit_tools::application::dto::ReadAuditInput {
@@ -2121,8 +2159,12 @@ pub async fn resolve_resource(uri: &str) -> Result<String, String> {
             .ok_or_else(|| "audit handler returned no content".to_string());
     }
 
-    if let Some(name) = rest.strip_prefix("templates/") {
-        if name.is_empty() || name.contains('/') {
+    if let Some(raw) = rest.strip_prefix("templates/") {
+        let name = percent_decode(raw)
+            .map_err(|error| format!("malformed template resource URI: {uri}: {error}"))?;
+        // The decoded text is what is validated and what is looked up; an encoded `/` cannot slip past a
+        // raw-string check into the store's name validation.
+        if name.is_empty() || name.contains('/') || name.contains('\\') {
             return Err(format!("malformed template resource URI: {uri}"));
         }
         let input = rigorix_mcp::template_tools::domain::value::GetTemplateInput {
@@ -2212,5 +2254,42 @@ release_dependents_on_failure = false
         assert!(message.contains("read-only"), "{message}");
         assert!(message.contains("workspace_write"), "{message}");
         assert!(message.contains("read_only"), "{message}");
+    }
+}
+
+#[cfg(test)]
+mod resource_uri_decoding_tests {
+    use super::percent_decode;
+
+    /// #1658 item 7 — the segment is percent-decoded before it is validated or looked up.
+    #[test]
+    fn a_percent_encoded_segment_decodes_to_the_name() {
+        assert_eq!(
+            percent_decode("echo%2Dtemplate").expect("decodes"),
+            "echo-template"
+        );
+        assert_eq!(
+            percent_decode("%65cho-template").expect("decodes"),
+            "echo-template"
+        );
+        assert_eq!(percent_decode("plain-name").expect("decodes"), "plain-name");
+    }
+
+    /// The order matters: decoding **before** validation is what stops `%2F` from reaching the store as a
+    /// name that contains a path separator the raw-string check never saw.
+    #[test]
+    fn an_encoded_separator_decodes_to_one() {
+        assert_eq!(percent_decode("a%2Fb").expect("decodes"), "a/b");
+    }
+
+    #[test]
+    fn an_invalid_escape_is_refused_rather_than_passed_through() {
+        for broken in ["%zz", "%4", "trailing%", "%FF%FE"] {
+            let error = percent_decode(broken).expect_err(broken);
+            assert!(
+                error.contains("percent"),
+                "the refusal names the escape, not the lookup: {error}"
+            );
+        }
     }
 }

@@ -11,6 +11,10 @@ mod anchor {
     mod anchor_trust_test;
 }
 #[cfg(not(feature = "portable"))]
+#[path = "state_file_modes_test.rs"]
+mod state_file_modes_test;
+
+#[cfg(not(feature = "portable"))]
 #[path = "audit_retention_check.rs"]
 mod audit_retention_check;
 

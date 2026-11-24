@@ -133,6 +133,19 @@ struct RawNode {
     intent: Option<String>,
 }
 
+/// The 1-based line an offset falls on (#1658 item 6).
+///
+/// Counted over **bytes**, not characters: `toml`'s span offsets are byte offsets, and a document with
+/// non-ASCII before the error would otherwise be counted from a slice that splits a character.
+pub fn line_of_offset(source: &str, offset: usize) -> u32 {
+    let clamped = offset.min(source.len());
+    let newlines = source.as_bytes()[..clamped]
+        .iter()
+        .filter(|byte| **byte == b'\n')
+        .count();
+    u32::try_from(newlines + 1).unwrap_or(u32::MAX)
+}
+
 /// Parse a document into the one value, refusing the three ways its version can be wrong.
 ///
 /// `source` is the path when the caller has one; it appears in every refusal, because a refusal
@@ -147,7 +160,12 @@ pub fn parse_document(
 ) -> Result<TemplateDocument, TemplateError> {
     let raw: RawDocument = toml::from_str(toml_content).map_err(|e| TemplateError::Parse {
         detail: e.message().to_string(),
-        line: Some(u32::try_from(e.span().map_or(0, |s| s.start)).unwrap_or(0)),
+        // #1658 item 6: `span().start` is a **byte offset**, and it was reported as `line`. A document
+        // whose ninth line holds a type error said "at line 62" — the offset — and an author counting
+        // lines found nothing there. `line_of_offset` counts the newlines before it.
+        line: e
+            .span()
+            .map(|span| line_of_offset(toml_content, span.start)),
         path: source.map(str::to_string),
     })?;
 

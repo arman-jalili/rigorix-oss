@@ -373,6 +373,32 @@ PY
     fails=$((fails + 1))
   fi
 
+  # S4 (#1670): a run from another workflow is refused **by name**. Before this, `latest` meant "the most
+  # recently completed run of any workflow", so an image build that finished after CI was priced against
+  # the CI stage budgets: 16 breaches, every one of them "a budget for a stage that did not run". The
+  # fixture is the shape that produced it.
+  fixture "$TMP/foreign" "🧪 Test (cli):0:6"
+  python3 -c '
+import json, sys
+data = json.load(open(sys.argv[1]))
+data["path"] = ".github/workflows/build-action-image.yml"
+data["name"] = "Build Action Image"
+json.dump(data, open(sys.argv[1], "w"))
+' "$TMP/foreign/run.json"
+  set +e
+  bash "$SELF" --json --run-json "$TMP/foreign/run.json" --jobs-json "$TMP/foreign/jobs.json" \
+    >"$TMP/foreign.out" 2>&1
+  got=$?
+  set -e
+  if [ "$got" -eq 1 ] && grep -q 'build-action-image.yml' "$TMP/foreign.out"; then
+    echo "  ✅ a run from another workflow is refused by name, not priced as stage breaches"
+    passes=$((passes + 1))
+  else
+    echo "  ❌ a foreign workflow run must be refused (exit $got)"
+    sed "s/^/     /" "$TMP/foreign.out"
+    fails=$((fails + 1))
+  fi
+
   echo "  self-test: $passes passed, $fails failed"
   [ "$fails" -eq 0 ] || exit 1
   echo "✅ ci_critical_path self-test"
@@ -404,13 +430,33 @@ else
     exit 1; }
 
   if [ "$RUN" = "latest" ]; then
-    RUN="$(gh api "repos/$REPO/actions/runs?branch=main&status=completed&per_page=1" \
+    # #1670: **this workflow**, not "whatever ran last". `actions/runs?per_page=1` answers with the most
+    # recently completed run of *any* workflow on the branch, so once an image build or a hardening run
+    # finished after CI, the observer priced that run against the CI budgets — 16 breaches, all of them
+    # "a budget for a stage that did not run", on a run whose stages were never meant to be there. A
+    # check that measures a different subject answers a question nobody asked, and it answers it red.
+    WORKFLOW_FILE="$(basename "$WORKFLOW")"
+    RUN="$(gh api "repos/$REPO/actions/workflows/$WORKFLOW_FILE/runs?branch=main&status=completed&per_page=1" \
       --jq '.workflow_runs[0].id // empty')"
-    [ -n "$RUN" ] || { echo "❌ ci_critical_path: no completed run on main to price" >&2; exit 1; }
+    [ -n "$RUN" ] || {
+      echo "❌ ci_critical_path: no completed $WORKFLOW_FILE run on main to price" >&2; exit 1; }
   fi
 
   gh api "repos/$REPO/actions/runs/$RUN" > "$TMP/run.json"
   gh api "repos/$REPO/actions/runs/$RUN/jobs?per_page=100" --paginate > "$TMP/jobs.json"
+fi
+
+# ── the run must be *this* workflow's (#1670) ───────────────────────────────
+# Checked on the fixture path as well as the network path: a run id can arrive as an argument, and an
+# explicitly priced run from another workflow must be refused **by name** rather than reported as a set of
+# stage breaches. The unit fixtures use this same door, which is why the refusal is exercisable offline.
+PRICED_PATH="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("path",""))' "$TMP/run.json")"
+EXPECTED_PATH="${WORKFLOW#"$ROOT/"}"
+if [ -n "$PRICED_PATH" ] && [ "$PRICED_PATH" != "$EXPECTED_PATH" ]; then
+  echo "❌ ci_critical_path: run $RUN belongs to \`$PRICED_PATH\`, and this observer prices \`$EXPECTED_PATH\`." >&2
+  echo "   The stage budgets in .github/ci-budgets.tsv are CI's; another workflow's jobs are not stages of" >&2
+  echo "   it, so every line would read 'has no budget' or 'did not run' — 16 breaches, one mistake (#1670)." >&2
+  exit 1
 fi
 
 render "$TMP/run.json" "$TMP/jobs.json"

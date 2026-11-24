@@ -1,3 +1,25 @@
+- **A state file is owner-only, a refusal names a line, and a resource URI is decoded before it is looked up** (#1658
+  items 2, 6 and 7 — the three that were "reported, not reproduced", so each was measured first). Measured: with `umask 022`,
+  `std::fs::write` gives **0644** and `create_dir_all` **0755**, so an audit envelope — prompt, paths, findings — was readable
+  by every account on the host, and so were templates and receipts; `common::private_fs` now creates state files `0600` and
+  their directories `0700`, through the temp file that the atomic rename makes the destination (so a file written before the
+  rule is tightened when it is replaced). Measured: `parse_document` put `toml`'s **byte offset** in the `line` field, so a
+  type error on line 9 was refused "at line 62"; it now counts newlines, over bytes so a non-ASCII document cannot be
+  miscounted. Measured: `rigorix://templates/echo%2Dtemplate` was "not found" because the segment was used literally; it is
+  now percent-decoded **before** validation, so an encoded `/` is refused by the same rule as a literal one instead of
+  reaching the store. And the cost observer prices **the CI workflow**, not "whatever finished last" (#1670): an image build
+  that completed after CI was compared against the CI stage budgets and produced 16 breaches, every one of them "a budget for
+  a stage that did not run".
+- **Every template action is driven to a real effect, and two booleans stopped being read as strings** (#1660). The
+  conformance suite writes a `[[nodes]]` dialect document, reads it back through the store's own `get`, and hands the
+  converted step's tool and parameters to the engine's **tool implementation** in a temp workspace — then asserts what
+  happened: the bytes on disk, the staged index entry, the commit subject, the file the command created. The action count is
+  derived from `TemplateAction`'s own source and must equal the exercised set plus the one action the conversion refuses
+  (`lsp_query`), so a tenth action fails the suite until it is driven. Writing it found the class it exists to find:
+  `file_patch`'s `before` and `git_commit`'s `auto_stage` were read with `get_string(...) == "true"`, so a plan step carrying
+  a JSON boolean — which is what the dialect and every real caller produce — silently got `false`, and an insert-before became
+  an insert-after. Their unit tests passed because they built the string. `ToolInput::get_bool` accepts both shapes, and a
+  `git_commit` that fails now names git's reason instead of printing `Git commit failed: ` and nothing.
 - **The template tool may not lower the bar it is judged by** (#1655, ADR-026). #1655 made an overwrite that drops
   `requires_approval` *visible*. It did not stop it: the store writes `.rigorix/templates`, which `file_write` is already
   refused (any `.rigorix` segment is protected), so the sanctioned writer was performing a write the ordinary writer is
