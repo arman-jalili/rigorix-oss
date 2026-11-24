@@ -23,16 +23,118 @@ use crate::audit::infrastructure::repository::AuditEnvelopeRepository;
 pub struct LocalAuditEnvelopeRepository {
     /// Base directory for envelope storage.
     base_path: PathBuf,
+    /// An explicit retention bound, when the composition resolved one (#1658).
+    max_envelopes: Option<usize>,
+}
+
+/// How many envelopes `.rigorix/audit/` keeps before the oldest are removed (#1658).
+///
+/// Overridable with `RIGORIX_AUDIT_MAX_ENVELOPES` (a deployment with a long review window raises it);
+/// the default bounds a host that runs a request loop.
+pub const DEFAULT_MAX_LOCAL_AUDIT_ENVELOPES: usize = 5_000;
+
+/// The retention bound a configured value resolves to (`None` → the default) (#1658).
+///
+/// Pure, so the rule is testable without touching the process environment.
+pub fn resolve_max_envelopes(configured: Option<&str>) -> usize {
+    configured
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .filter(|bound| *bound > 0)
+        .unwrap_or(DEFAULT_MAX_LOCAL_AUDIT_ENVELOPES)
 }
 
 impl LocalAuditEnvelopeRepository {
+    /// The configured bound: `RIGORIX_AUDIT_MAX_ENVELOPES`, or the default.
+    pub fn max_envelopes(&self) -> usize {
+        if let Some(bound) = self.max_envelopes {
+            return bound;
+        }
+        // sink: audit:retention-bound
+        resolve_max_envelopes(std::env::var("RIGORIX_AUDIT_MAX_ENVELOPES").ok().as_deref())
+    }
+
+    /// Remove the oldest envelopes beyond [`Self::max_envelopes`], and say so.
+    ///
+    /// Oldest is decided by modification time, then by name, so the order is total even on a
+    /// filesystem with coarse timestamps.
+    async fn enforce_retention(&self) -> Result<u64, AuditError> {
+        let bound = self.max_envelopes();
+        let mut entries: Vec<(std::time::SystemTime, std::path::PathBuf)> = Vec::new();
+        let mut dir =
+            tokio::fs::read_dir(&self.base_path)
+                .await
+                .map_err(|e| AuditError::Internal {
+                    detail: format!("retention: failed to read directory: {e}"),
+                })?;
+        while let Some(entry) = dir.next_entry().await.map_err(|e| AuditError::Internal {
+            detail: format!("retention: failed to read an entry: {e}"),
+        })? {
+            let path = entry.path();
+            if path.extension().is_none_or(|ext| ext != "json") {
+                continue;
+            }
+            let modified = entry
+                .metadata()
+                .await
+                .ok()
+                .and_then(|meta| meta.modified().ok())
+                .unwrap_or(std::time::UNIX_EPOCH);
+            entries.push((modified, path));
+        }
+        if entries.len() <= bound {
+            return Ok(0);
+        }
+        entries.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+        let excess = entries.len() - bound;
+        let mut deleted = 0u64;
+        for (_, path) in entries.into_iter().take(excess) {
+            // sink: audit:local-chain
+            match tokio::fs::remove_file(&path).await {
+                Ok(()) => deleted += 1,
+                Err(error) => tracing::warn!(
+                    path = %path.display(),
+                    %error,
+                    "audit retention: could not remove an envelope past the bound"
+                ),
+            }
+        }
+        if deleted > 0 {
+            tracing::warn!(
+                deleted,
+                kept = bound,
+                bound_source = "RIGORIX_AUDIT_MAX_ENVELOPES or DEFAULT_MAX_LOCAL_AUDIT_ENVELOPES",
+                "audit retention: removed the oldest envelopes past the bound — the trail is bounded \
+                 by a count, and this line is the record that it was (the bound, not an age, so a \
+                 quiet month cannot empty the trail)"
+            );
+        }
+        Ok(deleted)
+    }
     /// Create a new repository with the given base path.
     ///
     /// Creates the base directory if it doesn't exist.
     pub fn new(base_path: PathBuf) -> Self {
         // sink: audit:local-chain
         std::fs::create_dir_all(&base_path).ok();
-        Self { base_path }
+        Self {
+            base_path,
+            max_envelopes: None,
+        }
+    }
+
+    /// The same store with an explicit retention bound, for a test or a composition that has already
+    /// resolved one (#1658).
+    ///
+    /// An explicit bound rather than an environment variable in every case: a test that mutates the
+    /// process environment races every other test that reads it, and a race here reads as a retention
+    /// bug in a completely different test.
+    pub fn with_max_envelopes(base_path: PathBuf, max_envelopes: usize) -> Self {
+        // sink: audit:local-chain
+        std::fs::create_dir_all(&base_path).ok();
+        Self {
+            base_path,
+            max_envelopes: Some(max_envelopes),
+        }
     }
 
     /// Build the file path for an execution ID.
@@ -66,6 +168,19 @@ impl AuditEnvelopeRepository for LocalAuditEnvelopeRepository {
 
         let path = self.envelope_path(&envelope.execution_id);
         Self::atomic_write(&path, &json)?;
+
+        // #1658 (audit retention): `.rigorix/audit/` grew one file per run, forever. `prune` existed
+        // and was called only from the test module, so with an open `/rpc` a loop of `run_command`
+        // steps grew the server host's disk without bound.
+        //
+        // The bound is a **count**, not an age: retention by age loses a trail after a quiet month,
+        // and the failure the audit measured is disk growth, which a count bounds exactly and a clock
+        // does not. Reaching it is a **recorded** event — the log line below names how many were
+        // deleted and what the bound is — never a silent deletion, because an audit trail that
+        // disappears without a word is the one thing this store must not do.
+        if let Err(error) = self.enforce_retention().await {
+            tracing::warn!(%error, "audit retention: could not enforce the bound; the trail keeps growing");
+        }
 
         Ok(())
     }

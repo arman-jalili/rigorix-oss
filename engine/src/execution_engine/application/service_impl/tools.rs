@@ -359,6 +359,40 @@ impl ParallelExecutionServiceImpl {
         start: std::time::Instant,
         effect_key: Option<&str>,
     ) -> TaskResult {
+        // #1658 (cwd): the measurement is that `engine/src` contains **zero** `.cwd(` call sites, so a
+        // `cwd` a schema accepts was silently dropped — the step ran in the engine's directory while
+        // the document said otherwise. Refusing is the honest half of "honoured or refused at parse
+        // time": a step that cannot honour its declaration must not appear to.
+        // `field_from_intent` falls back to the **whole intent** when the field is absent (that is what
+        // makes a bare-string intent work for `run_command`), so it cannot answer "is `cwd` set". The
+        // question needs an optional read.
+        let declared_cwd = serde_json::from_str::<serde_json::Value>(intent)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("cwd")
+                    .and_then(|cwd| cwd.as_str())
+                    .map(str::to_string)
+            })
+            .filter(|cwd| !cwd.is_empty());
+        if let Some(declared_cwd) = declared_cwd {
+            let duration_ms = start.elapsed().as_millis() as u64;
+            return TaskResult::failure(
+                node_id,
+                node_name,
+                format!(
+                    "this step declares `cwd = {:?}` and the executor does not change directory: no \
+                     step can set its own working directory today (measured: zero `.cwd(` call sites \
+                     in `engine/src`). The step was **not run** in the engine's directory instead — a \
+                     step that silently runs somewhere else is the defect, not the missing feature. \
+                     Use an absolute path in the command, or wait for cwd support (#1658)",
+                    declared_cwd
+                ),
+                "cwd_unsupported".to_string(),
+                duration_ms,
+                0,
+            );
+        }
         let command = command_from_intent(intent);
         // Refuse a compound shell string: there is no allowlist on this path,
         // and `sh -c` would execute every operator in the string (#1067).

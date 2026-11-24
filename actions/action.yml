@@ -151,4 +151,7 @@ outputs:
 
 runs:
   using: 'docker'
-  image: 'docker://ghcr.io/arman-jalili/rigorix-oss/actions:latest'
+  # #1658: pinned by digest, not by `:latest`: a mutable tag changes what every consumer executes
+  # without a commit. Update it with
+  #   docker buildx imagetools inspect ghcr.io/arman-jalili/rigorix-oss/actions:latest | grep Digest
+  image: 'docker://ghcr.io/arman-jalili/rigorix-oss/actions@sha256:c581eefa7e1204119c44a8800647347c7163d542b568511b99741b1eb4e8e552'  # 1.16.x index, 2026-11-24

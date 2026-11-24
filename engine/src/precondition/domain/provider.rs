@@ -151,8 +151,13 @@ impl ProviderSpec {
                 self.id
             ));
         }
-        if !(self.endpoint.starts_with("http://") || self.endpoint.starts_with("https://")) {
-            return Err(format!("provider '{}': endpoint must be http(s)", self.id));
+        // #1658 (cleartext providers): `http://` was accepted. The client is careful — redirects off,
+        // body capped — but the **verdict** is decided by whoever is on the path, and that verdict
+        // gates a step. A warning on a cleartext verdict is the "control reports success while not
+        // holding" shape this repo removes, so this is a refusal with a named opt-in:
+        // `RIGORIX_PRECONDITION_ALLOW_PLAINTEXT=<host>` accepts a local mock, explicitly.
+        if let Some(reason) = plaintext_endpoint_refusal(&self.endpoint) {
+            return Err(format!("provider '{}': {reason}", self.id));
         }
         if self.timeout_ms == 0 || self.timeout_ms > max_timeout_ms {
             return Err(format!(
@@ -168,6 +173,45 @@ impl ProviderSpec {
         }
         Ok(())
     }
+}
+
+/// The environment variable naming host(s) an operator may reach over plaintext (#1658).
+pub const ALLOW_PLAINTEXT_ENV: &str = "RIGORIX_PRECONDITION_ALLOW_PLAINTEXT";
+
+/// Why a provider endpoint is refused, or `None` (#1658).
+///
+/// https only, unless `RIGORIX_PRECONDITION_ALLOW_PLAINTEXT` names this host — the same shape the
+/// anchor uses (#1663), because the argument is the same: an answer that gates a consequence must
+/// come over a channel the client can verify.
+pub fn plaintext_endpoint_refusal(endpoint: &str) -> Option<String> {
+    if endpoint.starts_with("https://") {
+        return None;
+    }
+    if !endpoint.starts_with("http://") {
+        return Some(
+            "endpoint must be https:// — a scheme this engine cannot verify is refused because the \
+             provider's answer gates a step (#1658)"
+                .to_string(),
+        );
+    }
+    let host = endpoint
+        .trim_start_matches("http://")
+        .split('/')
+        .next()
+        .unwrap_or_default();
+    // sink: precondition:provider-plaintext-optin
+    let allowed = std::env::var(ALLOW_PLAINTEXT_ENV).unwrap_or_default();
+    let permitted = allowed.split(',').map(str::trim).any(|entry| {
+        !entry.is_empty() && (entry == host || host.starts_with(&format!("{entry}:")))
+    });
+    if permitted {
+        return None;
+    }
+    Some(format!(
+        "endpoint `{endpoint}` is plaintext (http://) and no opt-in names `{host}`. Set \
+         {ALLOW_PLAINTEXT_ENV}={host} to accept a local mock, or use https:// — the provider's \
+         determination gates a step, so an on-path attacker would decide it (#1658)"
+    ))
 }
 
 /// The mapped determination of a provider call.
