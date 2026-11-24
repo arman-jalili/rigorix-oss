@@ -69,6 +69,16 @@ pub enum TemplateError {
     /// emitting a step that would report success and do nothing, which is the defect #1651 records.
     #[error("Unsupported action: {0}")]
     UnsupportedAction(String),
+
+    /// An overwrite would **reduce** what a template gates: an approval removed, a step retargeted at a
+    /// different tool, or a step deleted (ADR-026).
+    ///
+    /// A refusal rather than a warning, because the alternative is an agent lowering the bar it is
+    /// judged by and a record that describes the downgrade accurately. The remedy is the operator's
+    /// edit on disk; there is no request field that permits it, since a control whose subject can
+    /// satisfy it is not a control.
+    #[error("Governance downgrade refused: {0}")]
+    GovernanceDowngrade(String),
 }
 
 // ---------------------------------------------------------------------------

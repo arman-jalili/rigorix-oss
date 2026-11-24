@@ -1,3 +1,10 @@
+- **The template tool may not lower the bar it is judged by** (#1655, ADR-026). #1655 made an overwrite that drops
+  `requires_approval` *visible*. It did not stop it: the store writes `.rigorix/templates`, which `file_write` is already
+  refused (any `.rigorix` segment is protected), so the sanctioned writer was performing a write the ordinary writer is
+  forbidden to perform. Three changes are now refused by the store before anything is written — an approval removed, a step
+  retargeted at another tool, a step deleted — and the refusal names the step, the field and both values. An added step or
+  approval, a description edit and a parameter change are applied and reported as before. The remedy for a refusal is the
+  operator's edit on disk, deliberately: a request field that permits a downgrade is a field the agent can set.
 - **Every guarded route enforces *its own* row, and a preflight is answered from the row too** (#1659, last mile).
   The table made a route without a policy inexpressible; it did not stop a mounted handler from taking the decision from
   `crate::origin` directly — which is what `/events` did, so its `Guarded` row was a declaration nothing read, on the route

@@ -614,6 +614,24 @@ impl TemplateRepository for FilesystemTemplateRepository {
             }
             report.replaced_existing = true;
             report.changes = governance_diff(&previous, &template);
+            // ADR-026: a change that reduces what is gated is refused, before a version copy is
+            // written and before the template file is touched. A refused write that left a version
+            // behind would be a record of a change that did not happen.
+            //
+            // The rule is here, in the store, and not in the tool's handler: the store is the one door
+            // every caller goes through, and a rule in the adapter is a rule the next caller does not
+            // have.
+            let downgrades = report.downgrades();
+            if !downgrades.is_empty() {
+                return Err(TemplateError::GovernanceDowngrade(format!(
+                    "Refusing to overwrite template '{name}': {}. The template was NOT written and \
+                     nothing was changed. A template is the gate a run is judged by, so an agent may \
+                     not lower it — ask the operator, who can edit .rigorix/templates/{name}.toml on \
+                     disk. Adding a step, adding an approval or editing parameters is applied and \
+                     reported (ADR-026).",
+                    downgrades.join("; ")
+                )));
+            }
             report.previous_definition = Some(self.keep_previous(&name).await?);
         }
 
