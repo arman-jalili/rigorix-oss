@@ -21,7 +21,12 @@
 #   1. no `.gitignore` line carries a trailing ` # …` comment — it is not a comment, it is part of
 #      the pattern;
 #   2. no tracked file matches an ignore pattern (`git ls-files -i -c --exclude-standard` is empty)
-#      — a file that is both tracked and ignored is one somebody had to force.
+#      — a file that is both tracked and ignored is one somebody had to force;
+#   3. no tracked path has a directory component ending in `.lock` — a lock directory is runtime
+#      bookkeeping, and `.pi/.local-ci.lock/{pid,tree}` reached `main` because the rule was a list of
+#      junk names rather than a statement about what a lock directory is (2026-11-24);
+#   4. no tracked path's final segment is `pid` or `tree` — the two file names a lock directory
+#      holds, refused wherever they appear so a rule cannot be evaded by renaming the parent.
 #
 # Exit codes: 0 = clean; 1 = a finding; 2 = malformed input (no `.gitignore`, not a git tree).
 set -euo pipefail
@@ -80,6 +85,29 @@ if [ "$MODE" = "self-test" ]; then
   git -C "$scratch" add -f ignored.log 2>/dev/null
   case_ "a file that is both tracked and ignored fails" fail
 
+  # Rules 3 and 4: the lock directory that reached main, and its two file names.
+  git -C "$scratch" rm -q --cached ignored.log 2>/dev/null || true
+  printf '# a comment\n*.profraw\n' > "$scratch/.gitignore"
+  mkdir -p "$scratch/.pi/.local-ci.lock"
+  printf '1234\n' > "$scratch/.pi/.local-ci.lock/pid"
+  printf 'main\n' > "$scratch/.pi/.local-ci.lock/tree"
+  git -C "$scratch" add -f .pi/.local-ci.lock/pid .pi/.local-ci.lock/tree 2>/dev/null
+  case_ "a tracked file under a *.lock directory fails" fail
+  out=$(bash "$0" --root "$scratch" 2>&1 || true)
+  case "$out" in
+    *".lock"*) echo "  ✓ the finding names the lock directory" ;;
+    *) echo "✗ self-test: the finding did not name the lock directory: $out" >&2; exit 1 ;;
+  esac
+  # Rule 4 on its own: the same file names outside a lock directory are still refused, because a
+  # rule that depends on the parent's name is one rename away from silence.
+  git -C "$scratch" rm -q --cached .pi/.local-ci.lock/pid .pi/.local-ci.lock/tree 2>/dev/null || true
+  mkdir -p "$scratch/elsewhere"
+  printf '1234\n' > "$scratch/elsewhere/pid"
+  git -C "$scratch" add -f elsewhere/pid 2>/dev/null
+  case_ "a tracked file named pid outside a lock directory fails" fail
+  git -C "$scratch" rm -q --cached elsewhere/pid 2>/dev/null || true
+  case_ "the same directory with nothing tracked under it passes" pass
+
   rm -f "$scratch/.gitignore"
   case_ "no .gitignore at all is malformed, not a pass" malformed
 
@@ -121,6 +149,24 @@ for lineno, line in enumerate(lines, 1):
         findings.append(f"{os.path.relpath(IGNORE, ROOT)}:{lineno}: `{line.strip()}` — `.gitignore` "
                         f"has no inline comments, so everything after the space is part of the "
                         f"pattern and this line ignores nothing")
+
+# rule 3 and 4: a lock directory is never content, and its two file names are refused everywhere
+try:
+    tracked = subprocess.run(["git", "-C", ROOT, "ls-files"],
+                             capture_output=True, text=True, check=True).stdout.split("\n")
+except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+    malformed(f"`git ls-files` failed: {exc}")
+
+for path in [p for p in tracked if p]:
+    parts = path.split("/")
+    lock_dirs = [part for part in parts[:-1] if part.endswith(".lock")]
+    if lock_dirs:
+        findings.append(f"{path}: tracked inside the `{lock_dirs[0]}` directory — a `*.lock` "
+                        f"directory is runtime bookkeeping (a pid, a tree), never repository "
+                        f"content; ignore it instead of committing it")
+    if parts[-1] in ("pid", "tree"):
+        findings.append(f"{path}: tracked with the file name `{parts[-1]}` — that is the shape of a "
+                        f"lock directory's bookkeeping, refused wherever it appears")
 
 # rule 2: nothing tracked is ignored
 try:

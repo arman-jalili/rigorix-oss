@@ -104,3 +104,7 @@ wasm/pkg/
 # The state store lives beside the workspace (ADR-024 §6), and a run may create it next to any
 # crate; artifacts from it are not content.
 .execution-state/
+
+# The lock a run holds (#1647). Untracked and now unrepresentable in the index by rule
+# (validate-repo-hygiene.sh rules 3 and 4); this line is convenience, not the control.
+.pi/.local-ci.lock/
