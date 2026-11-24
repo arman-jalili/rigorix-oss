@@ -121,6 +121,36 @@ pub const ROUTES: &[RoutePolicy] = &[
     },
 ];
 
+/// The preflight refusal for `path`, taken from its row.
+///
+/// The two `OPTIONS` handlers used to name `origin::preflight_refusal` directly, which is the same
+/// shape of half-measure this module exists to remove: the row declared `Guarded` and the handler did
+/// not ask it. There is no arm that answers "nothing": a route with no row, and an exempt route that
+/// someone sent a preflight to, each get a refusal that says which of the two it is — an absent
+/// answer here would be a preflight granted by omission.
+pub fn preflight_refusal_for(path: &str) -> Response {
+    use axum::response::IntoResponse;
+
+    match policy_for(path) {
+        Some(route) => match route.origin {
+            OriginPolicy::Guarded => crate::origin::preflight_refusal(route.path),
+            OriginPolicy::Exempt(reason) => (
+                axum::http::StatusCode::METHOD_NOT_ALLOWED,
+                format!(
+                    "{path} has no OPTIONS handler and takes no origin decision: it is exempt \
+                     because {reason}"
+                ),
+            )
+                .into_response(),
+        },
+        None => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("{path} is not declared in route_policy::ROUTES (#1659)"),
+        )
+            .into_response(),
+    }
+}
+
 /// The row for `path`, if the route is declared.
 pub fn policy_for(path: &str) -> Option<&'static RoutePolicy> {
     ROUTES.iter().find(|route| route.path == path)

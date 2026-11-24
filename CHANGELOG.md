@@ -1,3 +1,12 @@
+- **Every guarded route enforces *its own* row, and a preflight is answered from the row too** (#1659, last mile).
+  The table made a route without a policy inexpressible; it did not stop a mounted handler from taking the decision from
+  `crate::origin` directly — which is what `/events` did, so its `Guarded` row was a declaration nothing read, on the route
+  that streams a run's metadata. `/events` and both `OPTIONS` handlers now obtain their answer from
+  `policy_for("<their own path>")`, and `server/tests/route_policy.rs` enumerates **the router's own table** and requires
+  each handler's body to name the path its row names — derived from the row, never written in the test, because a suite that
+  hardcodes `/mcp` proves one route and is exactly how the third one was missed. Also corrected: `protected_shell_refusal`'s
+  doc comment carried both the old rule and the new one (#1654); what it cannot see is **command substitution**, which the
+  comment now says instead.
 - **The audit trail is bounded by a count, a step's `cwd` is refused rather than dropped, and a provider endpoint must be
   verifiable** (#1658, three of the seven bullets). `.rigorix/audit/` grew one file per run, forever: `prune` existed and its
   only call sites were inside the test module, so a request loop grew the host's disk without bound. The store now enforces a

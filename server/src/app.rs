@@ -14,7 +14,6 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 
 use crate::events::events_handler;
-use crate::origin;
 use crate::route_policy;
 use crate::rpc;
 use crate::state::ServerState;
@@ -94,10 +93,10 @@ async fn rpc_handler(
 /// A 405 here (which is what this route answered) reads as "wrong shape, try another" and leaves the
 /// preflight-free simple-request path open. The refusal is a value, not a silence.
 async fn rpc_preflight() -> Response {
-    origin::preflight_refusal("/rpc")
+    route_policy::preflight_refusal_for("/rpc")
 }
 
 /// `OPTIONS /mcp` — the same answer, from the same function.
 async fn mcp_preflight() -> Response {
-    origin::preflight_refusal("/mcp")
+    route_policy::preflight_refusal_for("/mcp")
 }

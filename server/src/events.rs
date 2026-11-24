@@ -196,7 +196,13 @@ pub async fn events_handler(
 ) -> Response {
     // #1650: the same origin decision every other route takes. The unauthenticated *content* in free
     // mode stays as designed — what changes is that a page on any origin can no longer subscribe.
-    if let Some(refusal) = crate::origin::refusal(crate::origin::decide(&headers, false), "/events")
+    //
+    // #1659's last mile: the decision comes from the **row this handler was mounted by**, like `/rpc`
+    // and `/mcp`. This route called `origin::decide` directly while `ROUTES` declared a policy for
+    // it that nothing read — a declaration is not a control, and the difference is invisible until
+    // the two disagree.
+    if let Some(refusal) = crate::route_policy::policy_for("/events")
+        .and_then(|policy| policy.enforce_origin(&headers))
     {
         return refusal;
     }

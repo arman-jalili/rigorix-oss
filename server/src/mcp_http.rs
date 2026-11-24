@@ -625,6 +625,11 @@ mod tests {
             .expect("the handler body");
         // #1659: the handler now asks its *row* for the decision, which is stronger than calling
         // `origin::decide` itself — the row is what the router was built from.
+        //
+        // This asserts one handler; the property ("every guarded route asks its own row") lives in
+        // `server/tests/route_policy.rs` and is enumerated from `ROUTES`. Both are kept because they
+        // fail differently: this one also pins the absence of a local guard in this file, which is
+        // the copy that let `/rpc` have none.
         assert!(
             handler.contains("route_policy::policy_for(\"/mcp\")")
                 && handler.contains("enforce_origin(&headers)"),
