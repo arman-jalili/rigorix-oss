@@ -122,10 +122,9 @@ async fn an_overwrite_that_changes_nothing_governance_relevant_is_silent() {
         .await
         .expect("create");
 
-    let mut same = plan("file_write", true);
     // A description edit is not a boundary change and must not appear in the report: a report that
     // lists everything is a report nobody reads.
-    same = PlanTemplate::from_json(json!({
+    let same = PlanTemplate::from_json(json!({
         "name": "governed",
         "description": "a plan, re-described",
         "version": "1.0.0",
